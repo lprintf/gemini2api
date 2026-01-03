@@ -1,0 +1,40 @@
+# Gemini 图片编辑 API 服务 - 默认配置
+
+server:
+  host: "0.0.0.0"
+  port: 8000
+  workers: 1
+  reload: false  # 开发时设为 true
+
+browser_pool:
+  min_browsers: 1
+  max_browsers: 10
+  idle_timeout: 300  # 秒，浏览器空闲超时时间
+  health_check_interval: 60  # 秒，健康检查间隔
+  default_headless: true  # 默认无头模式
+
+rate_limit:
+  default_limit: 10  # 每分钟请求数
+  window_seconds: 60  # 时间窗口（秒）
+  burst: 20  # 突发请求数
+
+load_balancer:
+  strategy: "least_loaded"  # 负载均衡策略
+  # 可选值:
+  # - round_robin: 轮询
+  # - least_loaded: 最少任务
+  # - random: 随机
+
+logging:
+  level: "INFO"  # DEBUG/INFO/WARNING/ERROR
+  file: "data/logs/app.log"
+  max_size: "100MB"
+  backup_count: 10
+
+security:
+  admin_username: "admin"
+  admin_password: "changeme"  # ⚠️ 生产环境请修改
+  jwt_secret: "your-secret-key-change-in-production"  # ⚠️ 生产环境请修改
+  cors_origins:
+    - "*"  # 生产环境建议指定具体域名
+  api_key_header: "Authorization"  # API Key 请求头

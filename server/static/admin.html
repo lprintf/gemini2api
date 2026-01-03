@@ -1,0 +1,1213 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gemini2API Admin</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: #f5f5f5;
+            color: #333;
+            line-height: 1.6;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .header h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+
+        .nav {
+            display: flex;
+            gap: 0.5rem;
+            padding: 1rem 2rem;
+            background: white;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .nav-btn {
+            padding: 0.5rem 1rem;
+            border: none;
+            background: #f0f0f0;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+        }
+
+        .nav-btn:hover {
+            background: #e0e0e0;
+        }
+
+        .nav-btn.active {
+            background: #667eea;
+            color: white;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 1.5rem;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+
+        .card-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            color: #333;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 1.5rem;
+            border-radius: 12px;
+            text-align: center;
+        }
+
+        .stat-card.success {
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+        }
+
+        .stat-card.warning {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+
+        .stat-card.info {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        }
+
+        .stat-value {
+            font-size: 2.5rem;
+            font-weight: 700;
+        }
+
+        .stat-label {
+            font-size: 0.9rem;
+            opacity: 0.9;
+            margin-top: 0.25rem;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            padding: 0.75rem;
+            text-align: left;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        th {
+            font-weight: 600;
+            background: #f9f9f9;
+        }
+
+        tr:hover {
+            background: #f5f5f5;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 500;
+        }
+
+        .status-idle {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-busy {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .status-error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .status-stopped {
+            background: #e2e3e5;
+            color: #383d41;
+        }
+
+        .status-starting, .status-stopping {
+            background: #cce5ff;
+            color: #004085;
+        }
+
+        .status-completed {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-failed {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .status-pending {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .status-processing {
+            background: #cce5ff;
+            color: #004085;
+        }
+
+        .btn {
+            padding: 0.4rem 0.8rem;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            transition: all 0.2s;
+            margin-right: 0.25rem;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #5a6fd6;
+        }
+
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #218838;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #c82333;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+
+        .btn-warning {
+            background: #ffc107;
+            color: #212529;
+        }
+
+        .btn-warning:hover {
+            background: #e0a800;
+        }
+
+        .btn-lg {
+            padding: 0.75rem 1.5rem;
+            font-size: 1rem;
+        }
+
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+            color: #555;
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 0.5rem 0.75rem;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 0.9rem;
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal.show {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 12px;
+            padding: 2rem;
+            max-width: 500px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .modal-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 1.5rem;
+        }
+
+        .modal-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 0.5rem;
+            margin-top: 1.5rem;
+        }
+
+        .log-item {
+            padding: 0.75rem;
+            border-bottom: 1px solid #eee;
+            font-family: monospace;
+            font-size: 0.85rem;
+        }
+
+        .log-item:last-child {
+            border-bottom: none;
+        }
+
+        .log-time {
+            color: #999;
+            margin-right: 0.5rem;
+        }
+
+        .log-level {
+            display: inline-block;
+            padding: 0.1rem 0.4rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            margin-right: 0.5rem;
+        }
+
+        .log-level.INFO {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .log-level.WARNING {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .log-level.ERROR {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .log-level.DEBUG {
+            background: #e2e3e5;
+            color: #383d41;
+        }
+
+        .log-browser {
+            color: #667eea;
+            margin-right: 0.5rem;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 3rem;
+            color: #999;
+        }
+
+        .empty-state-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+        }
+
+        .filter-bar {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .filter-bar select, .filter-bar input {
+            padding: 0.5rem;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+        }
+
+        .refresh-btn {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: #667eea;
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-size: 1.5rem;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+            transition: all 0.2s;
+        }
+
+        .refresh-btn:hover {
+            transform: scale(1.1);
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 2rem;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #333;
+            color: white;
+            padding: 1rem 2rem;
+            border-radius: 8px;
+            z-index: 2000;
+            display: none;
+        }
+
+        .toast.show {
+            display: block;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .toast.success {
+            background: #28a745;
+        }
+
+        .toast.error {
+            background: #dc3545;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateX(-50%) translateY(20px); }
+            to { opacity: 1; transform: translateX(-50%) translateY(0); }
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .checkbox-group input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Gemini2API Admin</h1>
+        <span id="serverStatus">-</span>
+    </div>
+
+    <div class="nav">
+        <button class="nav-btn active" data-tab="dashboard">Dashboard</button>
+        <button class="nav-btn" data-tab="browsers">Browsers</button>
+        <button class="nav-btn" data-tab="tasks">Tasks</button>
+        <button class="nav-btn" data-tab="config">Config</button>
+        <button class="nav-btn" data-tab="logs">Logs</button>
+    </div>
+
+    <div class="container">
+        <!-- Dashboard Tab -->
+        <div id="dashboard" class="tab-content active">
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-value" id="totalBrowsers">0</div>
+                    <div class="stat-label">Total Browsers</div>
+                </div>
+                <div class="stat-card success">
+                    <div class="stat-value" id="idleBrowsers">0</div>
+                    <div class="stat-label">Idle</div>
+                </div>
+                <div class="stat-card info">
+                    <div class="stat-value" id="busyBrowsers">0</div>
+                    <div class="stat-label">Busy</div>
+                </div>
+                <div class="stat-card warning">
+                    <div class="stat-value" id="todayTasks">0</div>
+                    <div class="stat-label">Today Tasks</div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">Task Statistics</div>
+                <div class="stats-grid">
+                    <div><strong>Total Tasks:</strong> <span id="statTotalTasks">0</span></div>
+                    <div><strong>Completed:</strong> <span id="statCompleted">0</span></div>
+                    <div><strong>Failed:</strong> <span id="statFailed">0</span></div>
+                    <div><strong>Avg Duration:</strong> <span id="statAvgDuration">-</span></div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">Recent Logs</div>
+                <div id="recentLogs" class="log-list"></div>
+            </div>
+        </div>
+
+        <!-- Browsers Tab -->
+        <div id="browsers" class="tab-content">
+            <div class="card">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                    <div class="card-title" style="margin-bottom: 0;">Browser Management</div>
+                    <button class="btn btn-primary btn-lg" onclick="showCreateBrowserModal()">+ Add Browser</button>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Account</th>
+                            <th>Status</th>
+                            <th>Tabs</th>
+                            <th>Tasks</th>
+                            <th>Rate Limit</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="browserList"></tbody>
+                </table>
+                <div id="browserEmpty" class="empty-state" style="display: none;">
+                    <div class="empty-state-icon">:(</div>
+                    <div>No browsers configured</div>
+                    <button class="btn btn-primary btn-lg" style="margin-top: 1rem;" onclick="showCreateBrowserModal()">Add First Browser</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tasks Tab -->
+        <div id="tasks" class="tab-content">
+            <div class="card">
+                <div class="card-title">Task History</div>
+                <div class="filter-bar">
+                    <select id="taskStatusFilter" onchange="loadTasks()">
+                        <option value="">All Status</option>
+                        <option value="completed">Completed</option>
+                        <option value="failed">Failed</option>
+                        <option value="pending">Pending</option>
+                        <option value="processing">Processing</option>
+                    </select>
+                    <select id="taskBrowserFilter" onchange="loadTasks()">
+                        <option value="">All Browsers</option>
+                    </select>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Task ID</th>
+                            <th>Browser</th>
+                            <th>Prompt</th>
+                            <th>Status</th>
+                            <th>Duration</th>
+                            <th>Created</th>
+                        </tr>
+                    </thead>
+                    <tbody id="taskList"></tbody>
+                </table>
+                <div id="taskEmpty" class="empty-state" style="display: none;">
+                    <div class="empty-state-icon">:(</div>
+                    <div>No tasks found</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Config Tab -->
+        <div id="config" class="tab-content">
+            <div class="card">
+                <div class="card-title">Global Configuration</div>
+                <form id="configForm" onsubmit="saveConfig(event)">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Server Host</label>
+                            <input type="text" class="form-control" id="cfgServerHost" placeholder="0.0.0.0">
+                        </div>
+                        <div class="form-group">
+                            <label>Server Port</label>
+                            <input type="number" class="form-control" id="cfgServerPort" placeholder="8000">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Min Browsers</label>
+                            <input type="number" class="form-control" id="cfgMinBrowsers" min="0">
+                        </div>
+                        <div class="form-group">
+                            <label>Max Browsers</label>
+                            <input type="number" class="form-control" id="cfgMaxBrowsers" min="1">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Default Rate Limit (req/min)</label>
+                            <input type="number" class="form-control" id="cfgRateLimit" min="1">
+                        </div>
+                        <div class="form-group">
+                            <label>Rate Window (seconds)</label>
+                            <input type="number" class="form-control" id="cfgRateWindow" min="1">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Load Balancer Strategy</label>
+                            <select class="form-control" id="cfgLbStrategy">
+                                <option value="least_loaded">Least Loaded</option>
+                                <option value="round_robin">Round Robin</option>
+                                <option value="random">Random</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Log Level</label>
+                            <select class="form-control" id="cfgLogLevel">
+                                <option value="DEBUG">DEBUG</option>
+                                <option value="INFO">INFO</option>
+                                <option value="WARNING">WARNING</option>
+                                <option value="ERROR">ERROR</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Admin Username</label>
+                            <input type="text" class="form-control" id="cfgAdminUsername">
+                        </div>
+                        <div class="form-group">
+                            <label>Admin Password</label>
+                            <input type="password" class="form-control" id="cfgAdminPassword" placeholder="Leave blank to keep current">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="cfgDefaultHeadless">
+                            <label for="cfgDefaultHeadless" style="margin-bottom: 0;">Default Headless Mode</label>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-lg">Save Configuration</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Logs Tab -->
+        <div id="logs" class="tab-content">
+            <div class="card">
+                <div class="card-title">Event Logs</div>
+                <div class="filter-bar">
+                    <select id="logLevelFilter" onchange="loadLogs()">
+                        <option value="">All Levels</option>
+                        <option value="INFO">INFO</option>
+                        <option value="WARNING">WARNING</option>
+                        <option value="ERROR">ERROR</option>
+                        <option value="DEBUG">DEBUG</option>
+                    </select>
+                    <select id="logBrowserFilter" onchange="loadLogs()">
+                        <option value="">All Browsers</option>
+                    </select>
+                    <button class="btn btn-danger" onclick="clearOldLogs()">Clear Old Logs (7 days)</button>
+                </div>
+                <div id="logList" class="log-list"></div>
+                <div id="logEmpty" class="empty-state" style="display: none;">
+                    <div class="empty-state-icon">:(</div>
+                    <div>No logs found</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create Browser Modal -->
+    <div id="createBrowserModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-title">Add New Browser</div>
+            <form id="createBrowserForm" onsubmit="createBrowser(event)">
+                <div class="form-group">
+                    <label>Browser ID (optional, auto-assign if empty)</label>
+                    <input type="number" class="form-control" id="newBrowserId" min="0" placeholder="Auto">
+                </div>
+                <div class="form-group">
+                    <label>Account Name (optional)</label>
+                    <input type="text" class="form-control" id="newAccountName" placeholder="Default: equals to ID">
+                </div>
+                <div class="form-group">
+                    <label>Proxy (optional)</label>
+                    <input type="text" class="form-control" id="newProxy" placeholder="http://proxy:port">
+                </div>
+                <div class="form-group">
+                    <label>Max Tabs (concurrent tasks per browser)</label>
+                    <input type="number" class="form-control" id="newMaxTabs" min="1" max="10" value="6">
+                </div>
+                <div class="form-group">
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="newHeadless" checked>
+                        <label for="newHeadless" style="margin-bottom: 0;">Headless Mode</label>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="newAutoStart" checked>
+                        <label for="newAutoStart" style="margin-bottom: 0;">Auto Start</label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="hideModal('createBrowserModal')">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Create</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Edit Browser Modal -->
+    <div id="editBrowserModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-title">Edit Browser</div>
+            <form id="editBrowserForm" onsubmit="updateBrowser(event)">
+                <input type="hidden" id="editBrowserId">
+                <div class="form-group">
+                    <label>Account Name</label>
+                    <input type="text" class="form-control" id="editAccountName">
+                </div>
+                <div class="form-group">
+                    <label>Proxy</label>
+                    <input type="text" class="form-control" id="editProxy" placeholder="http://proxy:port">
+                </div>
+                <div class="form-group">
+                    <label>Rate Limit (req/min)</label>
+                    <input type="number" class="form-control" id="editRateLimit" min="1">
+                </div>
+                <div class="form-group">
+                    <label>Rate Window (seconds)</label>
+                    <input type="number" class="form-control" id="editRateWindow" min="1">
+                </div>
+                <div class="form-group">
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="editHeadless">
+                        <label for="editHeadless" style="margin-bottom: 0;">Headless Mode</label>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="editAutoStart">
+                        <label for="editAutoStart" style="margin-bottom: 0;">Auto Start</label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="hideModal('editBrowserModal')">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div id="toast" class="toast"></div>
+
+    <!-- Refresh Button -->
+    <button class="refresh-btn" onclick="refreshCurrentTab()" title="Refresh">R</button>
+
+    <script>
+        const API_BASE = '/api/admin';
+        let currentTab = 'dashboard';
+        let browserData = [];
+
+        // Tab navigation
+        document.querySelectorAll('.nav-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const tab = btn.dataset.tab;
+                switchTab(tab);
+            });
+        });
+
+        function switchTab(tab) {
+            currentTab = tab;
+            document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+            document.querySelector(`.nav-btn[data-tab="${tab}"]`).classList.add('active');
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            document.getElementById(tab).classList.add('active');
+            refreshCurrentTab();
+        }
+
+        function refreshCurrentTab() {
+            switch(currentTab) {
+                case 'dashboard': loadDashboard(); break;
+                case 'browsers': loadBrowsers(); break;
+                case 'tasks': loadTasks(); break;
+                case 'config': loadConfig(); break;
+                case 'logs': loadLogs(); break;
+            }
+        }
+
+        // API calls
+        async function api(endpoint, method = 'GET', data = null) {
+            const options = {
+                method,
+                headers: { 'Content-Type': 'application/json' },
+            };
+            if (data) options.body = JSON.stringify(data);
+
+            const response = await fetch(API_BASE + endpoint, options);
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.detail || 'API Error');
+            }
+            return response.json();
+        }
+
+        // Dashboard
+        async function loadDashboard() {
+            try {
+                const data = await api('/dashboard');
+
+                document.getElementById('totalBrowsers').textContent = data.browsers.total;
+                document.getElementById('idleBrowsers').textContent = data.browsers.status_count.idle || 0;
+                document.getElementById('busyBrowsers').textContent = data.browsers.status_count.busy || 0;
+                document.getElementById('todayTasks').textContent = data.tasks.today_tasks;
+
+                document.getElementById('statTotalTasks').textContent = data.tasks.total_tasks;
+                document.getElementById('statCompleted').textContent = data.tasks.completed_tasks;
+                document.getElementById('statFailed').textContent = data.tasks.failed_tasks;
+                document.getElementById('statAvgDuration').textContent = data.tasks.avg_duration
+                    ? data.tasks.avg_duration.toFixed(2) + 's' : '-';
+
+                const logsHtml = data.recent_logs.map(log => `
+                    <div class="log-item">
+                        <span class="log-time">${formatTime(log.created_at)}</span>
+                        <span class="log-level ${log.level}">${log.level}</span>
+                        ${log.browser_id ? `<span class="log-browser">[${log.browser_id}]</span>` : ''}
+                        <span>${escapeHtml(log.message)}</span>
+                    </div>
+                `).join('');
+                document.getElementById('recentLogs').innerHTML = logsHtml || '<div class="empty-state">No recent logs</div>';
+
+                document.getElementById('serverStatus').textContent = 'Connected';
+                document.getElementById('serverStatus').style.color = '#90EE90';
+            } catch (e) {
+                showToast('Failed to load dashboard: ' + e.message, 'error');
+                document.getElementById('serverStatus').textContent = 'Disconnected';
+                document.getElementById('serverStatus').style.color = '#FF6B6B';
+            }
+        }
+
+        // Browsers
+        async function loadBrowsers() {
+            try {
+                const data = await api('/browsers');
+                browserData = data.browsers;
+
+                updateBrowserFilters();
+
+                if (data.browsers.length === 0) {
+                    document.getElementById('browserList').innerHTML = '';
+                    document.getElementById('browserEmpty').style.display = 'block';
+                    return;
+                }
+
+                document.getElementById('browserEmpty').style.display = 'none';
+
+                const html = data.browsers.map(b => `
+                    <tr>
+                        <td><strong>${b.browser_id}</strong></td>
+                        <td>${escapeHtml(b.account_name)}</td>
+                        <td><span class="status-badge status-${b.status}">${b.status}</span></td>
+                        <td>${b.idle_tabs || 0}/${b.total_tabs || 0} idle</td>
+                        <td>${b.total_tasks} (${b.failed_tasks} failed)</td>
+                        <td>${b.rate_limit.remaining}/${b.rate_limit.limit} per ${b.rate_limit.window_seconds}s</td>
+                        <td>
+                            ${b.status === 'stopped'
+                                ? `<button class="btn btn-success" onclick="startBrowser('${b.browser_id}')">Start</button>`
+                                : `<button class="btn btn-warning" onclick="stopBrowser('${b.browser_id}')">Stop</button>`
+                            }
+                            <button class="btn btn-primary" onclick="showEditBrowserModal('${b.browser_id}')">Edit</button>
+                            <button class="btn btn-secondary" onclick="checkLogin('${b.browser_id}')">Check Login</button>
+                            <button class="btn btn-danger" onclick="deleteBrowser('${b.browser_id}')">Delete</button>
+                        </td>
+                    </tr>
+                `).join('');
+
+                document.getElementById('browserList').innerHTML = html;
+            } catch (e) {
+                showToast('Failed to load browsers: ' + e.message, 'error');
+            }
+        }
+
+        function updateBrowserFilters() {
+            const options = browserData.map(b =>
+                `<option value="${b.browser_id}">${b.browser_id} - ${escapeHtml(b.account_name)}</option>`
+            ).join('');
+
+            document.getElementById('taskBrowserFilter').innerHTML = '<option value="">All Browsers</option>' + options;
+            document.getElementById('logBrowserFilter').innerHTML = '<option value="">All Browsers</option>' + options;
+        }
+
+        async function startBrowser(id) {
+            try {
+                await api(`/browsers/${id}/start`, 'POST');
+                showToast(`Browser ${id} started`, 'success');
+                loadBrowsers();
+            } catch (e) {
+                showToast('Failed to start browser: ' + e.message, 'error');
+            }
+        }
+
+        async function stopBrowser(id) {
+            try {
+                await api(`/browsers/${id}/stop`, 'POST');
+                showToast(`Browser ${id} stopped`, 'success');
+                loadBrowsers();
+            } catch (e) {
+                showToast('Failed to stop browser: ' + e.message, 'error');
+            }
+        }
+
+        async function checkLogin(id) {
+            try {
+                const result = await api(`/browsers/${id}/check-login`);
+                if (result.logged_in) {
+                    showToast(`Browser ${id}: Logged in`, 'success');
+                } else {
+                    showToast(`Browser ${id}: Not logged in. ${result.error || ''}`, 'error');
+                }
+            } catch (e) {
+                showToast('Failed to check login: ' + e.message, 'error');
+            }
+        }
+
+        async function deleteBrowser(id) {
+            if (!confirm(`Delete browser ${id}?`)) return;
+            try {
+                await api(`/browsers/${id}`, 'DELETE');
+                showToast(`Browser ${id} deleted`, 'success');
+                loadBrowsers();
+            } catch (e) {
+                showToast('Failed to delete browser: ' + e.message, 'error');
+            }
+        }
+
+        function showCreateBrowserModal() {
+            document.getElementById('createBrowserForm').reset();
+            document.getElementById('newHeadless').checked = true;
+            document.getElementById('newAutoStart').checked = true;
+            showModal('createBrowserModal');
+        }
+
+        async function createBrowser(e) {
+            e.preventDefault();
+            try {
+                const data = {
+                    headless: document.getElementById('newHeadless').checked,
+                    auto_start: document.getElementById('newAutoStart').checked,
+                };
+
+                const browserId = document.getElementById('newBrowserId').value;
+                if (browserId) data.browser_id = parseInt(browserId);
+
+                const accountName = document.getElementById('newAccountName').value;
+                if (accountName) data.account_name = accountName;
+
+                const proxy = document.getElementById('newProxy').value;
+                if (proxy) data.proxy = proxy;
+
+                const maxTabs = document.getElementById('newMaxTabs').value;
+                if (maxTabs) data.max_tabs = parseInt(maxTabs);
+
+                await api('/browsers', 'POST', data);
+                showToast('Browser created', 'success');
+                hideModal('createBrowserModal');
+                loadBrowsers();
+            } catch (e) {
+                showToast('Failed to create browser: ' + e.message, 'error');
+            }
+        }
+
+        function showEditBrowserModal(id) {
+            const browser = browserData.find(b => b.browser_id === id);
+            if (!browser) return;
+
+            document.getElementById('editBrowserId').value = id;
+            document.getElementById('editAccountName').value = browser.account_name;
+            document.getElementById('editProxy').value = browser.proxy || '';
+            document.getElementById('editRateLimit').value = browser.rate_limit.limit;
+            document.getElementById('editRateWindow').value = browser.rate_limit.window_seconds;
+            document.getElementById('editHeadless').checked = browser.headless;
+            document.getElementById('editAutoStart').checked = true;
+
+            showModal('editBrowserModal');
+        }
+
+        async function updateBrowser(e) {
+            e.preventDefault();
+            try {
+                const id = document.getElementById('editBrowserId').value;
+                const data = {
+                    account_name: document.getElementById('editAccountName').value,
+                    proxy: document.getElementById('editProxy').value || null,
+                    rate_limit: parseInt(document.getElementById('editRateLimit').value),
+                    rate_window: parseInt(document.getElementById('editRateWindow').value),
+                    headless: document.getElementById('editHeadless').checked,
+                    auto_start: document.getElementById('editAutoStart').checked,
+                };
+
+                await api(`/browsers/${id}`, 'PUT', data);
+                showToast('Browser updated', 'success');
+                hideModal('editBrowserModal');
+                loadBrowsers();
+            } catch (e) {
+                showToast('Failed to update browser: ' + e.message, 'error');
+            }
+        }
+
+        // Tasks
+        async function loadTasks() {
+            try {
+                const status = document.getElementById('taskStatusFilter').value;
+                const browserId = document.getElementById('taskBrowserFilter').value;
+
+                let endpoint = '/tasks?limit=50';
+                if (status) endpoint += `&status=${status}`;
+                if (browserId) endpoint += `&browser_id=${browserId}`;
+
+                const data = await api(endpoint);
+
+                if (data.tasks.length === 0) {
+                    document.getElementById('taskList').innerHTML = '';
+                    document.getElementById('taskEmpty').style.display = 'block';
+                    return;
+                }
+
+                document.getElementById('taskEmpty').style.display = 'none';
+
+                const html = data.tasks.map(t => `
+                    <tr>
+                        <td><code>${t.task_id.substring(0, 8)}...</code></td>
+                        <td>${t.browser_id || '-'}</td>
+                        <td title="${escapeHtml(t.prompt)}">${truncate(t.prompt, 50)}</td>
+                        <td><span class="status-badge status-${t.status}">${t.status}</span></td>
+                        <td>${t.duration ? t.duration.toFixed(2) + 's' : '-'}</td>
+                        <td>${formatTime(t.created_at)}</td>
+                    </tr>
+                `).join('');
+
+                document.getElementById('taskList').innerHTML = html;
+            } catch (e) {
+                showToast('Failed to load tasks: ' + e.message, 'error');
+            }
+        }
+
+        // Config
+        async function loadConfig() {
+            try {
+                const data = await api('/config');
+
+                document.getElementById('cfgServerHost').value = data.server_host;
+                document.getElementById('cfgServerPort').value = data.server_port;
+                document.getElementById('cfgMinBrowsers').value = data.min_browsers;
+                document.getElementById('cfgMaxBrowsers').value = data.max_browsers;
+                document.getElementById('cfgRateLimit').value = data.default_rate_limit;
+                document.getElementById('cfgRateWindow').value = data.rate_window_seconds;
+                document.getElementById('cfgLbStrategy').value = data.lb_strategy;
+                document.getElementById('cfgLogLevel').value = data.log_level;
+                document.getElementById('cfgAdminUsername').value = data.admin_username;
+                document.getElementById('cfgDefaultHeadless').checked = data.default_headless;
+            } catch (e) {
+                showToast('Failed to load config: ' + e.message, 'error');
+            }
+        }
+
+        async function saveConfig(e) {
+            e.preventDefault();
+            try {
+                const data = {
+                    server_host: document.getElementById('cfgServerHost').value,
+                    server_port: parseInt(document.getElementById('cfgServerPort').value),
+                    min_browsers: parseInt(document.getElementById('cfgMinBrowsers').value),
+                    max_browsers: parseInt(document.getElementById('cfgMaxBrowsers').value),
+                    default_rate_limit: parseInt(document.getElementById('cfgRateLimit').value),
+                    rate_window_seconds: parseInt(document.getElementById('cfgRateWindow').value),
+                    lb_strategy: document.getElementById('cfgLbStrategy').value,
+                    log_level: document.getElementById('cfgLogLevel').value,
+                    admin_username: document.getElementById('cfgAdminUsername').value,
+                    default_headless: document.getElementById('cfgDefaultHeadless').checked,
+                };
+
+                const password = document.getElementById('cfgAdminPassword').value;
+                if (password) data.admin_password = password;
+
+                await api('/config', 'PUT', data);
+                showToast('Configuration saved', 'success');
+                document.getElementById('cfgAdminPassword').value = '';
+            } catch (e) {
+                showToast('Failed to save config: ' + e.message, 'error');
+            }
+        }
+
+        // Logs
+        async function loadLogs() {
+            try {
+                const level = document.getElementById('logLevelFilter').value;
+                const browserId = document.getElementById('logBrowserFilter').value;
+
+                let endpoint = '/logs?limit=100';
+                if (level) endpoint += `&level=${level}`;
+                if (browserId) endpoint += `&browser_id=${browserId}`;
+
+                const data = await api(endpoint);
+
+                if (data.logs.length === 0) {
+                    document.getElementById('logList').innerHTML = '';
+                    document.getElementById('logEmpty').style.display = 'block';
+                    return;
+                }
+
+                document.getElementById('logEmpty').style.display = 'none';
+
+                const html = data.logs.map(log => `
+                    <div class="log-item">
+                        <span class="log-time">${formatTime(log.created_at)}</span>
+                        <span class="log-level ${log.level}">${log.level}</span>
+                        ${log.browser_id ? `<span class="log-browser">[${log.browser_id}]</span>` : ''}
+                        <span>${escapeHtml(log.message)}</span>
+                    </div>
+                `).join('');
+
+                document.getElementById('logList').innerHTML = html;
+            } catch (e) {
+                showToast('Failed to load logs: ' + e.message, 'error');
+            }
+        }
+
+        async function clearOldLogs() {
+            if (!confirm('Clear logs older than 7 days?')) return;
+            try {
+                await api('/logs?days=7', 'DELETE');
+                showToast('Old logs cleared', 'success');
+                loadLogs();
+            } catch (e) {
+                showToast('Failed to clear logs: ' + e.message, 'error');
+            }
+        }
+
+        // Utils
+        function showModal(id) {
+            document.getElementById(id).classList.add('show');
+        }
+
+        function hideModal(id) {
+            document.getElementById(id).classList.remove('show');
+        }
+
+        function showToast(message, type = '') {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.className = 'toast show ' + type;
+            setTimeout(() => toast.classList.remove('show'), 3000);
+        }
+
+        function formatTime(isoString) {
+            if (!isoString) return '-';
+            const date = new Date(isoString);
+            return date.toLocaleString('zh-CN', {
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+            });
+        }
+
+        function truncate(str, len) {
+            if (!str) return '-';
+            return str.length > len ? str.substring(0, len) + '...' : str;
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
+        // Close modals on backdrop click
+        document.querySelectorAll('.modal').forEach(modal => {
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) {
+                    modal.classList.remove('show');
+                }
+            });
+        });
+
+        // Initial load
+        loadDashboard();
+
+        // Auto refresh every 30 seconds
+        setInterval(refreshCurrentTab, 30000);
+    </script>
+</body>
+</html>
