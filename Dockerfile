@@ -15,22 +15,12 @@ ENV XDG_RUNTIME_DIR=/tmp \
     SCREEN_WIDTH=1920 \
     SCREEN_HEIGHT=1080
 
-# 安装 uv（Python 包管理器）
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
-
 # 工作目录
 WORKDIR /app
 
-# 复制项目文件
-COPY pyproject.toml ./
-COPY main.py ./
-COPY config/ ./config/
-COPY core/ ./core/
-COPY server/ ./server/
-COPY tests/ ./tests/
-
-# 安装 Python 依赖
-RUN uv sync
+# 复制依赖配置并安装（Playwright 镜像自带 pip）
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
 
 # 创建数据目录
 RUN mkdir -p /app/data /app/browser_data /etc/weston
@@ -41,4 +31,4 @@ RUN mkdir -p /app/data /app/browser_data /etc/weston
 EXPOSE 8000 3500
 
 # 默认启动 API 服务
-CMD ["uv", "run", "python", "-m", "uvicorn", "server.app:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["python", "-m", "uvicorn", "server.app:app", "--host", "0.0.0.0", "--port", "8000"]
