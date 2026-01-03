@@ -1,0 +1,67 @@
+# Gemini2API Docker Compose 配置
+# 支持 API 服务和有头模式调试
+
+services:
+  # API 服务（无头模式）
+  gemini2api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: gemini2api:latest
+    container_name: gemini2api
+    restart: unless-stopped
+    ports:
+      - "${API_PORT:-8000}:8000"
+    volumes:
+      # 浏览器持久化数据（保存登录状态）
+      - ./browser_data:/app/browser_data
+      # SQLite 数据库和日志
+      - ./data:/app/data
+      # 配置文件（可选覆盖）
+      - ./config:/app/config:ro
+    environment:
+      - TZ=${TZ:-Asia/Shanghai}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # 有头模式服务（用于手动登录和调试）
+  gemini2api-headed:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: gemini2api:latest
+    container_name: gemini2api-headed
+    profiles:
+      - headed
+    ports:
+      - "${RDP_PORT:-3500}:3500"
+    volumes:
+      # 共享浏览器数据
+      - ./browser_data:/app/browser_data
+      - ./data:/app/data
+      # TLS 证书（RDP 连接需要）
+      - ./certs:/etc/weston:ro
+    environment:
+      - TZ=${TZ:-Asia/Shanghai}
+      - XDG_RUNTIME_DIR=/tmp
+      - WAYLAND_DISPLAY=wayland-0
+    # 启动 Weston RDP 后端 + 保持容器运行
+    command: >
+      bash -c "
+        weston --socket=wayland-0 --backend=rdp \
+          --rdp-tls-cert=/etc/weston/tls.cert \
+          --rdp-tls-key=/etc/weston/tls.key \
+          --port=3500 --width=1920 --height=1080 &
+        sleep 3
+        echo 'Weston RDP started on port 3500'
+        echo 'Use: docker exec -it gemini2api-headed bash'
+        tail -f /dev/null
+      "
+
+volumes:
+  browser_data:
+  data:

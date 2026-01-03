@@ -1,0 +1,40 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv
+venv
+ENV
+
+# IDE
+.vscode
+.idea
+
+# Data (will be mounted as volumes)
+browser_data/
+data/
+certs/
+output/
+
+# Docs
+*.md
+!README.md
+
+# Test
+tests/
+
+# Docker
+Dockerfile
+docker-compose*.yml
+.dockerignore
+
+# Misc
+.env
+.env.*
+*.log
