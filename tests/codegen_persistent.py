@@ -244,6 +244,41 @@ async def main():
 
                     print(f"\n✓ 下载完成，输出目录: {output_dir}")
 
+                elif cmd.startswith("model "):
+                    # 测试模型切换功能
+                    model_name = cmd[6:].strip()
+                    if model_name not in ["Pro", "Fast"]:
+                        print("用法: model <Pro|Fast>")
+                        continue
+
+                    # 懒加载 enhanced editor
+                    if editor is None:
+                        from core.enhanced_editor import EnhancedGeminiImageEditor
+
+                        enhanced_editor = EnhancedGeminiImageEditor.__new__(
+                            EnhancedGeminiImageEditor
+                        )
+                        enhanced_editor.page = page
+                        enhanced_editor.enable_logging = True
+                        enhanced_editor.event_log = []
+                    else:
+                        # 如果已有 editor，创建增强版
+                        from core.enhanced_editor import EnhancedGeminiImageEditor
+
+                        enhanced_editor = EnhancedGeminiImageEditor.__new__(
+                            EnhancedGeminiImageEditor
+                        )
+                        enhanced_editor.page = page
+                        enhanced_editor.enable_logging = True
+                        enhanced_editor.event_log = []
+
+                    print(f"正在切换到 {model_name} 模型...")
+                    success = await enhanced_editor.ensure_model_selection(model_name)
+                    if success:
+                        print(f"✓ 成功切换到 {model_name} 模型")
+                    else:
+                        print(f"❌ 切换到 {model_name} 模型失败")
+
                 elif cmd == "help":
                     print("命令:")
                     print("  pause        - 打开 Playwright Inspector")
@@ -255,6 +290,7 @@ async def main():
                     )
                     print("  download     - 使用 request API 下载所有图片")
                     print("  webp_all     - 使用 download_image_as_webp 下载所有图片")
+                    print("  model <Pro|Fast> - 测试模型切换功能")
                     print("  quit         - 退出")
 
                 else:

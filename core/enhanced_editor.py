@@ -195,6 +195,49 @@ class EnhancedGeminiImageEditor(GeminiImageEditor):
                 except Exception:
                     continue
 
+            # 如果基于 data-test-id 的选择器失败，尝试通过文本内容匹配
+            if not clicked:
+                print(f"  data-test-id 选择器未找到，尝试通过文本内容匹配...")
+                try:
+                    # 获取所有可见的按钮或可点击元素
+                    all_buttons = await self.page.query_selector_all("button, [role='menuitem']")
+
+                    target_texts = []
+                    if model == "Fast":
+                        target_texts = ["Fast", "快速", "Flash", "2.0 Flash"]
+                    else:  # Pro
+                        target_texts = ["Pro", "1.5 Pro"]
+
+                    for button in all_buttons:
+                        try:
+                            # 检查按钮是否可见
+                            is_visible = await button.is_visible()
+                            if not is_visible:
+                                continue
+
+                            # 获取按钮文本
+                            text = await button.text_content()
+                            if not text:
+                                continue
+
+                            text = text.strip()
+
+                            # 检查是否匹配目标文本
+                            for target in target_texts:
+                                if target in text:
+                                    print(f"  ✓ 通过文本找到选项: '{text}'")
+                                    await button.click()
+                                    clicked = True
+                                    break
+
+                            if clicked:
+                                break
+                        except Exception:
+                            continue
+
+                except Exception as e:
+                    print(f"  文本匹配过程出错: {e}")
+
             if not clicked:
                 print(f"  ❌ 未找到 {model} 模型选项")
                 return False
