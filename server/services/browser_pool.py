@@ -35,11 +35,12 @@ class BrowserStatus(str, Enum):
 class TabInstance:
     """标签页实例"""
 
-    def __init__(self, tab_id: int, browser_id: str):
+    def __init__(self, tab_id: int, browser_id: str, preferred_model: str = "Fast"):
         self.tab_id = tab_id
         self.browser_id = browser_id
         self.editor: Optional[EnhancedGeminiImageEditor] = None
         self.status = BrowserStatus.IDLE
+        self.preferred_model = preferred_model  # 标签页的首选模型
         self.current_task_id: Optional[str] = None
         self.total_tasks = 0
         self.failed_tasks = 0
@@ -196,17 +197,23 @@ class BrowserInstance:
             # 创建多个标签页
             self.tabs = []
 
-            # Tab 0: 使用主编辑器（已经在 launch 时打开了 Gemini 页面）
-            tab0 = TabInstance(tab_id=0, browser_id=self.browser_id)
+            # 计算标签页分配策略：一半 Pro，一半 Fast
+            # Pro 标签：使用 index 大的（后半部分）
+            # Fast 标签：使用 index 小的（前半部分）
+            pro_count = self.max_tabs // 2
+            fast_count = self.max_tabs - pro_count
+
+            # Tab 0: 使用主编辑器（Fast 模型）
+            tab0 = TabInstance(tab_id=0, browser_id=self.browser_id, preferred_model="Fast")
             tab0.editor = self.base_editor
             self.tabs.append(tab0)
-            print(f"[Browser {self.browser_id}] Tab 0 created")
+            print(f"[Browser {self.browser_id}] Tab 0 created (preferred: Fast)")
 
             # Tab 1+: 并行创建其他标签页
             if self.max_tabs > 1:
-                async def create_tab(tab_id: int) -> TabInstance:
+                async def create_tab(tab_id: int, preferred_model: str) -> TabInstance:
                     """并行创建单个标签页"""
-                    tab = TabInstance(tab_id=tab_id, browser_id=self.browser_id)
+                    tab = TabInstance(tab_id=tab_id, browser_id=self.browser_id, preferred_model=preferred_model)
 
                     # 在同一个 context 中创建新的 page
                     new_page = await self.base_editor.context.new_page()
@@ -232,13 +239,18 @@ class BrowserInstance:
                     new_editor.page = new_page
                     tab.editor = new_editor
 
-                    print(f"[Browser {self.browser_id}] Tab {tab_id} created")
+                    print(f"[Browser {self.browser_id}] Tab {tab_id} created (preferred: {preferred_model})")
                     return tab
 
                 # 并行创建 Tab 1 到 Tab (max_tabs-1)
-                other_tabs = await asyncio.gather(*[
-                    create_tab(i) for i in range(1, self.max_tabs)
-                ])
+                # Tab 1 到 Tab (fast_count-1): Fast 模型
+                # Tab fast_count 到 Tab (max_tabs-1): Pro 模型
+                create_tasks = []
+                for i in range(1, self.max_tabs):
+                    preferred_model = "Fast" if i < fast_count else "Pro"
+                    create_tasks.append(create_tab(i, preferred_model))
+
+                other_tabs = await asyncio.gather(*create_tasks)
                 self.tabs.extend(other_tabs)
 
             self.status = BrowserStatus.IDLE
@@ -251,6 +263,32 @@ class BrowserInstance:
                 await db.add_log("INFO", f"Browser {self.browser_id} started with {self.max_tabs} tabs", self.browser_id)
             except Exception:
                 pass
+
+            # 预热所有标签页（并行执行）
+            print(f"[Browser {self.browser_id}] Preheating all {len(self.tabs)} tabs...")
+            preheat_start = time.time()
+
+            async def preheat_tab(tab: TabInstance):
+                """预热单个标签页（使用其首选模型）"""
+                try:
+                    tab_start = time.time()
+                    success = await tab.editor.prepare_page_environment(
+                        model=tab.preferred_model,  # 使用标签页的首选模型
+                        temporary_chat=False,
+                    )
+                    elapsed = time.time() - tab_start
+                    if success:
+                        print(f"[Browser {self.browser_id}] Tab {tab.tab_id} ({tab.preferred_model}) preheated successfully ({elapsed:.3f}s)")
+                    else:
+                        print(f"[Browser {self.browser_id}] Tab {tab.tab_id} ({tab.preferred_model}) preheat failed ({elapsed:.3f}s)")
+                except Exception as e:
+                    print(f"[Browser {self.browser_id}] Tab {tab.tab_id} ({tab.preferred_model}) preheat error: {e}")
+
+            # 并行预热所有标签页
+            await asyncio.gather(*[preheat_tab(tab) for tab in self.tabs], return_exceptions=True)
+
+            preheat_elapsed = time.time() - preheat_start
+            print(f"[Browser {self.browser_id}] All tabs preheated in {preheat_elapsed:.3f}s")
 
         except Exception as e:
             self.status = BrowserStatus.ERROR
@@ -298,12 +336,48 @@ class BrowserInstance:
             print(f"[Browser {self.browser_id}] Error while stopping: {e}")
             self.status = BrowserStatus.ERROR
 
-    def get_available_tab(self) -> Optional[TabInstance]:
-        """获取空闲的标签页"""
-        for tab in self.tabs:
-            if tab.status == BrowserStatus.IDLE:
-                return tab
-        return None
+    def get_available_tab(self, preferred_model: Optional[str] = None) -> Optional[TabInstance]:
+        """
+        获取空闲的标签页（智能选择策略）
+
+        Args:
+            preferred_model: 首选模型（"Pro" 或 "Fast"）
+
+        策略：
+        1. 优先选择与任务模型匹配的标签页
+        2. Pro 任务优先使用 index 大的标签（降序）
+        3. Fast 任务优先使用 index 小的标签（升序）
+        4. 如果没有匹配的，降级选择其他空闲标签
+        """
+        idle_tabs = [tab for tab in self.tabs if tab.status == BrowserStatus.IDLE]
+
+        if not idle_tabs:
+            return None
+
+        # 如果没有指定首选模型，返回第一个空闲标签
+        if not preferred_model:
+            return idle_tabs[0]
+
+        # 按首选模型筛选
+        matching_tabs = [tab for tab in idle_tabs if tab.preferred_model == preferred_model]
+
+        if matching_tabs:
+            # 有匹配的标签页
+            if preferred_model == "Pro":
+                # Pro 任务：选择 index 最大的（降序排序后取第一个）
+                return sorted(matching_tabs, key=lambda t: t.tab_id, reverse=True)[0]
+            else:  # Fast
+                # Fast 任务：选择 index 最小的（升序排序后取第一个）
+                return sorted(matching_tabs, key=lambda t: t.tab_id)[0]
+        else:
+            # 没有匹配的标签页，降级选择任意空闲标签
+            # 按相反优先级选择（避免饥饿）
+            if preferred_model == "Pro":
+                # Pro 任务降级：选择最大 index 的 Fast 标签
+                return sorted(idle_tabs, key=lambda t: t.tab_id, reverse=True)[0]
+            else:  # Fast
+                # Fast 任务降级：选择最小 index 的 Pro 标签
+                return sorted(idle_tabs, key=lambda t: t.tab_id)[0]
 
     def get_busy_tabs_count(self) -> int:
         """获取忙碌的标签页数量"""
@@ -320,10 +394,12 @@ class BrowserInstance:
                 f"Reset at: {info['reset']}"
             )
 
-        # 获取空闲标签页
-        tab = self.get_available_tab()
+        # 获取空闲标签页（传入模型偏好）
+        tab = self.get_available_tab(preferred_model=model)
         if not tab:
             raise RuntimeError(f"Browser {self.browser_id} has no available tabs (all {len(self.tabs)} tabs are busy)")
+
+        print(f"[Browser {self.browser_id}] Task {task_id} assigned to Tab {tab.tab_id} (preferred: {tab.preferred_model}, requested: {model})")
 
         # 记录请求
         self.record_request()
@@ -386,6 +462,22 @@ class BrowserInstance:
         idle_tabs = sum(1 for tab in self.tabs if tab.status == BrowserStatus.IDLE)
         busy_tabs = sum(1 for tab in self.tabs if tab.status == BrowserStatus.BUSY)
 
+        # 统计首选模型分布
+        fast_tabs = sum(1 for tab in self.tabs if tab.preferred_model == "Fast")
+        pro_tabs = sum(1 for tab in self.tabs if tab.preferred_model == "Pro")
+
+        # 详细标签页信息
+        tabs_info = [
+            {
+                "tab_id": tab.tab_id,
+                "preferred_model": tab.preferred_model,
+                "status": tab.status.value,
+                "total_tasks": tab.total_tasks,
+                "failed_tasks": tab.failed_tasks,
+            }
+            for tab in self.tabs
+        ]
+
         return {
             "browser_id": self.browser_id,
             "account_name": self.account_name,
@@ -401,6 +493,9 @@ class BrowserInstance:
             "total_tabs": len(self.tabs),
             "idle_tabs": idle_tabs,
             "busy_tabs": busy_tabs,
+            "fast_tabs": fast_tabs,
+            "pro_tabs": pro_tabs,
+            "tabs": tabs_info,
             "rate_limit": {
                 "limit": self.rate_limit,
                 "window_seconds": self.rate_window,
