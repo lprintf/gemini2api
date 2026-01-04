@@ -205,27 +205,57 @@ class EnhancedGeminiImageEditor(GeminiImageEditor):
                 print(f"  ❌ 无法找到并点击 {model} 模型选项")
                 return False
 
-            # 等待切换完成
-            await asyncio.sleep(1)
-
-            # 验证切换结果
-            new_button_text = await menu_button.inner_text()
-            print(f"  切换后模型显示: '{new_button_text}'")
-
-            # 判断切换后是哪个模型
-            is_now_fast = (
-                "Fast" in new_button_text
-                or "快速" in new_button_text
-                or "fast" in new_button_text.lower()
-            )
-            is_now_pro = "Pro" in new_button_text or "pro" in new_button_text.lower()
-
-            if (model == "Fast" and is_now_fast) or (model == "Pro" and is_now_pro):
+            # 验证切换结果（事件驱动，等待按钮文本变化）
+            # 等待菜单按钮文本更新（最多 2 秒）
+            try:
+                # 使用 wait_for_function 等待按钮文本变化
+                if model == "Fast":
+                    await self.page.wait_for_function(
+                        """
+                        (selector, keywords) => {
+                            const button = document.querySelector(selector);
+                            if (!button) return false;
+                            const text = button.innerText || '';
+                            return keywords.some(kw => text.includes(kw));
+                        }
+                        """,
+                        arg=[menu_button_selector, ["Fast", "快速", "fast"]],
+                        timeout=2000
+                    )
+                else:  # Pro
+                    await self.page.wait_for_function(
+                        """
+                        (selector, keywords) => {
+                            const button = document.querySelector(selector);
+                            if (!button) return false;
+                            const text = button.innerText || '';
+                            return keywords.some(kw => text.includes(kw));
+                        }
+                        """,
+                        arg=[menu_button_selector, ["Pro", "pro"]],
+                        timeout=2000
+                    )
                 print(f"✓ 成功切换到 {model} 模型")
                 return True
+            except Exception:
+                # 超时，手动验证
+                new_button_text = await menu_button.inner_text()
+                print(f"  切换后模型显示: '{new_button_text}'")
 
-            print("⚠ 切换后仍然是其他模型")
-            return False
+                # 判断切换后是哪个模型
+                is_now_fast = (
+                    "Fast" in new_button_text
+                    or "快速" in new_button_text
+                    or "fast" in new_button_text.lower()
+                )
+                is_now_pro = "Pro" in new_button_text or "pro" in new_button_text.lower()
+
+                if (model == "Fast" and is_now_fast) or (model == "Pro" and is_now_pro):
+                    print(f"✓ 成功切换到 {model} 模型")
+                    return True
+
+                print("⚠ 切换后仍然是其他模型")
+                return False
 
         except Exception as e:
             print(f"❌ 模型选择失败: {e}")
@@ -481,15 +511,17 @@ class EnhancedGeminiImageEditor(GeminiImageEditor):
         方法：
         1. 点击 Tools（智能体）菜单
         2. 点击"生成图片"选项
-        3. 验证：检查输入框下方是否出现"取消选择图片"按钮
+        3. 激活后立即返回，验证由 verify_image_generation_activated() 独立完成
 
         Returns:
-            是否成功激活
+            是否成功触发激活
         """
+        import time
         print("\n激活图片生成功能（稳定方法）...")
 
         try:
             # 先检查是否已经激活（避免重复激活）
+            step_start = time.time()
             print("  检查是否已激活...")
             deselect_button = await self.page.query_selector(
                 ".toolbox-drawer-item-deselect-button"
@@ -497,111 +529,114 @@ class EnhancedGeminiImageEditor(GeminiImageEditor):
             if deselect_button:
                 label = await deselect_button.get_attribute("aria-label")
                 if label and "图片" in label or "image" in label.lower():
-                    print("✓ 图片生成功能已经激活")
+                    print(f"✓ 图片生成功能已经激活 ({time.time() - step_start:.3f}s)")
                     return True
+            print(f"  ⏱ 检查激活状态: {time.time() - step_start:.3f}s")
 
-            # 步骤1: 点击 Tools（智能体/工具）菜单图标
+            # 步骤1: 查找并点击 Tools 菜单图标
+            step_start = time.time()
             print("  查找 Tools 菜单图标...")
 
             tools_selectors = [
-                # 最精确：基于 class（从真实DOM）
                 "button.toolbox-drawer-button",
-                # 备选：基于 aria-label
                 'button[aria-label="工具"]',
                 'button[aria-label="Tools"]',
-                'button[aria-label*="工具"]',
-                'button[aria-label*="智能体"]',
-                'button[aria-label*="Tools"]',
-                # 备选：基于 fonticon
-                'button mat-icon[fonticon="page_info"]',
             ]
 
             tools_button = None
             for selector in tools_selectors:
-                try:
-                    tools_button = await self.page.wait_for_selector(
-                        selector, timeout=3000, state="visible"
-                    )
-                    if tools_button:
-                        print(f"  ✓ 找到 Tools 菜单（选择器: {selector}）")
-                        break
-                except Exception:
-                    continue
+                tools_button = await self.page.query_selector(selector)
+                if tools_button:
+                    print(f"  ✓ 找到 Tools 菜单（选择器: {selector}）")
+                    break
 
             if not tools_button:
                 print("  ❌ 未找到 Tools 菜单")
                 return False
+            print(f"  ⏱ 查找 Tools 菜单: {time.time() - step_start:.3f}s")
 
             # 步骤2: 点击 Tools 菜单并等待"生成图片"选项出现，然后立即点击
+            step_start = time.time()
+            await tools_button.click(no_wait_after=True)
+            click_menu_time = time.time()
+            print(f"  ✓ 点击 Tools 菜单 ({click_menu_time - step_start:.3f}s)")
+
+            # 使用多种选择器策略
+            selectors = [
+                'text=Create images',
+                'text=生成图片',
+                'button[jslog="271906"]',
+            ]
+
             clicked = False
-            for attempt in range(3):
-                await tools_button.click(no_wait_after=True)
-                print(f"  ✓ 点击 Tools 菜单（尝试 {attempt + 1}/3）")
+            for i, selector in enumerate(selectors):
+                try:
+                    selector_start = time.time()
+                    option = await self.page.wait_for_selector(
+                        selector, timeout=500, state="visible"
+                    )
+                    selector_time = time.time() - selector_start
 
-                # 等待"生成图片"选项出现并立即点击
-                image_gen_selectors = [
-                    "text=生成图片",
-                    "text=Create images",
-                    '*:has-text("生成图片")',
-                    '*:has-text("Create images")',
-                ]
-
-                for selector in image_gen_selectors:
-                    try:
-                        # wait_for_selector 会监听DOM变化，一旦元素可见就立即返回
-                        option = await self.page.wait_for_selector(
-                            selector, timeout=1000, state="visible"
-                        )
-                        if option:
-                            print(f"  ✓ '生成图片'选项已出现，立即点击")
-                            await option.click()
-                            clicked = True
-                            break
-                    except Exception:
-                        continue
-
-                if clicked:
-                    break
-
-                print("  ⚠ '生成图片'选项未出现，重试...")
+                    if option:
+                        print(f"  ✓ 选择器 {i+1} 找到 ({selector_time:.3f}s): {selector[:30]}...")
+                        click_start = time.time()
+                        # 使用 JavaScript 直接触发点击，绕过所有 Playwright 检查
+                        await option.evaluate("el => el.click()")
+                        click_time = time.time() - click_start
+                        print(f"  ✓ 点击选项完成 ({click_time:.3f}s)")
+                        clicked = True
+                        break
+                except Exception as e:
+                    print(f"  ⚠ 选择器 {i+1} 失败: {selector[:30]}...")
+                    continue
 
             if not clicked:
-                print("  ❌ 无法找到并点击'生成图片'选项")
+                print("  ❌ 所有选择器都失败")
                 return False
 
-            # 步骤3: 验证激活成功（等待"取消选择"按钮出现）
-            print("  验证激活状态...")
-            try:
-                # 等待"取消选择图片"按钮出现（事件驱动）
-                deselect_button = await self.page.wait_for_selector(
-                    ".toolbox-drawer-item-deselect-button",
-                    timeout=3000,
-                    state="visible"
-                )
-
-                if deselect_button:
-                    label = await deselect_button.get_attribute("aria-label")
-                    text = await deselect_button.text_content()
-                    print(f"  找到取消选择按钮: aria-label='{label}', text='{text}'")
-
-                    if (label and ("图片" in label or "image" in label.lower())) or (
-                        text and ("图片" in text or "image" in text.lower())
-                    ):
-                        print("✓ 图片生成功能已成功激活")
-                        return True
-
-                print("  ⚠ 未找到'取消选择图片'按钮，激活可能失败")
-                return False
-
-            except Exception:
-                print("  ⚠ 等待取消选择按钮超时（3秒），激活可能失败")
-                return False
+            print(f"  ⏱ 点击菜单和选项: {time.time() - step_start:.3f}s")
+            print("✓ 图片生成激活已触发（验证将在后续步骤进行）")
+            return True
 
         except Exception as e:
             print(f"❌ 激活图片生成功能失败: {e}")
             import traceback
 
             traceback.print_exc()
+            return False
+
+    async def verify_image_generation_activated(self) -> bool:
+        """
+        验证图片生成功能是否已激活（检查"取消选择"按钮）
+
+        Returns:
+            是否已激活
+        """
+        print("  验证图片生成激活状态...")
+        try:
+            # 等待"取消选择图片"按钮出现（事件驱动）
+            deselect_button = await self.page.wait_for_selector(
+                ".toolbox-drawer-item-deselect-button",
+                timeout=3000,
+                state="visible"
+            )
+
+            if deselect_button:
+                label = await deselect_button.get_attribute("aria-label")
+                text = await deselect_button.text_content()
+                print(f"  找到取消选择按钮: aria-label='{label}', text='{text}'")
+
+                if (label and ("图片" in label or "image" in label.lower())) or (
+                    text and ("图片" in text or "image" in text.lower())
+                ):
+                    print("✓ 图片生成功能已激活")
+                    return True
+
+            print("  ⚠ 未找到'取消选择图片'按钮")
+            return False
+
+        except Exception:
+            print("  ⚠ 验证超时（3秒）")
             return False
 
     async def prepare_page_environment(
@@ -641,7 +676,16 @@ class EnhancedGeminiImageEditor(GeminiImageEditor):
                     print("⚠ 临时对话启用失败，继续使用普通对话")
                 log_time("启用临时对话", stage_start)
 
-            # 步骤3: 模型选择
+            # 步骤3: 激活图片生成功能（只触发，不验证）
+            stage_start = time.time()
+            print("\n激活图片生成功能...")
+            activate_success = await self.activate_image_generation_stable()
+            if not activate_success:
+                print("❌ 激活图片生成功能失败")
+                return False
+            log_time("激活图片生成（触发）", stage_start)
+
+            # 步骤4: 模型选择（此时图片生成的"取消选择"按钮在后台渲染）
             stage_start = time.time()
             print("\n选择模型...")
             model_selected = await self.ensure_model_selection(model)
@@ -649,14 +693,13 @@ class EnhancedGeminiImageEditor(GeminiImageEditor):
                 print("⚠ 模型选择可能未成功，继续执行")
             log_time("模型选择", stage_start)
 
-            # 步骤4: 激活图片生成功能
+            # 步骤5: 验证图片生成是否激活（此时"取消选择"按钮大概率已渲染完成）
             stage_start = time.time()
-            print("\n激活图片生成功能...")
-            activate_success = await self.activate_image_generation_stable()
-            if not activate_success:
-                print("❌ 激活图片生成功能失败")
+            verify_success = await self.verify_image_generation_activated()
+            if not verify_success:
+                print("❌ 图片生成功能验证失败")
                 return False
-            log_time("激活图片生成", stage_start)
+            log_time("验证图片生成", stage_start)
 
             print("✓ 页面环境准备完成")
             return True
