@@ -1,7 +1,10 @@
 # Gemini2API Dockerfile
-# 基于 Playwright 官方镜像，支持有头模式浏览器自动化
+# 基于 Playwright 官方镜像 + uv
 
 FROM mcr.microsoft.com/playwright/python:v1.57.0-noble-amd64
+
+# 安装 uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 # 安装 Wayland 核心组件（用于有头模式 RDP 连接）
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -18,9 +21,9 @@ ENV XDG_RUNTIME_DIR=/tmp \
 # 工作目录
 WORKDIR /app
 
-# 复制依赖配置并安装（Playwright 镜像自带 pip）
-COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+# 复制依赖配置并安装
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen
 
 # 创建数据目录
 RUN mkdir -p /app/data /app/browser_data /etc/weston
@@ -31,4 +34,4 @@ RUN mkdir -p /app/data /app/browser_data /etc/weston
 EXPOSE 8000 3500
 
 # 默认启动 API 服务
-CMD ["python", "-m", "uvicorn", "server.app:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uv", "run", "uvicorn", "server.app:app", "--host", "0.0.0.0", "--port", "8000"]

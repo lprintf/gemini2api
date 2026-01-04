@@ -3,17 +3,15 @@ set -e
 
 # Gemini2API Docker 启动脚本
 # 用法:
-#   ./start.sh           - 启动 API 服务（无头模式）
-#   ./start.sh headed    - 启动有头模式服务（用于登录调试）
-#   ./start.sh login     - 进入容器执行登录操作
-#   ./start.sh stop      - 停止所有服务
+#   ./start.sh           - 启动 API 服务
+#   ./start.sh login     - 启动 Weston 并执行登录操作
+#   ./start.sh stop      - 停止服务
 #   ./start.sh logs      - 查看日志
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 CERTS_DIR="./certs"
-IMAGE_NAME="gemini2api"
 
 # 颜色输出
 RED='\033[0;31m'
@@ -43,11 +41,15 @@ generate_certs() {
 
 # 创建必要目录
 init_dirs() {
-    mkdir -p browser_data data certs
+    mkdir -p data/browser_data data/logs data/outputs data/uploads certs
+    # 确保有写入权限
+    chmod 777 data data/browser_data 2>/dev/null || true
 }
 
 # 启动 API 服务
 start_api() {
+    generate_certs
+
     log_info "Starting Gemini2API service..."
     docker compose up -d gemini2api
 
@@ -64,7 +66,7 @@ start_api() {
         echo "========================================"
         echo ""
         echo "Commands:"
-        echo "  View logs:   docker compose logs -f gemini2api"
+        echo "  View logs:   ./start.sh logs"
         echo "  Stop:        ./start.sh stop"
         echo "  Login:       ./start.sh login"
         echo ""
@@ -75,64 +77,61 @@ start_api() {
     fi
 }
 
-# 启动有头模式（用于调试）
-start_headed() {
-    generate_certs
-
-    log_info "Starting headed mode service..."
-    docker compose --profile headed up -d gemini2api-headed
-
-    sleep 3
-
-    if docker compose ps gemini2api-headed | grep -q "Up"; then
-        log_info "Headed mode started!"
-        echo ""
-        echo "========================================"
-        echo "  RDP Connection: localhost:${RDP_PORT:-3500}"
-        echo "========================================"
-        echo ""
-        echo "Connect via:"
-        echo "  Windows: mstsc /v:localhost:${RDP_PORT:-3500}"
-        echo "  macOS:   Microsoft Remote Desktop"
-        echo "  Linux:   xfreerdp /v:localhost:${RDP_PORT:-3500} /cert:ignore"
-        echo ""
-        echo "Enter container: docker exec -it gemini2api-headed bash"
-        echo ""
-    else
-        log_error "Failed to start headed mode"
-        docker compose logs gemini2api-headed
-        exit 1
-    fi
-}
-
-# 执行登录操作
+# 执行登录操作（在同一容器内按需启动 Weston）
 do_login() {
     local account_id="${1:-0}"
 
-    # 确保有头模式服务运行
-    if ! docker compose ps gemini2api-headed 2>/dev/null | grep -q "Up"; then
-        log_info "Starting headed mode for login..."
-        start_headed
+    generate_certs
+
+    # 确保容器运行
+    if ! docker compose ps gemini2api 2>/dev/null | grep -q "Up"; then
+        log_info "Starting container..."
+        docker compose up -d gemini2api
+        sleep 3
     fi
 
-    log_info "Starting login for account ${account_id}..."
+    # 在容器内按需启动 Weston（使用 docker exec -d 避免僵尸进程）
+    log_info "Starting Weston RDP server..."
+    if docker exec gemini2api pgrep -x weston > /dev/null 2>&1; then
+        log_info "Weston already running"
+    else
+        docker exec -d gemini2api weston --socket=wayland-0 --backend=rdp \
+            --rdp-tls-cert=/etc/weston/tls.cert \
+            --rdp-tls-key=/etc/weston/tls.key \
+            --port=3500 --width=${SCREEN_WIDTH:-1920} --height=${SCREEN_HEIGHT:-1080}
+        sleep 2
+        log_info "Weston started (${SCREEN_WIDTH:-1920}x${SCREEN_HEIGHT:-1080})"
+    fi
+
     echo ""
-    echo "Please connect to RDP (localhost:${RDP_PORT:-3500}) to see the browser"
+    echo "========================================"
+    echo "  RDP Connection: localhost:${RDP_PORT:-3500}"
+    echo "========================================"
+    echo ""
+    echo "Connect via:"
+    echo "  Windows: mstsc /v:localhost:${RDP_PORT:-3500}"
+    echo "  macOS:   Microsoft Remote Desktop"
+    echo "  Linux:   xfreerdp /v:localhost:${RDP_PORT:-3500} /cert:ignore"
     echo ""
 
-    docker exec -it gemini2api-headed uv run python -m core.gemini_browser login "$account_id"
+    log_info "Starting login for account ${account_id}..."
+    echo "Please connect to RDP to see the browser"
+    echo ""
+
+    # 运行登录脚本
+    docker exec -it gemini2api uv run python -m core.gemini_browser login "$account_id"
 }
 
 # 停止所有服务
 stop_all() {
     log_info "Stopping all services..."
-    docker compose --profile headed down
+    docker compose down
     log_info "All services stopped"
 }
 
 # 查看日志
 show_logs() {
-    docker compose logs -f "${1:-gemini2api}"
+    docker compose logs -f gemini2api
 }
 
 # 构建镜像
@@ -149,22 +148,20 @@ show_help() {
     echo "Usage: $0 [command] [options]"
     echo ""
     echo "Commands:"
-    echo "  (default)     Start API service (headless mode)"
-    echo "  headed        Start headed mode service for debugging"
-    echo "  login [id]    Start browser login (default account: 0)"
+    echo "  (default)     Start API service"
+    echo "  login [id]    Start Weston + browser login (default account: 0)"
     echo "  stop          Stop all services"
-    echo "  logs [name]   Show logs (default: gemini2api)"
+    echo "  logs          Show logs"
     echo "  build         Build Docker image"
     echo "  help          Show this help"
     echo ""
     echo "Environment variables:"
     echo "  API_PORT      API service port (default: 8000)"
-    echo "  RDP_PORT      RDP port for headed mode (default: 3500)"
+    echo "  RDP_PORT      RDP port for login (default: 3500)"
     echo "  TZ            Timezone (default: Asia/Shanghai)"
     echo ""
     echo "Examples:"
     echo "  $0                      # Start API service"
-    echo "  $0 headed               # Start with RDP for debugging"
     echo "  $0 login 0              # Login with account 0"
     echo "  API_PORT=9000 $0        # Start on port 9000"
 }
@@ -174,9 +171,6 @@ main() {
     init_dirs
 
     case "${1:-}" in
-        headed)
-            start_headed
-            ;;
         login)
             do_login "${2:-0}"
             ;;
@@ -184,7 +178,7 @@ main() {
             stop_all
             ;;
         logs)
-            show_logs "${2:-}"
+            show_logs
             ;;
         build)
             build_image

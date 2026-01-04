@@ -48,13 +48,16 @@ class GeminiBrowser:
         self.proxy = proxy  # 例如: "http://10.42.0.1:20171"
         self.base_dir = Path(__file__).parent
 
+        # 数据目录：优先使用 /app/data，否则使用代码目录（本地开发）
+        data_dir = Path("/app/data") if Path("/app/data").exists() else self.base_dir
+
         # 允许外部指定 user_data_dir
         if user_data_dir:
             self.user_data_dir = (
                 Path(user_data_dir) if isinstance(user_data_dir, str) else user_data_dir
             )
         else:
-            self.user_data_dir = self.base_dir / "browser_data" / str(account_id)
+            self.user_data_dir = data_dir / "browser_data" / str(account_id)
 
         self.playwright = None
         self.context: Optional[BrowserContext] = None
@@ -70,14 +73,27 @@ class GeminiBrowser:
         print(f"数据目录: {self.user_data_dir}")
 
         async with async_playwright() as p:
+            # 检测是否在 Wayland 环境
+            import os
+            wayland_display = os.environ.get("WAYLAND_DISPLAY")
+
+            browser_args = [
+                "--disable-blink-features=AutomationControlled",
+            ]
+
+            # 如果是 Wayland 环境，添加 ozone 平台参数
+            if wayland_display:
+                browser_args.extend([
+                    "--ozone-platform=wayland",
+                    "--enable-features=UseOzonePlatform",
+                ])
+
             # 使用持久化上下文（必须是GUI模式）
             context = await p.chromium.launch_persistent_context(
                 str(self.user_data_dir),
                 headless=False,  # 登录必须是GUI模式
                 viewport={"width": 1280, "height": 900},
-                args=[
-                    "--disable-blink-features=AutomationControlled",
-                ],
+                args=browser_args,
             )
 
             page = context.pages[0] if context.pages else await context.new_page()
@@ -248,7 +264,9 @@ class GeminiBrowser:
 
 def list_accounts():
     """列出所有已保存的账户"""
-    browser_data_dir = Path(__file__).parent / "browser_data"
+    # 数据目录：优先使用 /app/data，否则使用代码目录
+    data_dir = Path("/app/data") if Path("/app/data").exists() else Path(__file__).parent
+    browser_data_dir = data_dir / "browser_data"
 
     if not browser_data_dir.exists():
         print("❌ 没有找到任何已保存的账户")

@@ -18,7 +18,6 @@ __pycache__/
 
 # 环境变量
 .env
-.env.*
 *.env
 
 # 临时文件
