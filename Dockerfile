@@ -28,10 +28,14 @@ RUN uv sync --frozen
 # 创建数据目录
 RUN mkdir -p /app/data /app/browser_data /etc/weston
 
+# 复制启动脚本
+COPY entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+
 # 暴露端口
 # 8000: API 服务端口
 # 3500: RDP 端口（有头模式调试）
 EXPOSE 8000 3500
 
-# 默认启动 API 服务
-CMD ["uv", "run", "uvicorn", "server.app:app", "--host", "0.0.0.0", "--port", "8000"]
+# 启动脚本（同时启动 Weston 和 API）
+CMD ["/app/entrypoint.sh"]

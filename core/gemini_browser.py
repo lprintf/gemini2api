@@ -193,6 +193,16 @@ class GeminiBrowser:
             "--disable-blink-features=AutomationControlled",
         ]
 
+        # 如果是有头模式且在 Wayland 环境，添加 ozone 平台参数
+        import os
+        if not self.headless:
+            wayland_display = os.environ.get("WAYLAND_DISPLAY")
+            if wayland_display:
+                launch_args.extend([
+                    "--ozone-platform=wayland",
+                    "--enable-features=UseOzonePlatform",
+                ])
+
         # 如果配置了代理，添加代理参数
         if self.proxy:
             launch_args.append(f"--proxy-server={self.proxy}")
