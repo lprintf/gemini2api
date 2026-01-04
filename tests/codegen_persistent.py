@@ -279,6 +279,147 @@ async def main():
                     else:
                         print(f"❌ 切换到 {model_name} 模型失败")
 
+                elif cmd.startswith("env "):
+                    # 测试页面环境准备（开启新对话+模型选择+激活图片生成，不上传图片和文本）
+                    import time
+
+                    # 解析参数：env [model]
+                    model_name = cmd[4:].strip() or "Fast"
+
+                    if model_name not in ["Pro", "Fast"]:
+                        print("用法: env [Pro|Fast]")
+                        print("示例: env Fast")
+                        continue
+
+                    # 懒加载 enhanced editor
+                    if editor is None:
+                        from core.enhanced_editor import EnhancedGeminiImageEditor
+
+                        enhanced_editor = EnhancedGeminiImageEditor.__new__(
+                            EnhancedGeminiImageEditor
+                        )
+                        enhanced_editor.page = page
+                        enhanced_editor.enable_logging = True
+                        enhanced_editor.event_log = []
+                    else:
+                        from core.enhanced_editor import EnhancedGeminiImageEditor
+
+                        if not isinstance(editor, EnhancedGeminiImageEditor):
+                            enhanced_editor = EnhancedGeminiImageEditor.__new__(
+                                EnhancedGeminiImageEditor
+                            )
+                            enhanced_editor.page = page
+                            enhanced_editor.enable_logging = True
+                            enhanced_editor.event_log = []
+                        else:
+                            enhanced_editor = editor
+
+                    print("=" * 60)
+                    print("测试页面环境准备")
+                    print("=" * 60)
+                    print(f"模型: {model_name}")
+                    print()
+
+                    total_start = time.time()
+
+                    try:
+                        # 使用 prepare_page_environment 方法
+                        success = await enhanced_editor.prepare_page_environment(
+                            model=model_name,
+                            temporary_chat=False,
+                        )
+
+                        total_time = time.time() - total_start
+                        print(f"\n总耗时: {total_time:.3f}s")
+                        print("=" * 60)
+
+                        if success:
+                            print("✓ 页面环境准备完成")
+                        else:
+                            print("❌ 页面环境准备失败")
+
+                    except Exception as e:
+                        print(f"\n❌ 环境准备过程出错: {e}")
+                        import traceback
+
+                        traceback.print_exc()
+
+                elif cmd.startswith("prepare "):
+                    # 测试准备阶段（上传+模型选择+输入+激活，但不提交）
+                    import time
+
+                    # 解析参数：prepare <image_path> <prompt> [model]
+                    parts = cmd[8:].strip().split(maxsplit=2)
+                    if len(parts) < 2:
+                        print("用法: prepare <image_path> <prompt> [model]")
+                        print("示例: prepare test/lamp.webp '把灯变成蓝色' Fast")
+                        continue
+
+                    image_path = parts[0]
+                    prompt_text = parts[1]
+                    model_name = parts[2] if len(parts) > 2 else "Fast"
+
+                    if model_name not in ["Pro", "Fast"]:
+                        print("模型必须是 Pro 或 Fast")
+                        continue
+
+                    # 懒加载 enhanced editor
+                    if editor is None:
+                        from core.enhanced_editor import EnhancedGeminiImageEditor
+
+                        enhanced_editor = EnhancedGeminiImageEditor.__new__(
+                            EnhancedGeminiImageEditor
+                        )
+                        enhanced_editor.page = page
+                        enhanced_editor.enable_logging = True
+                        enhanced_editor.event_log = []
+                    else:
+                        from core.enhanced_editor import EnhancedGeminiImageEditor
+
+                        if not isinstance(editor, EnhancedGeminiImageEditor):
+                            enhanced_editor = EnhancedGeminiImageEditor.__new__(
+                                EnhancedGeminiImageEditor
+                            )
+                            enhanced_editor.page = page
+                            enhanced_editor.enable_logging = True
+                            enhanced_editor.event_log = []
+                        else:
+                            enhanced_editor = editor
+
+                    print("=" * 60)
+                    print("测试准备阶段（不提交）")
+                    print("=" * 60)
+                    print(f"图片: {image_path}")
+                    print(f"提示词: {prompt_text}")
+                    print(f"模型: {model_name}")
+                    print()
+
+                    total_start = time.time()
+
+                    try:
+                        # 使用共享的 prepare_for_generation 方法
+                        success = await enhanced_editor.prepare_for_generation(
+                            input_image=image_path,
+                            prompt=prompt_text,
+                            model=model_name,
+                            temporary_chat=False,
+                        )
+
+                        total_time = time.time() - total_start
+                        print(f"\n总耗时: {total_time:.3f}s")
+                        print("=" * 60)
+
+                        if success:
+                            print("✓ 准备完成（已就绪可提交）")
+                        else:
+                            print("❌ 准备失败")
+
+                    except Exception as e:
+                        print(f"\n❌ 准备过程出错: {e}")
+                        import traceback
+
+                        traceback.print_exc()
+
                 elif cmd == "help":
                     print("命令:")
                     print("  pause        - 打开 Playwright Inspector")
@@ -291,6 +432,8 @@ async def main():
                     print("  download     - 使用 request API 下载所有图片")
                     print("  webp_all     - 使用 download_image_as_webp 下载所有图片")
                     print("  model <Pro|Fast> - 测试模型切换功能")
+                    print("  env [Pro|Fast] - 测试页面环境准备（开启新对话+模型+激活）")
+                    print("  prepare <image> <prompt> [model] - 测试准备阶段（环境+图片+文本）")
                     print("  quit         - 退出")
 
                 else:

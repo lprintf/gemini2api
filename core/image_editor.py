@@ -73,7 +73,7 @@ class GeminiImageEditor(GeminiBrowser):
             image_path: 图片文件路径
 
         Returns:
-            是否上传成功
+            是否粘贴成功（不等待加载验证）
         """
         print(f"\n正在上传图片（粘贴方式）: {image_path}")
 
@@ -171,27 +171,43 @@ class GeminiImageEditor(GeminiBrowser):
                 return False
 
             print("  ✓ 粘贴事件已触发")
-
-            # 验证上传成功（检查blob URL）
-            print("  等待图片加载...")
-            for attempt in range(10):  # 最多等待20秒
-                await asyncio.sleep(2)
-
-                images = await self.page.query_selector_all("img")
-                for img in images:
-                    src = await img.get_attribute("src")
-                    if src and "blob:" in src:
-                        print(f"✓ 图片上传成功（粘贴方式）: {src[:80]}...")
-                        return True
-
-            print("⚠ 粘贴后未检测到blob图片")
-            return False
+            return True
 
         except Exception as e:
             print(f"❌ 粘贴上传失败: {e}")
             import traceback
 
             traceback.print_exc()
+            return False
+
+    async def verify_image_loaded(self, timeout: int = 20) -> bool:
+        """
+        验证图片是否加载成功（等待页面上出现 blob URL 的图片）
+
+        Args:
+            timeout: 超时时间（秒）
+
+        Returns:
+            是否检测到图片加载
+        """
+        print("  验证图片加载...")
+        try:
+            # 等待带有 blob: 前缀的图片元素出现（事件驱动）
+            img = await self.page.wait_for_selector(
+                'img[src^="blob:"]',
+                timeout=timeout * 1000,
+                state="visible"
+            )
+
+            if img:
+                src = await img.get_attribute("src")
+                print(f"✓ 检测到图片已加载: {src[:80]}...")
+                return True
+
+            return False
+
+        except Exception:
+            print("⚠ 图片加载验证超时（可能仍在后台加载）")
             return False
 
     async def upload_image(self, image_path: str) -> bool:

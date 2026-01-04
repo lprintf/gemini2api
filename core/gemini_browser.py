@@ -46,7 +46,7 @@ class GeminiBrowser:
         self.account_id = account_id
         self.headless = headless
         self.proxy = proxy  # 例如: "http://10.42.0.1:20171"
-        self.base_dir = Path(__file__).parent
+        self.base_dir = Path(__file__).parent.parent / "data"
 
         # 数据目录：优先使用 /app/data，否则使用代码目录（本地开发）
         data_dir = Path("/app/data") if Path("/app/data").exists() else self.base_dir
@@ -75,6 +75,7 @@ class GeminiBrowser:
         async with async_playwright() as p:
             # 检测是否在 Wayland 环境
             import os
+
             wayland_display = os.environ.get("WAYLAND_DISPLAY")
 
             browser_args = [
@@ -83,10 +84,12 @@ class GeminiBrowser:
 
             # 如果是 Wayland 环境，添加 ozone 平台参数
             if wayland_display:
-                browser_args.extend([
-                    "--ozone-platform=wayland",
-                    "--enable-features=UseOzonePlatform",
-                ])
+                browser_args.extend(
+                    [
+                        "--ozone-platform=wayland",
+                        "--enable-features=UseOzonePlatform",
+                    ]
+                )
 
             # 使用持久化上下文（必须是GUI模式）
             context = await p.chromium.launch_persistent_context(
@@ -195,13 +198,16 @@ class GeminiBrowser:
 
         # 如果是有头模式且在 Wayland 环境，添加 ozone 平台参数
         import os
+
         if not self.headless:
             wayland_display = os.environ.get("WAYLAND_DISPLAY")
             if wayland_display:
-                launch_args.extend([
-                    "--ozone-platform=wayland",
-                    "--enable-features=UseOzonePlatform",
-                ])
+                launch_args.extend(
+                    [
+                        "--ozone-platform=wayland",
+                        "--enable-features=UseOzonePlatform",
+                    ]
+                )
 
         # 如果配置了代理，添加代理参数
         if self.proxy:
@@ -275,7 +281,9 @@ class GeminiBrowser:
 def list_accounts():
     """列出所有已保存的账户"""
     # 数据目录：优先使用 /app/data，否则使用代码目录
-    data_dir = Path("/app/data") if Path("/app/data").exists() else Path(__file__).parent
+    data_dir = (
+        Path("/app/data") if Path("/app/data").exists() else Path(__file__).parent
+    )
     browser_data_dir = data_dir / "browser_data"
 
     if not browser_data_dir.exists():

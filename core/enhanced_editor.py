@@ -162,84 +162,47 @@ class EnhancedGeminiImageEditor(GeminiImageEditor):
             # 需要切换模型
             print(f"  切换到 {model} 模型...")
 
-            # 步骤1: 点击菜单按钮打开下拉菜单
-            await menu_button.click()
-            print("  ✓ 已点击菜单按钮，等待菜单展开...")
-            await asyncio.sleep(0.5)
-
-            # 步骤2: 点击目标模型选项
+            # 步骤1: 点击菜单按钮并等待目标模型选项出现，然后立即点击（事件驱动）
+            # 确定要等待的选项（根据目标模型）
             if model == "Fast":
-                # 尝试中文和英文选择器
-                option_selectors = [
-                    '[data-test-id="bard-mode-option-快速"]',
+                target_menu_selectors = [
                     '[data-test-id="bard-mode-option-fast"]',
-                    '[data-test-id="bard-mode-option-Flash"]',  # 可能也叫 Flash
+                    '[data-test-id="bard-mode-option-快速"]',
+                    '[data-test-id="bard-mode-option-Flash"]',
                 ]
             else:  # Pro
-                option_selectors = [
+                target_menu_selectors = [
                     '[data-test-id="bard-mode-option-pro"]',
                     '[data-test-id="bard-mode-option-Pro"]',
                 ]
 
             clicked = False
-            for selector in option_selectors:
-                try:
-                    option = await self.page.wait_for_selector(
-                        selector, timeout=2000, state="visible"
-                    )
-                    if option:
-                        print(f"  ✓ 找到选项（选择器: {selector}）")
-                        await option.click()
-                        clicked = True
-                        break
-                except Exception:
-                    continue
+            for attempt in range(3):
+                await menu_button.click(no_wait_after=True)
+                print(f"  ✓ 点击菜单按钮（尝试 {attempt + 1}/3）")
 
-            # 如果基于 data-test-id 的选择器失败，尝试通过文本内容匹配
-            if not clicked:
-                print(f"  data-test-id 选择器未找到，尝试通过文本内容匹配...")
-                try:
-                    # 获取所有可见的按钮或可点击元素
-                    all_buttons = await self.page.query_selector_all("button, [role='menuitem']")
+                # 等待目标模型选项出现并立即点击（事件驱动）
+                for selector in target_menu_selectors:
+                    try:
+                        # wait_for_selector 会监听DOM变化，一旦元素可见就立即返回
+                        option = await self.page.wait_for_selector(
+                            selector, timeout=1000, state="visible"
+                        )
+                        if option:
+                            print(f"  ✓ {model} 选项已出现，立即点击")
+                            await option.click(no_wait_after=True)
+                            clicked = True
+                            break
+                    except Exception:
+                        continue
 
-                    target_texts = []
-                    if model == "Fast":
-                        target_texts = ["Fast", "快速", "Flash", "2.0 Flash"]
-                    else:  # Pro
-                        target_texts = ["Pro", "1.5 Pro"]
+                if clicked:
+                    break
 
-                    for button in all_buttons:
-                        try:
-                            # 检查按钮是否可见
-                            is_visible = await button.is_visible()
-                            if not is_visible:
-                                continue
-
-                            # 获取按钮文本
-                            text = await button.text_content()
-                            if not text:
-                                continue
-
-                            text = text.strip()
-
-                            # 检查是否匹配目标文本
-                            for target in target_texts:
-                                if target in text:
-                                    print(f"  ✓ 通过文本找到选项: '{text}'")
-                                    await button.click()
-                                    clicked = True
-                                    break
-
-                            if clicked:
-                                break
-                        except Exception:
-                            continue
-
-                except Exception as e:
-                    print(f"  文本匹配过程出错: {e}")
+                print(f"  ⚠ {model} 选项未出现，重试...")
 
             if not clicked:
-                print(f"  ❌ 未找到 {model} 模型选项")
+                print(f"  ❌ 无法找到并点击 {model} 模型选项")
                 return False
 
             # 等待切换完成
@@ -260,9 +223,9 @@ class EnhancedGeminiImageEditor(GeminiImageEditor):
             if (model == "Fast" and is_now_fast) or (model == "Pro" and is_now_pro):
                 print(f"✓ 成功切换到 {model} 模型")
                 return True
-            else:
-                print(f"⚠ 切换后仍然是其他模型")
-                return False
+
+            print("⚠ 切换后仍然是其他模型")
+            return False
 
         except Exception as e:
             print(f"❌ 模型选择失败: {e}")
@@ -427,7 +390,7 @@ class EnhancedGeminiImageEditor(GeminiImageEditor):
                                 print("  ⚠ 未找到临时对话卡片，但按钮已点击")
                                 print("✓ 临时对话模式可能已启用")
                                 return True
-                    except:
+                    except Exception:
                         continue
 
             except Exception as e:
@@ -446,19 +409,44 @@ class EnhancedGeminiImageEditor(GeminiImageEditor):
 
         确保在干净的对话页面开始，避免历史对话影响生成
 
+        优化：如果已经在新对话页面（/app，不含对话ID），跳过刷新，避免重置已激活的功能
+
         Returns:
             是否成功开启新对话
         """
         print("\n开启新对话...")
 
         try:
+            # 预判：检查当前 URL 是否已经是新对话页面
+            # 新对话页面：https://gemini.google.com/app 或 https://gemini.google.com/app?hl=xx
+            # 已有对话：https://gemini.google.com/app/xxx (包含对话ID)
+            current_url = self.page.url
+
+            # 检查是否是新对话页面（/app 后面没有路径，只有可能的查询参数）
+            import re
+            # 匹配 /app 后面直接是 ? 或 # 或结束
+            is_new_chat_url = bool(re.match(r'^https://[^/]+/app(?:[?#].*)?$', current_url))
+
+            if is_new_chat_url:
+                # 已经在新对话页面，检查是否有输入框
+                try:
+                    input_box = await self.page.query_selector('div[contenteditable="true"]')
+                    if input_box:
+                        print(f"  当前已在新对话页面: {current_url}")
+                        print("✓ 跳过刷新，保留已激活的功能")
+                        return True
+                except Exception:
+                    pass
+
             # 方法1: 使用快捷键 Ctrl+Shift+O
             print("  使用快捷键 Ctrl+Shift+O...")
             await self.page.keyboard.press("Control+Shift+O")
 
             # 只等待关键元素（输入框）出现，不等待整个页面 networkidle
             print("  等待输入框就绪...")
-            await self.page.wait_for_selector('div[contenteditable="true"]', timeout=5000)
+            await self.page.wait_for_selector(
+                'div[contenteditable="true"]', timeout=5000
+            )
 
             # 验证是否成功（检查 URL 是否为 /app）
             current_url = self.page.url
@@ -469,10 +457,14 @@ class EnhancedGeminiImageEditor(GeminiImageEditor):
             # 方法2: 如果快捷键失败，尝试导航到 /app
             print("  快捷键未生效，尝试导航到 /app...")
             # 不等待 networkidle，只等待 domcontentloaded
-            await self.page.goto("https://gemini.google.com/app", wait_until="domcontentloaded")
+            await self.page.goto(
+                "https://gemini.google.com/app", wait_until="domcontentloaded"
+            )
 
             # 等待输入框出现
-            await self.page.wait_for_selector('div[contenteditable="true"]', timeout=5000)
+            await self.page.wait_for_selector(
+                'div[contenteditable="true"]', timeout=5000
+            )
 
             current_url = self.page.url
             print(f"✓ 已导航到新对话页面: {current_url}")
@@ -540,161 +532,198 @@ class EnhancedGeminiImageEditor(GeminiImageEditor):
                 print("  ❌ 未找到 Tools 菜单")
                 return False
 
-            # 点击 Tools 菜单
-            await tools_button.click()
-            print("  ✓ 已点击 Tools 菜单")
-            await asyncio.sleep(1.5)  # 等待菜单展开
+            # 步骤2: 点击 Tools 菜单并等待"生成图片"选项出现，然后立即点击
+            clicked = False
+            for attempt in range(3):
+                await tools_button.click(no_wait_after=True)
+                print(f"  ✓ 点击 Tools 菜单（尝试 {attempt + 1}/3）")
 
-            # 步骤2: 查找并点击"生成图片"选项
-            print("  查找'生成图片'选项...")
-
-            # 调试：列出所有可见的菜单项
-            try:
-                # 尝试多种容器选择器
-                menu_containers = [
-                    '[role="menu"]',
-                    ".menu-items",
-                    ".tools-menu-items",
-                    "mat-menu-panel",
+                # 等待"生成图片"选项出现并立即点击
+                image_gen_selectors = [
+                    "text=生成图片",
+                    "text=Create images",
+                    '*:has-text("生成图片")',
+                    '*:has-text("Create images")',
                 ]
 
-                all_items = []
-                for container_sel in menu_containers:
+                for selector in image_gen_selectors:
                     try:
-                        container = await self.page.query_selector(container_sel)
-                        if container:
-                            items = await container.query_selector_all("*")
-                            all_items.extend(items)
-                            print(
-                                f"  调试：在 {container_sel} 找到 {len(items)} 个元素"
-                            )
+                        # wait_for_selector 会监听DOM变化，一旦元素可见就立即返回
+                        option = await self.page.wait_for_selector(
+                            selector, timeout=1000, state="visible"
+                        )
+                        if option:
+                            print(f"  ✓ '生成图片'选项已出现，立即点击")
+                            await option.click()
+                            clicked = True
                             break
-                    except:
+                    except Exception:
                         continue
 
-                # 如果没找到容器，就搜索所有元素
-                if not all_items:
-                    all_items = await self.page.query_selector_all(
-                        '[role="menuitem"], button, div'
-                    )
+                if clicked:
+                    break
 
-                # 打印前几个包含"图片"或"image"的元素
-                print("  调试：查找包含'图片'或'image'的元素...")
-                count = 0
-                for item in all_items[:50]:  # 只检查前50个
-                    try:
-                        text = await item.text_content()
-                        if text and (
-                            "图片" in text
-                            or "image" in text.lower()
-                            or "Create" in text
-                        ):
-                            print(f"    找到: {text.strip()[:50]}")
-                            count += 1
-                            if count >= 5:
-                                break
-                    except:
-                        continue
-
-            except Exception as e:
-                print(f"  调试信息获取失败: {e}")
-
-            # 尝试多种选择器点击"生成图片"
-            image_gen_selectors = [
-                # Playwright 文本选择器（最稳定）
-                "text=生成图片",
-                "text=Create images",
-                'text="生成图片"',  # 精确匹配
-                'text="Create images"',
-                # 包含文本
-                '*:has-text("生成图片")',
-                '*:has-text("Create images")',
-                # role + 文本
-                '[role="menuitem"]:has-text("生成图片")',
-                '[role="menuitem"]:has-text("Create images")',
-                # button + 文本
-                'button:has-text("生成图片")',
-                'button:has-text("Create images")',
-            ]
-
-            clicked = False
-            for selector in image_gen_selectors:
-                try:
-                    element = await self.page.wait_for_selector(
-                        selector, timeout=2000, state="visible"
-                    )
-                    if element:
-                        print(f"  ✓ 找到'生成图片'（选择器: {selector}）")
-                        await element.click()
-                        clicked = True
-                        break
-                except:
-                    continue
-
-            # 如果所有选择器都失败，尝试文本匹配
-            if not clicked:
-                print("  尝试通过文本内容直接匹配...")
-                try:
-                    # 获取所有可能的元素
-                    all_elements = await self.page.query_selector_all(
-                        'button, [role="menuitem"], div, span'
-                    )
-
-                    for element in all_elements:
-                        try:
-                            text = await element.text_content()
-                            if not text:
-                                continue
-
-                            text = text.strip()
-                            # 匹配"生成图片"或"Create images"
-                            if (
-                                text == "生成图片"
-                                or text == "Create images"
-                                or "生成图片" in text
-                                or "Create images" in text
-                            ):
-                                print(f"  ✓ 通过文本匹配找到: '{text}'")
-                                await element.click()
-                                clicked = True
-                                break
-                        except:
-                            continue
-
-                except Exception as e:
-                    print(f"  文本匹配失败: {e}")
+                print("  ⚠ '生成图片'选项未出现，重试...")
 
             if not clicked:
-                print("  ❌ 未能点击'生成图片'选项")
+                print("  ❌ 无法找到并点击'生成图片'选项")
                 return False
 
-            # 步骤3: 验证激活成功
+            # 步骤3: 验证激活成功（等待"取消选择"按钮出现）
             print("  验证激活状态...")
-            await asyncio.sleep(2)
+            try:
+                # 等待"取消选择图片"按钮出现（事件驱动）
+                deselect_button = await self.page.wait_for_selector(
+                    ".toolbox-drawer-item-deselect-button",
+                    timeout=3000,
+                    state="visible"
+                )
 
-            # 检查"取消选择图片"按钮是否出现
-            deselect_button = await self.page.query_selector(
-                ".toolbox-drawer-item-deselect-button"
-            )
+                if deselect_button:
+                    label = await deselect_button.get_attribute("aria-label")
+                    text = await deselect_button.text_content()
+                    print(f"  找到取消选择按钮: aria-label='{label}', text='{text}'")
 
-            if deselect_button:
-                label = await deselect_button.get_attribute("aria-label")
-                text = await deselect_button.text_content()
-                print(f"  找到取消选择按钮: aria-label='{label}', text='{text}'")
+                    if (label and ("图片" in label or "image" in label.lower())) or (
+                        text and ("图片" in text or "image" in text.lower())
+                    ):
+                        print("✓ 图片生成功能已成功激活")
+                        return True
 
-                if (label and ("图片" in label or "image" in label.lower())) or (
-                    text and ("图片" in text or "image" in text.lower())
-                ):
-                    print("✓ 图片生成功能已成功激活")
-                    return True
+                print("  ⚠ 未找到'取消选择图片'按钮，激活可能失败")
+                return False
 
-            print("  ⚠ 未找到'取消选择图片'按钮，激活可能失败")
-            return False
+            except Exception:
+                print("  ⚠ 等待取消选择按钮超时（3秒），激活可能失败")
+                return False
 
         except Exception as e:
             print(f"❌ 激活图片生成功能失败: {e}")
             import traceback
 
+            traceback.print_exc()
+            return False
+
+    async def prepare_page_environment(
+        self,
+        model: Literal["Pro", "Fast"] = "Fast",
+        temporary_chat: bool = False,
+    ) -> bool:
+        """
+        准备页面环境（开启新对话、选择模型、激活图片生成）
+
+        用于任务完成后预热环境，下次任务可直接输入图片和文本
+
+        Args:
+            model: 使用的模型（"Pro" 或 "Fast"）
+            temporary_chat: 是否使用临时对话
+
+        Returns:
+            是否准备成功
+        """
+        import time
+
+        def log_time(stage: str, start: float):
+            elapsed = time.time() - start
+            print(f"  ⏱ [{stage}] {elapsed:.3f}s")
+
+        try:
+            # 步骤1: 开启新对话
+            stage_start = time.time()
+            if not await self.start_new_chat():
+                print("⚠ 开启新对话失败，继续执行")
+            log_time("开启新对话", stage_start)
+
+            # 步骤2: 可选 - 启用临时对话
+            if temporary_chat:
+                stage_start = time.time()
+                if not await self.enable_temporary_chat():
+                    print("⚠ 临时对话启用失败，继续使用普通对话")
+                log_time("启用临时对话", stage_start)
+
+            # 步骤3: 模型选择
+            stage_start = time.time()
+            print("\n选择模型...")
+            model_selected = await self.ensure_model_selection(model)
+            if not model_selected:
+                print("⚠ 模型选择可能未成功，继续执行")
+            log_time("模型选择", stage_start)
+
+            # 步骤4: 激活图片生成功能
+            stage_start = time.time()
+            print("\n激活图片生成功能...")
+            activate_success = await self.activate_image_generation_stable()
+            if not activate_success:
+                print("❌ 激活图片生成功能失败")
+                return False
+            log_time("激活图片生成", stage_start)
+
+            print("✓ 页面环境准备完成")
+            return True
+
+        except Exception as e:
+            print(f"❌ 页面环境准备失败: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+
+    async def prepare_for_generation(
+        self,
+        input_image: str,
+        prompt: str,
+        model: Literal["Pro", "Fast"] = "Fast",
+        temporary_chat: bool = False,
+    ) -> bool:
+        """
+        准备图片生成（上传图片、输入文本、选择模型、激活图片生成，但不提交）
+
+        Args:
+            input_image: 输入图片路径
+            prompt: 编辑指令
+            model: 使用的模型（"Pro" 或 "Fast"）
+            temporary_chat: 是否使用临时对话
+
+        Returns:
+            是否准备成功
+        """
+        import time
+
+        def log_time(stage: str, start: float):
+            elapsed = time.time() - start
+            print(f"  ⏱ [{stage}] {elapsed:.3f}s")
+
+        try:
+            # 步骤1: 准备页面环境
+            if not await self.prepare_page_environment(model, temporary_chat):
+                return False
+
+            # 步骤2: 粘贴图片
+            stage_start = time.time()
+            print("\n上传图片（粘贴方式）...")
+            upload_success = await self.upload_image_by_paste(input_image)
+            if not upload_success:
+                print("⚠ 粘贴上传失败，尝试点击上传方式...")
+                upload_success = await self.upload_image(input_image)
+                if not upload_success:
+                    print("❌ 图片上传失败")
+                    return False
+            log_time("图片上传", stage_start)
+
+            # 步骤3: 输入 Prompt
+            stage_start = time.time()
+            print("\n输入 Prompt...")
+            prompt_success = await self.input_prompt(prompt)
+            if not prompt_success:
+                print("❌ Prompt输入失败")
+                return False
+            log_time("输入 Prompt", stage_start)
+
+            print("✓ 准备完成（已就绪可提交）")
+            return True
+
+        except Exception as e:
+            print(f"❌ 准备过程出错: {e}")
+            import traceback
             traceback.print_exc()
             return False
 
@@ -729,6 +758,7 @@ class EnhancedGeminiImageEditor(GeminiImageEditor):
 
         # 计时辅助函数
         timings = {}
+
         def log_time(stage: str, start: float):
             elapsed = time.time() - start
             timings[stage] = elapsed
@@ -746,85 +776,40 @@ class EnhancedGeminiImageEditor(GeminiImageEditor):
         print(f"临时对话: {temporary_chat}")
 
         try:
-            # 步骤1: 开启新对话（每次都执行，确保干净状态）
+            # 步骤1: 准备生成（包含环境准备、上传图片、输入文本）
             stage_start = time.time()
-            if not await self.start_new_chat():
-                print("⚠ 开启新对话失败，继续执行")
-            log_time("开启新对话", stage_start)
-
-            # 步骤2: 可选 - 启用临时对话
-            if temporary_chat:
-                stage_start = time.time()
-                if not await self.enable_temporary_chat():
-                    print("⚠ 临时对话启用失败，继续使用普通对话")
-                log_time("启用临时对话", stage_start)
-
-            # 步骤3-7: 并行执行所有准备操作
-            # 优先开始图片上传（最耗时），同时并行其他操作
-            stage_start = time.time()
-            print("\n并行执行: 模型选择 + 上传图片 + 输入Prompt + 激活图片生成...")
-
-            async def model_selection_task():
-                """确保模型选择正确"""
-                return await self.ensure_model_selection(model)
-
-            async def upload_image_task():
-                """上传图片（最耗时，优先开始）"""
-                upload_success = await self.upload_image_by_paste(input_image)
-                if not upload_success:
-                    print("⚠ 粘贴上传失败，尝试点击上传方式...")
-                    upload_success = await self.upload_image(input_image)
-                return upload_success
-
-            async def input_prompt_task():
-                """输入prompt"""
-                return await self.input_prompt(prompt)
-
-            async def activate_image_gen():
-                """激活图片生成功能"""
-                return await self.activate_image_generation_stable()
-
-            # 并行执行四个任务
-            results = await asyncio.gather(
-                model_selection_task(),
-                upload_image_task(),
-                input_prompt_task(),
-                activate_image_gen(),
-                return_exceptions=True
+            prepare_success = await self.prepare_for_generation(
+                input_image=input_image,
+                prompt=prompt,
+                model=model,
+                temporary_chat=temporary_chat,
             )
-
-            # 检查结果
-            if not results[0]:
-                print("⚠ 模型选择可能未成功，继续执行")
-            if not results[1]:
-                print("❌ 图片上传失败")
+            if not prepare_success:
+                print("❌ 准备阶段失败")
                 return None
-            if not results[2]:
-                print("❌ Prompt输入失败")
-                return None
-            if not results[3]:
-                print("❌ 激活图片生成功能失败")
-                return None
+            log_time("准备阶段", stage_start)
 
-            log_time("并行准备(模型+上传+输入+激活)", stage_start)
-
-            # 步骤8: 提交（提交后才开始计时等待生成）
+            # 步骤2: 提交（提交后才开始计时等待生成）
             stage_start = time.time()
             if not await self.submit_generation():
                 print("❌ 提交失败")
                 return None
             log_time("提交请求", stage_start)
 
-            # 步骤8: 等待生成（从提交后开始计时，最多2分钟）
+            # 步骤3: 等待生成（从提交后开始计时，最多2分钟）
             stage_start = time.time()
             generation_timeout = 120  # 2分钟
-            generation_success = await self.wait_for_generation(timeout=generation_timeout)
+            generation_success = await self.wait_for_generation(
+                timeout=generation_timeout
+            )
             if not generation_success:
-                print(f"⚠ 生成超时（{generation_timeout}秒），额外等待10秒让图片渲染...")
+                print(
+                    f"⚠ 生成超时（{generation_timeout}秒），额外等待10秒让图片渲染..."
+                )
                 await asyncio.sleep(10)  # 即使超时，也给图片一些渲染时间
             log_time("等待生成", stage_start)
 
-            # 步骤9: 获取图片
+            # 步骤4: 获取图片
             stage_start = time.time()
             image_urls = await self.get_generated_images()
             log_time("获取图片URL", stage_start)
@@ -842,6 +827,7 @@ class EnhancedGeminiImageEditor(GeminiImageEditor):
 
             # 创建日期目录
             from datetime import datetime
+
             date_dir = datetime.now().strftime("%Y%m%d")
             output_date_path = output_path / date_dir
             output_date_path.mkdir(parents=True, exist_ok=True)
@@ -908,16 +894,16 @@ class EnhancedGeminiImageEditor(GeminiImageEditor):
                 log_path = output_path / "event_log.json"
                 self.save_event_log(str(log_path))
 
-            # 任务完成后进入新对话，为下次任务做准备
+            # 任务完成后预热页面环境，为下次任务做准备
             try:
-                print("\n进入新对话（为下次任务预热）...")
-                new_chat_start = time.time()
-                if await self.start_new_chat():
-                    log_time("进入新对话", new_chat_start)
+                print("\n预热页面环境（为下次任务做准备）...")
+                preheat_start = time.time()
+                if await self.prepare_page_environment(model=model, temporary_chat=temporary_chat):
+                    log_time("预热页面环境", preheat_start)
                 else:
-                    print("⚠ 进入新对话失败")
+                    print("⚠ 预热页面环境失败")
             except Exception as e:
-                print(f"⚠ 进入新对话出错: {e}")
+                print(f"⚠ 预热页面环境出错: {e}")
 
             return output_paths if output_paths else None
 
@@ -944,7 +930,7 @@ async def main():
 
         # 编辑图片
         result_paths = await editor.edit_image_enhanced(
-            input_image="test/lamp.webp",
+            input_image="data/lamp.webp",
             prompt="把这个灯变成蓝色的",
             output_dir="output/lamp_blue_enhanced",
             wait_time=30,
