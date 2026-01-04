@@ -195,22 +195,28 @@ class BrowserInstance:
 
             # 创建多个标签页
             self.tabs = []
-            for i in range(self.max_tabs):
-                tab = TabInstance(tab_id=i, browser_id=self.browser_id)
 
-                if i == 0:
-                    # 第一个标签页使用主编辑器（已经在 launch 时打开了 Gemini 页面）
-                    tab.editor = self.base_editor
-                else:
-                    # 后续标签页：在同一个 context 中创建新的 page
+            # Tab 0: 使用主编辑器（已经在 launch 时打开了 Gemini 页面）
+            tab0 = TabInstance(tab_id=0, browser_id=self.browser_id)
+            tab0.editor = self.base_editor
+            self.tabs.append(tab0)
+            print(f"[Browser {self.browser_id}] Tab 0 created")
+
+            # Tab 1+: 并行创建其他标签页
+            if self.max_tabs > 1:
+                async def create_tab(tab_id: int) -> TabInstance:
+                    """并行创建单个标签页"""
+                    tab = TabInstance(tab_id=tab_id, browser_id=self.browser_id)
+
+                    # 在同一个 context 中创建新的 page
                     new_page = await self.base_editor.context.new_page()
 
                     # 导航到 Gemini 页面（预热）
                     try:
                         await new_page.goto("https://gemini.google.com", timeout=30000)
-                        print(f"[Browser {self.browser_id}] Tab {i} navigated to Gemini")
+                        print(f"[Browser {self.browser_id}] Tab {tab_id} navigated to Gemini")
                     except Exception as e:
-                        print(f"[Browser {self.browser_id}] Tab {i} navigation warning: {e}")
+                        print(f"[Browser {self.browser_id}] Tab {tab_id} navigation warning: {e}")
 
                     # 创建新的编辑器实例，复用 context 但使用新的 page
                     new_editor = EnhancedGeminiImageEditor(
@@ -226,8 +232,14 @@ class BrowserInstance:
                     new_editor.page = new_page
                     tab.editor = new_editor
 
-                self.tabs.append(tab)
-                print(f"[Browser {self.browser_id}] Tab {i} created")
+                    print(f"[Browser {self.browser_id}] Tab {tab_id} created")
+                    return tab
+
+                # 并行创建 Tab 1 到 Tab (max_tabs-1)
+                other_tabs = await asyncio.gather(*[
+                    create_tab(i) for i in range(1, self.max_tabs)
+                ])
+                self.tabs.extend(other_tabs)
 
             self.status = BrowserStatus.IDLE
             self.last_active_at = datetime.now()
