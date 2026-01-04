@@ -37,7 +37,7 @@ class GeminiImageEditor(GeminiBrowser):
         print("✓ 已在对话页面")
 
     async def click_image_generation_button(self):
-        """点击图片生成按钮（适配中英文）"""
+        """点击图片生成按钮（适配中英文，JS点击+fallback机制）"""
         print("\n正在激活图片生成功能...")
 
         # 中英文选择器
@@ -51,11 +51,21 @@ class GeminiImageEditor(GeminiBrowser):
             # 尝试所有选择器
             for selector in button_selectors:
                 try:
-                    await self.page.wait_for_selector(selector, timeout=3000)
-                    await self.page.click(selector)
-                    await asyncio.sleep(1)
-                    print("✓ 图片生成功能已激活")
-                    return True
+                    button = await self.page.wait_for_selector(selector, timeout=3000)
+                    if button:
+                        # 先尝试 JS 点击（快速）
+                        try:
+                            await self.page.evaluate("(btn) => btn.click()", button)
+                            await asyncio.sleep(1)
+                            print("✓ 图片生成功能已激活 [js]")
+                            return True
+                        except Exception:
+                            # JS 失败，fallback 到 no_wait_after
+                            print("  ⚠ JS 点击失败，fallback 到 no_wait_after")
+                            await button.click(no_wait_after=True)
+                            await asyncio.sleep(1)
+                            print("✓ 图片生成功能已激活 [no_wait]")
+                            return True
                 except Exception:
                     continue
 
@@ -270,97 +280,38 @@ class GeminiImageEditor(GeminiBrowser):
             await upload_button.click()
             await asyncio.sleep(0.5)  # 减少等待时间
 
-            # 步骤2: 等待并点击菜单中的"上传文件"选项（使用结构化定位）
+            # 步骤2: 等待并点击菜单中的"上传文件"选项（使用事件驱动）
             print("  等待上传文件选项出现...")
 
+            # 使用 wait_for_selector 事件驱动等待上传按钮（更高效）
+            upload_keywords = ["上传文件", "upload file", "upload files"]
             upload_option = None
-            max_attempts = 10
 
-            for attempt in range(max_attempts):
-                await asyncio.sleep(0.2)  # 短暂等待
-
-                # 方法1: 尝试通过菜单容器定位（更可靠）
-                # 查找最近出现的菜单容器（通常是role="menu"或role="listbox"）
-                menu_containers = await self.page.query_selector_all(
-                    '[role="menu"], [role="listbox"], [role="dialog"]'
+            # 先等待菜单容器出现
+            try:
+                menu_container = await self.page.wait_for_selector(
+                    '[role="menu"], [role="listbox"], [role="dialog"]',
+                    state="visible",
+                    timeout=3000
                 )
-
-                for container in menu_containers:
-                    try:
-                        if not await container.is_visible():
+                if menu_container:
+                    print("  ✓ 菜单容器已出现")
+                    # 在菜单内查找上传按钮
+                    buttons = await menu_container.query_selector_all("button")
+                    for btn in buttons:
+                        if not await btn.is_visible():
                             continue
 
-                        # 在菜单容器内查找按钮
-                        buttons_in_menu = await container.query_selector_all("button")
+                        aria_label = await btn.get_attribute("aria-label") or ""
+                        text = await btn.text_content() or ""
+                        combined = (aria_label + text).lower()
 
-                        for btn in buttons_in_menu:
-                            if not await btn.is_visible():
-                                continue
-
-                            # 检查是否有file input相关的属性或数据
-                            # 通常上传文件按钮会有特定的data属性或类名
-                            aria_label = await btn.get_attribute("aria-label") or ""
-                            text = await btn.text_content() or ""
-
-                            # 检查关键词
-                            combined = (aria_label + text).lower()
-                            upload_keywords = [
-                                "上传文件",
-                                "upload file",
-                                "upload files",
-                                "上传",
-                                "upload",
-                            ]
-
-                            if any(
-                                keyword.lower() in combined
-                                for keyword in upload_keywords
-                            ):
-                                upload_option = btn
-                                print("  ✓ 在菜单中找到上传选项")
-                                break
-
-                        if upload_option:
+                        if any(keyword.lower() in combined for keyword in upload_keywords):
+                            upload_option = btn
+                            print("  ✓ 找到上传文件选项")
                             break
-                    except Exception:
-                        continue
-
-                # 方法2: 如果方法1失败，回退到全局搜索但优化检测
-                if not upload_option:
-                    all_buttons = await self.page.query_selector_all("button")
-
-                    for btn in all_buttons:
-                        try:
-                            if not await btn.is_visible():
-                                continue
-
-                            # 检查按钮的边界框，确保它在视口内且大小合理
-                            bbox = await btn.bounding_box()
-                            if not bbox or bbox["width"] < 10 or bbox["height"] < 10:
-                                continue
-
-                            aria_label = await btn.get_attribute("aria-label") or ""
-                            text = await btn.text_content() or ""
-                            combined = (aria_label + text).lower()
-
-                            upload_keywords = [
-                                "上传文件",
-                                "upload file",
-                                "upload files",
-                            ]
-
-                            if any(
-                                keyword.lower() in combined
-                                for keyword in upload_keywords
-                            ):
-                                upload_option = btn
-                                print("  ✓ 找到上传选项（全局搜索）")
-                                break
-                        except Exception:
-                            continue
-
-                if upload_option:
-                    break
+            except Exception:
+                pass
 
             if not upload_option:
                 print("❌ 未找到上传文件选项")
@@ -377,20 +328,22 @@ class GeminiImageEditor(GeminiBrowser):
                 print("⚠ File chooser未被触发")
                 return False
 
-            # 验证上传成功（检查blob URL）- 优化重试逻辑
+            # 验证上传成功（使用事件驱动等待 blob URL 图片）
             print("  等待图片加载...")
-            for attempt in range(5):
-                await asyncio.sleep(1)
-
-                images = await self.page.query_selector_all("img")
-                for img in images:
-                    src = await img.get_attribute("src")
-                    if src and "blob:" in src:
-                        print(f"✓ 图片上传成功: {src[:80]}...")
-                        return True
-
-            print("⚠ 文件已设置但未检测到blob图片")
-            return False
+            try:
+                # 使用 wait_for_selector 事件驱动等待 blob: 图片出现
+                blob_img = await self.page.wait_for_selector(
+                    'img[src^="blob:"]',
+                    state="visible",
+                    timeout=5000  # 最多等待5秒
+                )
+                if blob_img:
+                    src = await blob_img.get_attribute("src")
+                    print(f"✓ 图片上传成功: {src[:80]}...")
+                    return True
+            except Exception:
+                print("⚠ 文件已设置但未检测到blob图片")
+                return False
 
         except Exception as e:
             print(f"❌ 上传图片失败: {e}")
@@ -662,7 +615,7 @@ class GeminiImageEditor(GeminiBrowser):
         return generated_urls
 
     async def download_image_as_webp(
-        self, url: str, save_path: str, lossless: bool = True
+        self, url: str, save_path: str, lossless: bool = True, click_method: str = "js"
     ) -> tuple[bool, str | None]:
         """
         下载图片并转换为 WebP 格式（更小的文件体积）
@@ -673,6 +626,7 @@ class GeminiImageEditor(GeminiBrowser):
             url: 图片URL
             save_path: 保存路径（会自动改为.webp扩展名）
             lossless: 是否使用无损压缩，默认 True（推荐）
+            click_method: 点击方法 (js/force/no_wait/normal)，默认 js
 
         Returns:
             (是否下载成功, SHA256摘要前16位)
@@ -692,7 +646,7 @@ class GeminiImageEditor(GeminiBrowser):
 
             # 方法1: 尝试通过 hover 下载按钮获取高质量原图
             download_start = time.time()
-            image_bytes = await self._download_via_hover_button(url)
+            image_bytes = await self._download_via_hover_button(url, click_method)
             if image_bytes:
                 download_time = time.time() - download_start
                 print(f"    ⏱ [hover下载] {download_time:.3f}s ({len(image_bytes)/1024:.1f}KB)")
@@ -767,16 +721,35 @@ class GeminiImageEditor(GeminiBrowser):
             traceback.print_exc()
             return False, None
 
-    async def _download_via_hover_button(self, url: str) -> bytes | None:
+    async def _download_via_hover_button(self, url: str, click_method: str = "js") -> bytes | None:
         """
         通过 hover 触发下载按钮，下载到内存
 
         Args:
             url: 图片URL
+            click_method: 点击方法
+                - "js": 使用 JavaScript 直接点击 (最快，~0.027s)，失败时自动fallback到no_wait
+                - "force": 使用 click(force=True) (~0.100s)
+                - "no_wait": 使用 click(no_wait_after=True) (~0.125s)
+                - "normal": 普通 click() (默认，最慢但最安全)
 
         Returns:
             图片字节数据，失败返回 None
         """
+        # 如果是 js 方法，先尝试 js，失败则自动 fallback 到 no_wait
+        if click_method == "js":
+            result = await self._try_download_with_method(url, "js")
+            if result:
+                return result
+            # js 失败，fallback 到 no_wait
+            print("  ⚠ JS 点击失败，fallback 到 no_wait_after")
+            return await self._try_download_with_method(url, "no_wait")
+        else:
+            # 其他方法直接调用
+            return await self._try_download_with_method(url, click_method)
+
+    async def _try_download_with_method(self, url: str, click_method: str) -> bytes | None:
+        """尝试使用指定的点击方法下载"""
         try:
             # 查找页面上src匹配的img元素
             images = await self.page.query_selector_all("img")
@@ -822,9 +795,7 @@ class GeminiImageEditor(GeminiBrowser):
                 target_img,
             )
 
-            await asyncio.sleep(1)
-
-            # 查找下载按钮
+            # 等待下载按钮出现（使用 wait_for_selector 替代固定等待）
             download_button_selectors = [
                 'button[aria-label*="下载"]',
                 'button[aria-label*="Download"]',
@@ -834,20 +805,33 @@ class GeminiImageEditor(GeminiBrowser):
 
             download_button = None
             for selector in download_button_selectors:
-                btns = await self.page.query_selector_all(selector)
-                for btn in btns:
-                    if await btn.is_visible():
-                        download_button = btn
+                try:
+                    # 等待按钮出现并可见，最多等待 1 秒
+                    download_button = await self.page.wait_for_selector(
+                        selector, state="visible", timeout=1000
+                    )
+                    if download_button:
                         break
-                if download_button:
-                    break
+                except Exception:
+                    continue
 
             if not download_button:
                 return None
 
-            # 点击下载按钮并拦截下载
+            # 根据点击方法选择不同的点击策略
             async with self.page.expect_download() as download_info:
-                await download_button.click()
+                if click_method == "js":
+                    # 方法1: 使用 JavaScript 直接点击 (最快)
+                    await self.page.evaluate("(btn) => btn.click()", download_button)
+                elif click_method == "force":
+                    # 方法2: 强制点击，跳过可操作性检查
+                    await download_button.click(force=True)
+                elif click_method == "no_wait":
+                    # 方法3: 不等待导航完成
+                    await download_button.click(no_wait_after=True)
+                else:
+                    # 方法4: 普通点击（默认）
+                    await download_button.click()
 
             download = await download_info.value
 
@@ -856,7 +840,7 @@ class GeminiImageEditor(GeminiBrowser):
             if download_path:
                 with open(download_path, "rb") as f:
                     image_bytes = f.read()
-                print(f"  ✓ 通过下载按钮获取原图 ({len(image_bytes)/1024:.1f}KB)")
+                print(f"  ✓ 通过下载按钮获取原图 ({len(image_bytes)/1024:.1f}KB) [点击方法: {click_method}]")
                 return image_bytes
 
             return None

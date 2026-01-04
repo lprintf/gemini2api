@@ -296,18 +296,18 @@ class EnhancedGeminiImageEditor(GeminiImageEditor):
             menu_expanded = False
             for selector in menu_button_selectors:
                 try:
-                    menu_button = await self.page.query_selector(selector)
+                    # 使用 wait_for_selector 等待按钮出现（事件驱动，更高效）
+                    menu_button = await self.page.wait_for_selector(
+                        selector, state="visible", timeout=2000
+                    )
                     if menu_button:
-                        # 检查按钮是否可见（如果侧边栏已展开，这个按钮可能不存在或隐藏）
-                        is_visible = await menu_button.is_visible()
-                        if is_visible:
-                            print(
-                                f"  找到主菜单按钮（选择器: {selector}），点击展开..."
-                            )
-                            await menu_button.click()
-                            await asyncio.sleep(1.5)
-                            menu_expanded = True
-                            break
+                        print(
+                            f"  找到主菜单按钮（选择器: {selector}），点击展开..."
+                        )
+                        await menu_button.click()
+                        await asyncio.sleep(1.5)
+                        menu_expanded = True
+                        break
                 except Exception:
                     continue
 
@@ -545,10 +545,16 @@ class EnhancedGeminiImageEditor(GeminiImageEditor):
 
             tools_button = None
             for selector in tools_selectors:
-                tools_button = await self.page.query_selector(selector)
-                if tools_button:
-                    print(f"  ✓ 找到 Tools 菜单（选择器: {selector}）")
-                    break
+                try:
+                    # 使用 wait_for_selector 事件驱动等待
+                    tools_button = await self.page.wait_for_selector(
+                        selector, state="visible", timeout=2000
+                    )
+                    if tools_button:
+                        print(f"  ✓ 找到 Tools 菜单（选择器: {selector}）")
+                        break
+                except Exception:
+                    continue
 
             if not tools_button:
                 print("  ❌ 未找到 Tools 菜单")
