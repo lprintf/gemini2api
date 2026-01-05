@@ -238,24 +238,42 @@ class EnhancedGeminiImageEditor(GeminiImageEditor):
                 print(f"✓ 成功切换到 {model} 模型")
                 return True
             except Exception:
-                # 超时，手动验证
-                new_button_text = await menu_button.inner_text()
-                print(f"  切换后模型显示: '{new_button_text}'")
-
-                # 判断切换后是哪个模型
-                is_now_fast = (
-                    "Fast" in new_button_text
-                    or "快速" in new_button_text
-                    or "fast" in new_button_text.lower()
-                )
-                is_now_pro = "Pro" in new_button_text or "pro" in new_button_text.lower()
-
-                if (model == "Fast" and is_now_fast) or (model == "Pro" and is_now_pro):
+                # 超时，用极短超时再次检查文本是否变化
+                print("  主等待超时，用极短超时再次检查...")
+                try:
+                    if model == "Fast":
+                        await self.page.wait_for_function(
+                            """
+                            (selector, keywords) => {
+                                const button = document.querySelector(selector);
+                                if (!button) return false;
+                                const text = button.innerText || '';
+                                return keywords.some(kw => text.includes(kw));
+                            }
+                            """,
+                            arg=[menu_button_selector, ["Fast", "快速", "fast"]],
+                            timeout=500  # 极短超时 500ms
+                        )
+                    else:  # Pro
+                        await self.page.wait_for_function(
+                            """
+                            (selector, keywords) => {
+                                const button = document.querySelector(selector);
+                                if (!button) return false;
+                                const text = button.innerText || '';
+                                return keywords.some(kw => text.includes(kw));
+                            }
+                            """,
+                            arg=[menu_button_selector, ["Pro", "pro"]],
+                            timeout=500  # 极短超时 500ms
+                        )
                     print(f"✓ 成功切换到 {model} 模型")
                     return True
-
-                print("⚠ 切换后仍然是其他模型")
-                return False
+                except Exception:
+                    # 再次超时，说明切换失败
+                    new_button_text = await menu_button.inner_text()
+                    print(f"⚠ 切换失败，模型仍显示: '{new_button_text}'")
+                    return False
 
         except Exception as e:
             print(f"❌ 模型选择失败: {e}")
@@ -305,7 +323,16 @@ class EnhancedGeminiImageEditor(GeminiImageEditor):
                             f"  找到主菜单按钮（选择器: {selector}），点击展开..."
                         )
                         await menu_button.click()
-                        await asyncio.sleep(1.5)
+                        # 等待菜单展开（事件驱动）
+                        try:
+                            await self.page.wait_for_selector(
+                                'div[role="menu"], nav[role="navigation"]',
+                                state="visible",
+                                timeout=2000
+                            )
+                            print("  ✓ 菜单已展开")
+                        except Exception:
+                            print("  ⚠ 菜单展开验证超时，继续尝试")
                         menu_expanded = True
                         break
                 except Exception:
@@ -317,8 +344,7 @@ class EnhancedGeminiImageEditor(GeminiImageEditor):
             # 步骤2: 点击临时对话按钮
             print("  查找临时对话按钮...")
 
-            # 等待侧边栏完全展开
-            await asyncio.sleep(1)
+            # wait_for_selector 已经在下面，不需要固定 sleep
 
             # 临时对话按钮的多种选择器
             temp_chat_selectors = [
@@ -341,13 +367,17 @@ class EnhancedGeminiImageEditor(GeminiImageEditor):
                     if temp_button:
                         print(f"  ✓ 找到临时对话按钮（选择器: {selector}）")
                         await temp_button.click()
-                        await asyncio.sleep(2)
 
-                        # 验证：检查临时对话说明卡片是否出现
+                        # 验证：等待临时对话说明卡片出现（事件驱动）
                         print("  验证临时对话模式是否启用...")
-                        temp_card = await self.page.query_selector(
-                            ".temporary-chat-card"
-                        )
+                        try:
+                            temp_card = await self.page.wait_for_selector(
+                                ".temporary-chat-card",
+                                state="visible",
+                                timeout=3000
+                            )
+                        except Exception:
+                            temp_card = None
 
                         if temp_card:
                             # 检查卡片标题
@@ -394,13 +424,17 @@ class EnhancedGeminiImageEditor(GeminiImageEditor):
                                     f"  ✓ 通过文本匹配找到: text='{text}', aria-label='{aria_label}'"
                                 )
                                 await button.click()
-                                await asyncio.sleep(2)
 
-                                # 验证：检查临时对话说明卡片是否出现
+                                # 验证：等待临时对话说明卡片出现（事件驱动）
                                 print("  验证临时对话模式是否启用...")
-                                temp_card = await self.page.query_selector(
-                                    ".temporary-chat-card"
-                                )
+                                try:
+                                    temp_card = await self.page.wait_for_selector(
+                                        ".temporary-chat-card",
+                                        state="visible",
+                                        timeout=3000
+                                    )
+                                except Exception:
+                                    temp_card = None
 
                                 if temp_card:
                                     card_title = await temp_card.query_selector(
@@ -858,12 +892,37 @@ class EnhancedGeminiImageEditor(GeminiImageEditor):
                 await asyncio.sleep(10)  # 即使超时，也给图片一些渲染时间
             log_time("等待生成", stage_start)
 
-            # 步骤4: 获取图片
+            # 步骤4: 获取生成的图片数量（不获取URL，避免URL不稳定）
             stage_start = time.time()
-            image_urls = await self.get_generated_images()
-            log_time("获取图片URL", stage_start)
 
-            if not image_urls:
+            # 统计图片数量
+            container_selectors = [
+                "model-response",
+                "message-content model-response",
+                "response-container",
+            ]
+
+            generated_count = 0
+            for selector in container_selectors:
+                try:
+                    containers = await self.page.query_selector_all(selector)
+                    if containers:
+                        container = containers[-1]
+                        images = await container.query_selector_all("img")
+
+                        for img in images:
+                            src = await img.get_attribute("src")
+                            if src and "googleusercontent" in src and "/a/ACg8oc" not in src:
+                                generated_count += 1
+
+                        if generated_count > 0:
+                            break
+                except Exception:
+                    continue
+
+            log_time("获取图片数量", stage_start)
+
+            if generated_count == 0:
                 print("❌ 未找到生成的图片")
                 print("  提示: 请检查页面是否有错误提示或需要人工验证")
                 return None
@@ -881,18 +940,19 @@ class EnhancedGeminiImageEditor(GeminiImageEditor):
             output_date_path = output_path / date_dir
             output_date_path.mkdir(parents=True, exist_ok=True)
 
-            print(f"\n正在下载图片（{output_format.upper()}格式）...")
+            print(f"\n正在下载 {generated_count} 张图片（{output_format.upper()}格式）...")
             stage_start = time.time()
-            for i, url in enumerate(image_urls):
+
+            # 按索引下载所有生成的图片（不依赖URL）
+            for i in range(generated_count):
                 download_start = time.time()
-                print(f"  URL: {url[:80]}...")
 
                 if output_format == "webp":
                     # 直接下载并获取SHA摘要
                     temp_path = output_date_path / f"temp_{i}.webp"
 
-                    success, file_hash = await self.download_image_as_webp(
-                        url, str(temp_path), lossless=webp_lossless
+                    success, file_hash = await self.download_generated_image_by_index(
+                        i, str(temp_path), lossless=webp_lossless, output_format="webp"
                     )
 
                     if success and file_hash:
@@ -905,7 +965,9 @@ class EnhancedGeminiImageEditor(GeminiImageEditor):
                     # 直接下载并获取SHA摘要
                     temp_path = output_date_path / f"temp_{i}.{output_format}"
 
-                    success, file_hash = await self.download_image(url, str(temp_path))
+                    success, file_hash = await self.download_generated_image_by_index(
+                        i, str(temp_path), output_format=output_format
+                    )
 
                     if success and file_hash:
                         # 重命名为SHA摘要文件名

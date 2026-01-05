@@ -32,7 +32,8 @@ class GeminiImageEditor(GeminiBrowser):
         current_url = self.page.url
         if "/app" not in current_url:
             await self.page.goto("https://gemini.google.com/app")
-            await asyncio.sleep(2)
+            # 等待页面加载完成（事件驱动）
+            await self.page.wait_for_load_state("networkidle", timeout=10000)
 
         print("✓ 已在对话页面")
 
@@ -56,16 +57,31 @@ class GeminiImageEditor(GeminiBrowser):
                         # 先尝试 JS 点击（快速）
                         try:
                             await self.page.evaluate("(btn) => btn.click()", button)
-                            await asyncio.sleep(1)
+                            # 等待激活：工具栏出现或输入框工具栏就绪
+                            await self.page.wait_for_selector(
+                                ".toolbox-drawer-item-deselect-button, .input-area-actions",
+                                state="visible",
+                                timeout=2000,
+                            )
                             print("✓ 图片生成功能已激活 [js]")
                             return True
                         except Exception:
-                            # JS 失败，fallback 到 no_wait_after
+                            # JS 点击失败或等待超时，fallback 到 no_wait_after
                             print("  ⚠ JS 点击失败，fallback 到 no_wait_after")
-                            await button.click(no_wait_after=True)
-                            await asyncio.sleep(1)
-                            print("✓ 图片生成功能已激活 [no_wait]")
-                            return True
+                            try:
+                                await button.click(no_wait_after=True)
+                                # fallback 也用 wait 验证激活
+                                await self.page.wait_for_selector(
+                                    ".toolbox-drawer-item-deselect-button, .input-area-actions",
+                                    state="visible",
+                                    timeout=2000,
+                                )
+                                print("✓ 图片生成功能已激活 [no_wait]")
+                                return True
+                            except Exception:
+                                # 两次都失败
+                                print("❌ 激活失败（工具栏未出现）")
+                                return False
                 except Exception:
                     continue
 
@@ -105,7 +121,7 @@ class GeminiImageEditor(GeminiBrowser):
 
             print("  ✓ 找到输入框，点击聚焦")
             await input_box.click()
-            await asyncio.sleep(0.3)
+            # 聚焦后不需要等待，粘贴操作本身会触发
 
             # 读取图片文件并转换为 base64
             import base64
@@ -204,9 +220,7 @@ class GeminiImageEditor(GeminiBrowser):
         try:
             # 等待带有 blob: 前缀的图片元素出现（事件驱动）
             img = await self.page.wait_for_selector(
-                'img[src^="blob:"]',
-                timeout=timeout * 1000,
-                state="visible"
+                'img[src^="blob:"]', timeout=timeout * 1000, state="visible"
             )
 
             if img:
@@ -278,7 +292,7 @@ class GeminiImageEditor(GeminiBrowser):
 
             print("  ✓ 找到上传按钮，立即点击")
             await upload_button.click()
-            await asyncio.sleep(0.5)  # 减少等待时间
+            # 已经有 wait_for_selector 等待菜单容器，不需要 sleep
 
             # 步骤2: 等待并点击菜单中的"上传文件"选项（使用事件驱动）
             print("  等待上传文件选项出现...")
@@ -292,7 +306,7 @@ class GeminiImageEditor(GeminiBrowser):
                 menu_container = await self.page.wait_for_selector(
                     '[role="menu"], [role="listbox"], [role="dialog"]',
                     state="visible",
-                    timeout=3000
+                    timeout=3000,
                 )
                 if menu_container:
                     print("  ✓ 菜单容器已出现")
@@ -306,7 +320,9 @@ class GeminiImageEditor(GeminiBrowser):
                         text = await btn.text_content() or ""
                         combined = (aria_label + text).lower()
 
-                        if any(keyword.lower() in combined for keyword in upload_keywords):
+                        if any(
+                            keyword.lower() in combined for keyword in upload_keywords
+                        ):
                             upload_option = btn
                             print("  ✓ 找到上传文件选项")
                             break
@@ -333,9 +349,7 @@ class GeminiImageEditor(GeminiBrowser):
             try:
                 # 使用 wait_for_selector 事件驱动等待 blob: 图片出现
                 blob_img = await self.page.wait_for_selector(
-                    'img[src^="blob:"]',
-                    state="visible",
-                    timeout=5000  # 最多等待5秒
+                    'img[src^="blob:"]', state="visible", timeout=5000  # 最多等待5秒
                 )
                 if blob_img:
                     src = await blob_img.get_attribute("src")
@@ -374,7 +388,7 @@ class GeminiImageEditor(GeminiBrowser):
             if prompt_input:
                 print("  ✓ 输入框就绪，立即输入")
                 await prompt_input.fill(prompt)
-                await asyncio.sleep(0.5)
+                # fill 操作本身会等待输入完成，不需要额外 sleep
                 print("✓ Prompt输入成功")
                 return True
             else:
@@ -427,8 +441,10 @@ class GeminiImageEditor(GeminiBrowser):
 
     async def wait_for_generation(self, timeout: int = 60) -> bool:
         """
-        等待图片生成完成（通过检测加载动画结束）
-        使用对话容器定位来避免计数页面其他位置的图片
+        等待图片生成完成（使用事件驱动等待 googleusercontent 图片出现）
+
+        策略：使用 wait_for_function 事件驱动等待最后一个对话容器内出现
+        googleusercontent 图片，不需要轮询
 
         Args:
             timeout: 超时时间（秒）
@@ -438,24 +454,41 @@ class GeminiImageEditor(GeminiBrowser):
         """
         print(f"\n等待图片生成完成（最多{timeout}秒）...")
 
-        start_time = asyncio.get_event_loop().time()
+        try:
+            # 使用 wait_for_function 事件驱动等待图片出现
+            await self.page.wait_for_function(
+                """
+                () => {
+                    // 定位最后一个对话容器
+                    const selectors = ['model-response', 'response-container'];
+                    let container = null;
 
-        # 策略1: 检测生成按钮是否重新可用（生成中会禁用）
-        # 策略2: 检测最新对话容器内是否有新的 googleusercontent 图片出现
-        # 策略3: 超时保护
+                    for (const selector of selectors) {
+                        const containers = document.querySelectorAll(selector);
+                        if (containers.length > 0) {
+                            container = containers[containers.length - 1];
+                            break;
+                        }
+                    }
 
-        last_image_count = 0
-        stable_count = 0  # 图片数量稳定的次数
+                    if (!container) return false;
 
-        while True:
-            elapsed = asyncio.get_event_loop().time() - start_time
+                    // 在容器内搜索 googleusercontent 图片（排除头像）
+                    const images = container.querySelectorAll('img');
+                    for (const img of images) {
+                        const src = img.src || '';
+                        if (src.includes('googleusercontent') && !src.includes('/a/ACg8oc')) {
+                            return true;  // 找到生成的图片
+                        }
+                    }
 
-            if elapsed > timeout:
-                print(f"⚠ 等待超时（{timeout}秒），停止等待")
-                return False
+                    return false;
+                }
+                """,
+                timeout=timeout * 1000,
+            )
 
-            # 尝试定位最新的对话容器
-            container = None
+            # 统计图片数量
             container_selectors = [
                 "model-response",
                 "message-content model-response",
@@ -467,38 +500,83 @@ class GeminiImageEditor(GeminiBrowser):
                     containers = await self.page.query_selector_all(selector)
                     if containers:
                         container = containers[-1]
+                        images = await container.query_selector_all("img")
+                        generated_count = 0
+
+                        for img in images:
+                            src = await img.get_attribute("src")
+                            if (
+                                src
+                                and "googleusercontent" in src
+                                and "/a/ACg8oc" not in src
+                            ):
+                                generated_count += 1
+
+                        if generated_count > 0:
+                            print(f"✓ 检测到 {generated_count} 张生成的图片")
+                            # 等待 hover 下载按钮就绪（轮询检测）
+                            print("  等待 hover 下载按钮就绪...")
+
+                            button_ready = False
+                            max_attempts = 6  # 最多尝试 6 次（3 秒）
+
+                            for attempt in range(max_attempts):
+                                # 尝试 hover 第一张图片，看下载按钮是否出现
+                                try:
+                                    first_img = images[0]
+                                    # Hover 到图片
+                                    await self.page.evaluate(
+                                        """
+                                        (img) => {
+                                            const rect = img.getBoundingClientRect();
+                                            const x = rect.left + rect.width / 2;
+                                            const y = rect.top + rect.height / 2;
+                                            const mouseoverEvent = new MouseEvent('mouseover', {
+                                                bubbles: true,
+                                                cancelable: true,
+                                                view: window,
+                                                clientX: x,
+                                                clientY: y
+                                            });
+                                            img.dispatchEvent(mouseoverEvent);
+                                        }
+                                        """,
+                                        first_img,
+                                    )
+
+                                    # 检测下载按钮是否出现
+                                    download_button = await self.page.wait_for_selector(
+                                        'button[aria-label*="下载"], button[aria-label*="Download"]',
+                                        state="visible",
+                                        timeout=500,
+                                    )
+
+                                    if download_button:
+                                        print(
+                                            f"  ✓ 下载按钮已就绪（尝试 {attempt + 1}/{max_attempts}）"
+                                        )
+                                        button_ready = True
+                                        break
+                                except Exception:
+                                    # 按钮还没出现，等待 0.5 秒后重试
+                                    await asyncio.sleep(0.5)
+
+                            if not button_ready:
+                                print(
+                                    "  ⚠ 下载按钮未就绪（将使用 request API 作为 fallback）"
+                                )
+
+                            return True
                         break
                 except Exception:
                     continue
 
-            # 在容器内（如果找到）或全局搜索图片
-            if container:
-                images = await container.query_selector_all("img")
-            else:
-                images = await self.page.query_selector_all("img")
+            print("✓ 图片生成完成")
+            return True
 
-            current_count = 0
-
-            for img in images:
-                src = await img.get_attribute("src")
-                if src and "googleusercontent" in src and "/a/ACg8oc" not in src:
-                    current_count += 1
-
-            # 如果图片数量稳定（连续3次检查数量相同），认为生成完成
-            if current_count > 0:
-                if current_count == last_image_count:
-                    stable_count += 1
-                    if stable_count >= 3:
-                        print(f"✓ 检测到 {current_count} 张生成的图片（已稳定）")
-                        return True
-                else:
-                    stable_count = 0
-                    print(f"  检测到 {current_count} 张图片（等待稳定...）")
-
-            last_image_count = current_count
-
-            # 每2秒检查一次
-            await asyncio.sleep(2)
+        except Exception:
+            print(f"⚠ 等待超时（{timeout}秒），停止等待")
+            return False
 
     async def get_generated_images(self) -> List[str]:
         """
@@ -614,8 +692,107 @@ class GeminiImageEditor(GeminiBrowser):
         print(f"\n✓ 找到 {len(generated_urls)} 张生成的图片（已去重）")
         return generated_urls
 
+    async def download_generated_image_by_index(
+        self,
+        index: int,
+        save_path: str,
+        lossless: bool = True,
+        click_method: str = "no_wait",
+        output_format: str = "webp",
+    ) -> tuple[bool, str | None]:
+        """
+        按索引下载生成的图片（优先 hover 下载，失败时获取 URL 并用 request API）
+
+        Args:
+            index: 图片索引（0-based）
+            save_path: 保存路径
+            lossless: WebP 是否使用无损压缩，默认 True（推荐）
+            click_method: 点击方法 (js/force/no_wait/normal)，默认 no_wait
+            output_format: 输出格式 - "webp" 或 "png"
+
+        Returns:
+            (是否下载成功, SHA256摘要)
+        """
+        import time
+
+        # 获取最后一个对话容器中的图片
+        container_selectors = [
+            "model-response",
+            "message-content model-response",
+            "response-container",
+        ]
+
+        target_img = None
+        for selector in container_selectors:
+            try:
+                containers = await self.page.query_selector_all(selector)
+                if containers:
+                    container = containers[-1]
+                    images = await container.query_selector_all("img")
+
+                    # 过滤出生成的图片（排除头像）
+                    generated_images = []
+                    for img in images:
+                        src = await img.get_attribute("src")
+                        if (
+                            src
+                            and "googleusercontent" in src
+                            and "/a/ACg8oc" not in src
+                        ):
+                            generated_images.append(img)
+
+                    if index < len(generated_images):
+                        target_img = generated_images[index]
+                        break
+            except Exception:
+                continue
+
+        if not target_img:
+            print(f"  ❌ 未找到索引为 {index} 的图片")
+            return False, None
+
+        # 获取图片 URL（用于 fallback）
+        url = await target_img.get_attribute("src")
+
+        # 方法1: 尝试通过 hover 下载按钮获取高质量原图
+        print(f"\n正在下载图片 {index + 1}...")
+        download_start = time.time()
+        image_bytes = await self._download_via_hover_button_by_element(
+            target_img, click_method
+        )
+
+        if image_bytes:
+            download_time = time.time() - download_start
+            print(
+                f"    ⏱ [hover下载] {download_time:.3f}s ({len(image_bytes)/1024:.1f}KB)"
+            )
+        else:
+            # 方法2: 回退到 request API（此时 URL 已经稳定）
+            print("  回退到 request API 下载...")
+            download_start = time.time()
+            response = await self.page.request.get(url)
+            if response.ok:
+                image_bytes = await response.body()
+                download_time = time.time() - download_start
+                print(
+                    f"    ⏱ [request下载] {download_time:.3f}s ({len(image_bytes)/1024:.1f}KB)"
+                )
+            else:
+                print(f"  ❌ 下载失败，HTTP状态: {response.status}")
+                return False, None
+
+        # 保存图片
+        if output_format == "webp":
+            return await self._save_as_webp(image_bytes, save_path, lossless)
+        else:
+            return await self._save_as_png(image_bytes, save_path)
+
     async def download_image_as_webp(
-        self, url: str, save_path: str, lossless: bool = True, click_method: str = "js"
+        self,
+        url: str,
+        save_path: str,
+        lossless: bool = True,
+        click_method: str = "no_wait",
     ) -> tuple[bool, str | None]:
         """
         下载图片并转换为 WebP 格式（更小的文件体积）
@@ -626,13 +803,13 @@ class GeminiImageEditor(GeminiBrowser):
             url: 图片URL
             save_path: 保存路径（会自动改为.webp扩展名）
             lossless: 是否使用无损压缩，默认 True（推荐）
-            click_method: 点击方法 (js/force/no_wait/normal)，默认 js
+            click_method: 点击方法 (js/force/no_wait/normal)，默认 no_wait
 
         Returns:
-            (是否下载成功, SHA256摘要前16位)
+            (是否下载成功, SHA256摘要)
         """
-        import time
         import hashlib
+        import time
 
         # 确保保存路径使用 .webp 扩展名
         save_path_obj = Path(save_path)
@@ -640,6 +817,7 @@ class GeminiImageEditor(GeminiBrowser):
 
         try:
             from io import BytesIO
+
             from PIL import Image
 
             image_bytes = None
@@ -649,7 +827,9 @@ class GeminiImageEditor(GeminiBrowser):
             image_bytes = await self._download_via_hover_button(url, click_method)
             if image_bytes:
                 download_time = time.time() - download_start
-                print(f"    ⏱ [hover下载] {download_time:.3f}s ({len(image_bytes)/1024:.1f}KB)")
+                print(
+                    f"    ⏱ [hover下载] {download_time:.3f}s ({len(image_bytes)/1024:.1f}KB)"
+                )
 
             # 方法2: 回退到 page.request.get
             if not image_bytes:
@@ -659,7 +839,9 @@ class GeminiImageEditor(GeminiBrowser):
                 if response.ok:
                     image_bytes = await response.body()
                     download_time = time.time() - download_start
-                    print(f"    ⏱ [request下载] {download_time:.3f}s ({len(image_bytes)/1024:.1f}KB)")
+                    print(
+                        f"    ⏱ [request下载] {download_time:.3f}s ({len(image_bytes)/1024:.1f}KB)"
+                    )
                 else:
                     print(f"  ❌ 下载失败，HTTP状态: {response.status}")
                     return False, None
@@ -685,9 +867,12 @@ class GeminiImageEditor(GeminiBrowser):
             # 计算 WebP 数据的 SHA256 摘要（完整 base64url 格式，去除填充符号）
             hash_start = time.time()
             import base64
+
             sha256_hash = hashlib.sha256(webp_data).digest()
             # 使用 base64url 编码（URL安全），并去除填充符号 '='
-            file_hash = base64.urlsafe_b64encode(sha256_hash).decode('ascii').rstrip('=')
+            file_hash = (
+                base64.urlsafe_b64encode(sha256_hash).decode("ascii").rstrip("=")
+            )
             hash_time = time.time() - hash_start
 
             # 保存文件
@@ -708,7 +893,9 @@ class GeminiImageEditor(GeminiBrowser):
             print(f"    ⏱ [SHA256计算] {hash_time:.3f}s")
             print(f"    ⏱ [文件保存] {save_time:.3f}s")
             print(f"  ✓ 已保存: {save_path_webp}")
-            print(f"    原始: {original_size/1024:.1f}KB → WebP: {webp_size/1024:.1f}KB (压缩率: {compression:.1f}%)")
+            print(
+                f"    原始: {original_size/1024:.1f}KB → WebP: {webp_size/1024:.1f}KB (压缩率: {compression:.1f}%)"
+            )
 
             return True, file_hash
 
@@ -718,37 +905,259 @@ class GeminiImageEditor(GeminiBrowser):
         except Exception as e:
             print(f"❌ WebP下载失败: {e}")
             import traceback
+
             traceback.print_exc()
             return False, None
 
-    async def _download_via_hover_button(self, url: str, click_method: str = "js") -> bytes | None:
+    async def _save_as_webp(
+        self, image_bytes: bytes, save_path: str, lossless: bool = True
+    ) -> tuple[bool, str | None]:
+        """将图片字节数据保存为 WebP 格式"""
+        import base64
+        import hashlib
+        import time
+        from io import BytesIO
+
+        from PIL import Image
+
+        try:
+            save_path_obj = Path(save_path)
+            save_path_webp = str(save_path_obj.with_suffix(".webp"))
+
+            # 解码图片
+            decode_start = time.time()
+            img = Image.open(BytesIO(image_bytes))
+            width, height = img.size
+            original_size = len(image_bytes)
+            decode_time = time.time() - decode_start
+            print(f"    ⏱ [图片解码] {decode_time:.3f}s (尺寸: {width}x{height})")
+
+            # 转换为 WebP
+            convert_start = time.time()
+            webp_buffer = BytesIO()
+            if lossless:
+                img.save(webp_buffer, "WEBP", lossless=True)
+            else:
+                img.save(webp_buffer, "WEBP", quality=80)
+            webp_data = webp_buffer.getvalue()
+            convert_time = time.time() - convert_start
+
+            # 计算 SHA256 摘要
+            hash_start = time.time()
+            sha256_hash = hashlib.sha256(webp_data).digest()
+            file_hash = (
+                base64.urlsafe_b64encode(sha256_hash).decode("ascii").rstrip("=")
+            )
+            hash_time = time.time() - hash_start
+
+            # 保存文件
+            save_file = Path(save_path_webp)
+            save_file.parent.mkdir(parents=True, exist_ok=True)
+
+            save_start = time.time()
+            with open(save_file, "wb") as f:
+                f.write(webp_data)
+            save_time = time.time() - save_start
+
+            # 统计信息
+            webp_size = len(webp_data)
+            compression = (1 - webp_size / original_size) * 100 if original_size else 0
+            mode_text = "无损" if lossless else "有损"
+
+            print(f"    ⏱ [WebP转换] {convert_time:.3f}s ({mode_text})")
+            print(f"    ⏱ [SHA256计算] {hash_time:.3f}s")
+            print(f"    ⏱ [文件保存] {save_time:.3f}s")
+            print(f"  ✓ 已保存: {save_path_webp}")
+            print(
+                f"    原始: {original_size/1024:.1f}KB → WebP: {webp_size/1024:.1f}KB (压缩率: {compression:.1f}%)"
+            )
+
+            return True, file_hash
+
+        except Exception as e:
+            print(f"  ❌ WebP保存失败: {e}")
+            import traceback
+
+            traceback.print_exc()
+            return False, None
+
+    async def _save_as_png(
+        self, image_bytes: bytes, save_path: str
+    ) -> tuple[bool, str | None]:
+        """将图片字节数据保存为 PNG 格式"""
+        import base64
+        import hashlib
+        import time
+
+        try:
+            # 计算 SHA256 摘要
+            hash_start = time.time()
+            sha256_hash = hashlib.sha256(image_bytes).digest()
+            file_hash = (
+                base64.urlsafe_b64encode(sha256_hash).decode("ascii").rstrip("=")
+            )
+            hash_time = time.time() - hash_start
+
+            # 保存文件
+            save_file = Path(save_path)
+            save_file.parent.mkdir(parents=True, exist_ok=True)
+
+            save_start = time.time()
+            with open(save_file, "wb") as f:
+                f.write(image_bytes)
+            save_time = time.time() - save_start
+
+            print(f"    ⏱ [SHA256计算] {hash_time:.3f}s")
+            print(f"    ⏱ [文件保存] {save_time:.3f}s")
+            print(f"  ✓ 已保存: {save_path} ({len(image_bytes)/1024:.1f}KB)")
+
+            return True, file_hash
+
+        except Exception as e:
+            print(f"  ❌ PNG保存失败: {e}")
+            import traceback
+
+            traceback.print_exc()
+            return False, None
+
+    async def _download_via_hover_button_by_element(
+        self, img_element, click_method: str = "no_wait"
+    ) -> bytes | None:
+        """
+        通过图片元素 hover 触发下载按钮
+
+        Args:
+            img_element: 图片元素
+            click_method: 点击方法
+
+        Returns:
+            图片字节数据，失败返回 None
+        """
+        try:
+            # Hover 到图片上，触发下载按钮显示
+            await self.page.evaluate(
+                """
+                (img) => {
+                    const rect = img.getBoundingClientRect();
+                    const x = rect.left + rect.width / 2;
+                    const y = rect.top + rect.height / 2;
+
+                    const mouseoverEvent = new MouseEvent('mouseover', {
+                        bubbles: true,
+                        cancelable: true,
+                        view: window,
+                        clientX: x,
+                        clientY: y
+                    });
+
+                    const mouseenterEvent = new MouseEvent('mouseenter', {
+                        bubbles: false,
+                        cancelable: false,
+                        view: window,
+                        clientX: x,
+                        clientY: y
+                    });
+
+                    img.dispatchEvent(mouseoverEvent);
+                    img.dispatchEvent(mouseenterEvent);
+                }
+            """,
+                img_element,
+            )
+
+            # 等待下载按钮出现
+            download_button_selectors = [
+                'button[aria-label*="下载"]',
+                'button[aria-label*="Download"]',
+                'button[aria-label*="保存"]',
+                'button[aria-label*="Save"]',
+            ]
+
+            download_button = None
+            for selector in download_button_selectors:
+                try:
+                    download_button = await self.page.wait_for_selector(
+                        selector, state="visible", timeout=1000
+                    )
+                    if download_button:
+                        break
+                except Exception:
+                    continue
+
+            if not download_button:
+                return None
+
+            # 多次尝试点击下载按钮（下载按钮可能未就绪，需要重试）
+            download_timeout = 5000
+            max_click_attempts = 4
+
+            for attempt in range(max_click_attempts):
+                try:
+                    async with self.page.expect_download(
+                        timeout=download_timeout
+                    ) as download_info:
+                        if click_method == "no_wait":
+                            await download_button.click(no_wait_after=True)
+                        elif click_method == "js":
+                            await self.page.evaluate(
+                                "(btn) => btn.click()", download_button
+                            )
+                        elif click_method == "force":
+                            await download_button.click(force=True)
+                        else:
+                            await download_button.click()
+
+                    download = await download_info.value
+
+                    # 读取下载内容到内存
+                    download_path = await download.path()
+                    if download_path:
+                        with open(download_path, "rb") as f:
+                            image_bytes = f.read()
+                        print(
+                            f"  ✓ 通过下载按钮获取原图 ({len(image_bytes)/1024:.1f}KB) [点击方法: {click_method}, 尝试: {attempt + 1}/{max_click_attempts}]"
+                        )
+                        return image_bytes
+
+                except Exception:
+                    if attempt < max_click_attempts - 1:
+                        print(
+                            f"  ⚠ 下载按钮点击失败（尝试 {attempt + 1}/{max_click_attempts}），0.5秒后重试..."
+                        )
+                        await asyncio.sleep(0.5)
+                        continue
+                    else:
+                        print(f"  ⚠ 下载按钮点击失败（已尝试 {max_click_attempts} 次）")
+                        return None
+
+            return None
+
+        except Exception:
+            return None
+
+    async def _download_via_hover_button(
+        self, url: str, click_method: str = "no_wait"
+    ) -> bytes | None:
         """
         通过 hover 触发下载按钮，下载到内存
 
         Args:
             url: 图片URL
             click_method: 点击方法
-                - "js": 使用 JavaScript 直接点击 (最快，~0.027s)，失败时自动fallback到no_wait
-                - "force": 使用 click(force=True) (~0.100s)
-                - "no_wait": 使用 click(no_wait_after=True) (~0.125s)
-                - "normal": 普通 click() (默认，最慢但最安全)
+                - "no_wait": 使用 click(no_wait_after=True) (默认，推荐)
+                - "js": JS 点击（最快但可能不稳定）
+                - "force": 使用 click(force=True)
+                - "normal": 普通 click()
 
         Returns:
             图片字节数据，失败返回 None
         """
-        # 如果是 js 方法，先尝试 js，失败则自动 fallback 到 no_wait
-        if click_method == "js":
-            result = await self._try_download_with_method(url, "js")
-            if result:
-                return result
-            # js 失败，fallback 到 no_wait
-            print("  ⚠ JS 点击失败，fallback 到 no_wait_after")
-            return await self._try_download_with_method(url, "no_wait")
-        else:
-            # 其他方法直接调用
-            return await self._try_download_with_method(url, click_method)
+        # 直接使用指定的点击方法（有重试机制兜底）
+        return await self._try_download_with_method(url, click_method)
 
-    async def _try_download_with_method(self, url: str, click_method: str) -> bytes | None:
+    async def _try_download_with_method(
+        self, url: str, click_method: str
+    ) -> bytes | None:
         """尝试使用指定的点击方法下载"""
         try:
             # 查找页面上src匹配的img元素
@@ -819,29 +1228,56 @@ class GeminiImageEditor(GeminiBrowser):
                 return None
 
             # 根据点击方法选择不同的点击策略
-            async with self.page.expect_download() as download_info:
-                if click_method == "js":
-                    # 方法1: 使用 JavaScript 直接点击 (最快)
-                    await self.page.evaluate("(btn) => btn.click()", download_button)
-                elif click_method == "force":
-                    # 方法2: 强制点击，跳过可操作性检查
-                    await download_button.click(force=True)
-                elif click_method == "no_wait":
-                    # 方法3: 不等待导航完成
-                    await download_button.click(no_wait_after=True)
-                else:
-                    # 方法4: 普通点击（默认）
-                    await download_button.click()
+            # 多次尝试点击下载按钮（下载按钮可能未就绪，需要重试）
+            download_timeout = 5000
+            max_click_attempts = 4  # 最多尝试4次点击
 
-            download = await download_info.value
+            for attempt in range(max_click_attempts):
+                try:
+                    async with self.page.expect_download(
+                        timeout=download_timeout
+                    ) as download_info:
+                        if click_method == "no_wait":
+                            # 方法1: 不等待导航完成（推荐）
+                            await download_button.click(no_wait_after=True)
+                        elif click_method == "js":
+                            # 方法2: JS 点击（最快但可能不稳定）
+                            await self.page.evaluate(
+                                "(btn) => btn.click()", download_button
+                            )
+                        elif click_method == "force":
+                            # 方法3: 强制点击，跳过可操作性检查
+                            await download_button.click(force=True)
+                        else:
+                            # 方法4: 普通点击
+                            await download_button.click()
 
-            # 读取下载内容到内存
-            download_path = await download.path()
-            if download_path:
-                with open(download_path, "rb") as f:
-                    image_bytes = f.read()
-                print(f"  ✓ 通过下载按钮获取原图 ({len(image_bytes)/1024:.1f}KB) [点击方法: {click_method}]")
-                return image_bytes
+                    download = await download_info.value
+
+                    # 读取下载内容到内存
+                    download_path = await download.path()
+                    if download_path:
+                        with open(download_path, "rb") as f:
+                            image_bytes = f.read()
+                        print(
+                            f"  ✓ 通过下载按钮获取原图 ({len(image_bytes)/1024:.1f}KB) [点击方法: {click_method}, 尝试: {attempt + 1}/{max_click_attempts}]"
+                        )
+                        return image_bytes
+
+                except Exception:
+                    # 点击失败（弹出"无法下载"气泡），等待0.5秒后重试
+                    if attempt < max_click_attempts - 1:
+                        print(
+                            f"  ⚠ 下载按钮点击失败（尝试 {attempt + 1}/{max_click_attempts}），0.5秒后重试..."
+                        )
+                        await asyncio.sleep(0.5)
+                        continue
+                    else:
+                        # 所有尝试都失败，返回 None 让调用者 fallback
+                        print(
+                            f"  ❌ 下载按钮点击失败（已尝试 {max_click_attempts} 次）"
+                        )
+                        return None
 
             return None
 
@@ -862,7 +1298,9 @@ class GeminiImageEditor(GeminiBrowser):
         """
         return await self._do_download_image(url, save_path, silent=False)
 
-    async def _do_download_image(self, url: str, save_path: str, silent: bool = False) -> tuple[bool, str | None]:
+    async def _do_download_image(
+        self, url: str, save_path: str, silent: bool = False
+    ) -> tuple[bool, str | None]:
         """
         下载图片的内部实现
 
@@ -874,8 +1312,8 @@ class GeminiImageEditor(GeminiBrowser):
         Returns:
             (是否下载成功, SHA256摘要前16位)
         """
-        import time
         import hashlib
+        import time
 
         if not silent:
             print("\n正在下载图片...")
@@ -992,9 +1430,12 @@ class GeminiImageEditor(GeminiBrowser):
                 # 计算 SHA256 摘要（完整 base64url 格式，去除填充符号）
                 hash_start = time.time()
                 import base64
+
                 sha256_hash = hashlib.sha256(file_data).digest()
                 # 使用 base64url 编码（URL安全），并去除填充符号 '='
-                file_hash = base64.urlsafe_b64encode(sha256_hash).decode('ascii').rstrip('=')
+                file_hash = (
+                    base64.urlsafe_b64encode(sha256_hash).decode("ascii").rstrip("=")
+                )
                 hash_time = time.time() - hash_start
 
                 # 保存到目标路径
@@ -1021,14 +1462,17 @@ class GeminiImageEditor(GeminiBrowser):
             if not silent:
                 print(f"❌ 下载图片失败: {e}")
                 import traceback
+
                 traceback.print_exc()
             # 尝试回退方法
             return await self._download_with_fetch(url, save_path, silent)
 
-    async def _download_with_fetch(self, url: str, save_path: str, silent: bool = False) -> tuple[bool, str | None]:
+    async def _download_with_fetch(
+        self, url: str, save_path: str, silent: bool = False
+    ) -> tuple[bool, str | None]:
         """使用 Playwright request API 下载（绕过 CORS，并发安全）"""
-        import time
         import hashlib
+        import time
 
         try:
             if not silent:
@@ -1048,14 +1492,19 @@ class GeminiImageEditor(GeminiBrowser):
             download_time = time.time() - download_start
 
             if not silent:
-                print(f"    ⏱ [网络下载] {download_time:.3f}s ({len(image_bytes)/1024:.1f}KB)")
+                print(
+                    f"    ⏱ [网络下载] {download_time:.3f}s ({len(image_bytes)/1024:.1f}KB)"
+                )
 
             # 计算 SHA256 摘要（完整 base64url 格式，去除填充符号）
             hash_start = time.time()
             import base64
+
             sha256_hash = hashlib.sha256(image_bytes).digest()
             # 使用 base64url 编码（URL安全），并去除填充符号 '='
-            file_hash = base64.urlsafe_b64encode(sha256_hash).decode('ascii').rstrip('=')
+            file_hash = (
+                base64.urlsafe_b64encode(sha256_hash).decode("ascii").rstrip("=")
+            )
             hash_time = time.time() - hash_start
 
             if not silent:
@@ -1081,6 +1530,7 @@ class GeminiImageEditor(GeminiBrowser):
             if not silent:
                 print(f"  ❌ 下载失败: {e}")
                 import traceback
+
                 traceback.print_exc()
             return False, None
 
@@ -1152,31 +1602,61 @@ class GeminiImageEditor(GeminiBrowser):
                 return None
 
             # 6. 等待生成完成
-            await self.wait_for_generation(wait_time)
+            if not await self.wait_for_generation(wait_time):
+                print("❌ 等待生成超时")
+                return None
 
-            # 7. 获取生成的图片
-            image_urls = await self.get_generated_images()
+            # 7. 获取生成的图片数量（不获取URL，避免URL不稳定）
+            # 统计图片数量
+            container_selectors = [
+                "model-response",
+                "message-content model-response",
+                "response-container",
+            ]
 
-            if not image_urls:
+            generated_count = 0
+            for selector in container_selectors:
+                try:
+                    containers = await self.page.query_selector_all(selector)
+                    if containers:
+                        container = containers[-1]
+                        images = await container.query_selector_all("img")
+
+                        for img in images:
+                            src = await img.get_attribute("src")
+                            if (
+                                src
+                                and "googleusercontent" in src
+                                and "/a/ACg8oc" not in src
+                            ):
+                                generated_count += 1
+
+                        if generated_count > 0:
+                            break
+                except Exception:
+                    continue
+
+            if generated_count == 0:
                 print("❌ 未找到生成的图片")
                 return None
 
-            # 8. 下载所有生成的图片
+            print(f"\n准备下载 {generated_count} 张图片...")
+
+            # 8. 按索引下载所有生成的图片（不依赖URL）
             output_paths = []
             output_path = Path(output_dir)
             output_path.mkdir(parents=True, exist_ok=True)
 
-            for i, url in enumerate(image_urls):
-                if output_format == "webp":
-                    save_path = output_path / f"generated_{i+1}.webp"
-                    if await self.download_image_as_webp(
-                        url, str(save_path), lossless=webp_lossless
-                    ):
-                        output_paths.append(str(save_path))
-                else:  # png
-                    save_path = output_path / f"generated_{i+1}.png"
-                    if await self.download_image(url, str(save_path)):
-                        output_paths.append(str(save_path))
+            for i in range(generated_count):
+                save_path = output_path / f"generated_{i+1}.{output_format}"
+                success, file_hash = await self.download_generated_image_by_index(
+                    i,
+                    str(save_path),
+                    lossless=webp_lossless,
+                    output_format=output_format,
+                )
+                if success:
+                    output_paths.append(str(save_path))
 
             print("\n" + "=" * 60)
             print(f"✓ 图片编辑完成！共生成 {len(output_paths)} 张图片")
