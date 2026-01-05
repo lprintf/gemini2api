@@ -27,9 +27,8 @@ class EnhancedGeminiImageEditor(GeminiImageEditor):
         proxy: Optional[str] = None,
         enable_logging: bool = True,
         user_data_dir: Optional[Path] = None,
-        remove_watermark: bool = True,
     ):
-        super().__init__(account_id, headless, proxy, user_data_dir, remove_watermark)
+        super().__init__(account_id, headless, proxy, user_data_dir)
         self.enable_logging = enable_logging
         self.event_log = []  # 事件日志
 

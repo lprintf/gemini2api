@@ -21,11 +21,9 @@ class GeminiImageEditor(GeminiBrowser):
         headless: bool = False,
         proxy: Optional[str] = None,
         user_data_dir: Optional[Path] = None,
-        remove_watermark: bool = True,
     ):
         super().__init__(account_id, headless, proxy, user_data_dir)
         self.default_timeout = 60000  # 60秒
-        self.remove_watermark = remove_watermark  # 是否自动去除水印
 
     async def navigate_to_new_chat(self):
         """导航到新对话页面"""
@@ -702,6 +700,7 @@ class GeminiImageEditor(GeminiBrowser):
         lossless: bool = True,
         click_method: str = "no_wait",
         output_format: str = "webp",
+        remove_watermark: bool = True,
     ) -> tuple[bool, str | None]:
         """
         按索引下载生成的图片（优先 hover 下载，失败时获取 URL 并用 request API）
@@ -712,6 +711,7 @@ class GeminiImageEditor(GeminiBrowser):
             lossless: WebP 是否使用无损压缩，默认 True（推荐）
             click_method: 点击方法 (js/force/no_wait/normal)，默认 no_wait
             output_format: 输出格式 - "webp" 或 "png"
+            remove_watermark: 是否去除水印，默认 True
 
         Returns:
             (是否下载成功, SHA256摘要)
@@ -786,9 +786,9 @@ class GeminiImageEditor(GeminiBrowser):
 
         # 保存图片
         if output_format == "webp":
-            return await self._save_as_webp(image_bytes, save_path, lossless)
+            return await self._save_as_webp(image_bytes, save_path, lossless, remove_watermark)
         else:
-            return await self._save_as_png(image_bytes, save_path)
+            return await self._save_as_png(image_bytes, save_path, remove_watermark)
 
     async def download_image_as_webp(
         self,
@@ -858,7 +858,7 @@ class GeminiImageEditor(GeminiBrowser):
             print(f"    ⏱ [图片解码] {decode_time:.3f}s (尺寸: {width}x{height})")
 
             # 去除水印（如果启用）
-            if getattr(self, 'remove_watermark', True):
+            if remove_watermark:
                 watermark_start = time.time()
                 img = WatermarkRemover.remove_watermark(img, watermark_size=None, verbose=True)
                 watermark_time = time.time() - watermark_start
@@ -920,7 +920,7 @@ class GeminiImageEditor(GeminiBrowser):
             return False, None
 
     async def _save_as_webp(
-        self, image_bytes: bytes, save_path: str, lossless: bool = True
+        self, image_bytes: bytes, save_path: str, lossless: bool = True, remove_watermark: bool = True
     ) -> tuple[bool, str | None]:
         """将图片字节数据保存为 WebP 格式（可选去除水印）"""
         import base64
@@ -943,7 +943,7 @@ class GeminiImageEditor(GeminiBrowser):
             print(f"    ⏱ [图片解码] {decode_time:.3f}s (尺寸: {width}x{height})")
 
             # 去除水印（如果启用）
-            if getattr(self, 'remove_watermark', True):
+            if remove_watermark:
                 watermark_start = time.time()
                 img = WatermarkRemover.remove_watermark(img, watermark_size=None, verbose=True)
                 watermark_time = time.time() - watermark_start
@@ -999,7 +999,7 @@ class GeminiImageEditor(GeminiBrowser):
             return False, None
 
     async def _save_as_png(
-        self, image_bytes: bytes, save_path: str
+        self, image_bytes: bytes, save_path: str, remove_watermark: bool = True
     ) -> tuple[bool, str | None]:
         """将图片字节数据保存为 PNG 格式（可选去除水印）"""
         import base64
