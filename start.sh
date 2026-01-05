@@ -23,6 +23,22 @@ log_info() { echo -e "${GREEN}[INFO]${NC} $1"; }
 log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
+# 自动检测 docker compose 命令
+detect_compose() {
+    if command -v dc &>/dev/null; then
+        echo "dc"
+    elif docker compose version &>/dev/null; then
+        echo "docker compose"
+    elif docker-compose version &>/dev/null; then
+        echo "docker-compose"
+    else
+        log_error "No docker compose command found (dc, docker compose, docker-compose)"
+        exit 1
+    fi
+}
+
+DC=$(detect_compose)
+
 # 生成 TLS 证书（RDP 需要）
 generate_certs() {
     if [ ! -f "${CERTS_DIR}/tls.key" ] || [ ! -f "${CERTS_DIR}/tls.cert" ]; then
@@ -51,12 +67,12 @@ start_api() {
     generate_certs
 
     log_info "Starting Gemini2API service..."
-    docker compose up -d gemini2api
+    $DC up -d gemini2api
 
     log_info "Waiting for service to start..."
     sleep 5
 
-    if docker compose ps gemini2api | grep -q "Up"; then
+    if $DC ps gemini2api | grep -q "Up"; then
         log_info "Gemini2API started successfully!"
         echo ""
         echo "========================================"
@@ -72,7 +88,7 @@ start_api() {
         echo ""
     else
         log_error "Failed to start service"
-        docker compose logs gemini2api
+        $DC logs gemini2api
         exit 1
     fi
 }
@@ -84,9 +100,9 @@ do_login() {
     generate_certs
 
     # 确保容器运行
-    if ! docker compose ps gemini2api 2>/dev/null | grep -q "Up"; then
+    if ! $DC ps gemini2api 2>/dev/null | grep -q "Up"; then
         log_info "Starting container..."
-        docker compose up -d gemini2api
+        $DC up -d gemini2api
         sleep 3
     fi
 
@@ -125,19 +141,19 @@ do_login() {
 # 停止所有服务
 stop_all() {
     log_info "Stopping all services..."
-    docker compose down
+    $DC down
     log_info "All services stopped"
 }
 
 # 查看日志
 show_logs() {
-    docker compose logs -f gemini2api
+    $DC logs -f gemini2api
 }
 
 # 构建镜像
 build_image() {
     log_info "Building Docker image..."
-    docker compose build
+    $DC build
     log_info "Build complete"
 }
 

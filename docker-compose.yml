@@ -7,17 +7,18 @@ services:
       context: .
       dockerfile: Dockerfile
     image: gemini2api:latest
-    container_name: gemini2api
-    hostname: gemini2api
+    # container_name: gemini2api
+    # hostname: gemini2api
     restart: unless-stopped
     # Chromium 共享内存
     shm_size: 2gb
     # 如遇浏览器问题可取消注释
     # security_opt:
     #   - seccomp=unconfined
-    ports:
-      - "${API_PORT:-8000}:8000"
-      - "${RDP_PORT:-3500}:3500"
+    # ports:
+    #   - "${API_PORT:-8000}:8000"
+    #   - "${RDP_PORT:-3500}:3500"
+    #   # cloudflared access rdp --hostname rdp.example.com --url rdp://localhost:3389
     volumes:
       # 代码挂载（开发模式，修改后无需重新构建）
       - ./main.py:/app/main.py:ro
@@ -34,8 +35,16 @@ services:
       - XDG_RUNTIME_DIR=/tmp
       - WAYLAND_DISPLAY=wayland-0
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 30s
+
+    networks:
+      - gateway
+
+networks:
+  gateway:
+    external: true
+    name: ${GATEWAY_NETWORK_NAME:-gateway}
