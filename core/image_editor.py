@@ -796,6 +796,7 @@ class GeminiImageEditor(GeminiBrowser):
         save_path: str,
         lossless: bool = True,
         click_method: str = "no_wait",
+        remove_watermark: bool = True,
     ) -> tuple[bool, str | None]:
         """
         下载图片并转换为 WebP 格式（更小的文件体积）
@@ -807,6 +808,7 @@ class GeminiImageEditor(GeminiBrowser):
             save_path: 保存路径（会自动改为.webp扩展名）
             lossless: 是否使用无损压缩，默认 True（推荐）
             click_method: 点击方法 (js/force/no_wait/normal)，默认 no_wait
+            remove_watermark: 是否去除水印，默认 True
 
         Returns:
             (是否下载成功, SHA256摘要)
@@ -1011,7 +1013,7 @@ class GeminiImageEditor(GeminiBrowser):
 
         try:
             # 如果启用了水印去除,先处理图片
-            if getattr(self, 'remove_watermark', True):
+            if remove_watermark:
                 # 解码图片
                 decode_start = time.time()
                 img = Image.open(BytesIO(image_bytes))
