@@ -8,11 +8,12 @@ rm -f /app/data/browser_data/*/Singleton* 2>/dev/null || true
 if [ -f /etc/weston/tls.cert ] && [ -f /etc/weston/tls.key ]; then
     echo "Starting Weston RDP server..."
     weston --socket=wayland-0 --backend=rdp \
+        --config=/app/weston.ini \
         --rdp-tls-cert=/etc/weston/tls.cert \
         --rdp-tls-key=/etc/weston/tls.key \
         --port=3500 \
-        --width=${SCREEN_WIDTH:-1920} \
-        --height=${SCREEN_HEIGHT:-1080} &
+        --width=${SCREEN_WIDTH:-1280} \
+        --height=${SCREEN_HEIGHT:-720} &
     sleep 2
     echo "Weston started on port 3500"
 else

@@ -28,6 +28,8 @@ services:
       - ./data:/app/data
       # 配置文件
       - ./config:/app/config:ro
+      # Weston RDP 配置
+      - ./weston.ini:/app/weston.ini:ro
       # TLS 证书（RDP 连接需要）
       - ./certs:/etc/weston:ro
     environment:

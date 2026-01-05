@@ -39,6 +39,22 @@ detect_compose() {
 
 DC=$(detect_compose)
 
+# 获取容器名（基于 COMPOSE_PROJECT_NAME）
+get_container_name() {
+    # 优先从 .env 文件读取，否则使用目录名作为默认值
+    local project_name="${COMPOSE_PROJECT_NAME:-}"
+    if [ -z "$project_name" ] && [ -f ".env" ]; then
+        project_name=$(grep -E "^COMPOSE_PROJECT_NAME=" .env 2>/dev/null | cut -d'=' -f2)
+    fi
+    # 如果仍为空，使用当前目录名（docker compose 默认行为）
+    if [ -z "$project_name" ]; then
+        project_name=$(basename "$SCRIPT_DIR")
+    fi
+    echo "${project_name}-gemini2api-1"
+}
+
+CONTAINER_NAME=$(get_container_name)
+
 # 生成 TLS 证书（RDP 需要）
 generate_certs() {
     if [ ! -f "${CERTS_DIR}/tls.key" ] || [ ! -f "${CERTS_DIR}/tls.cert" ]; then
@@ -108,10 +124,10 @@ do_login() {
 
     # 在容器内按需启动 Weston（使用 docker exec -d 避免僵尸进程）
     log_info "Starting Weston RDP server..."
-    if docker exec gemini2api pgrep -x weston > /dev/null 2>&1; then
+    if docker exec "$CONTAINER_NAME" pgrep -x weston > /dev/null 2>&1; then
         log_info "Weston already running"
     else
-        docker exec -d gemini2api weston --socket=wayland-0 --backend=rdp \
+        docker exec -d "$CONTAINER_NAME" weston --socket=wayland-0 --backend=rdp \
             --rdp-tls-cert=/etc/weston/tls.cert \
             --rdp-tls-key=/etc/weston/tls.key \
             --port=3500 --width=${SCREEN_WIDTH:-1920} --height=${SCREEN_HEIGHT:-1080}
@@ -135,7 +151,7 @@ do_login() {
     echo ""
 
     # 运行登录脚本
-    docker exec -it gemini2api uv run python -m core.gemini_browser login "$account_id"
+    docker exec -it "$CONTAINER_NAME" uv run python -m core.gemini_browser login "$account_id"
 }
 
 # 停止所有服务
