@@ -16,8 +16,8 @@ services:
     # security_opt:
     #   - seccomp=unconfined
     # ports:
-    #   - "${API_PORT:-8000}:8000"
     #   - "${RDP_PORT:-3500}:3500"
+    #   - "${API_PORT:-8000}:8000"
     #   # cloudflared access rdp --hostname rdp.example.com --url rdp://localhost:3389
     volumes:
       # 代码挂载（开发模式，修改后无需重新构建）
@@ -42,11 +42,30 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
-
     networks:
-      - gateway
+      - default
+
+  frontend:
+    image: nginx:alpine
+    restart: unless-stopped
+    # ports:
+    #   - "${FRONTEND_PORT:-8080}:80"
+    volumes:
+      # nginx 配置挂载到 default.conf.template（覆盖 nginx 默认配置）
+      - ./nginx.template.conf:/etc/nginx/templates/default.conf.template:ro
+      # 静态文件目录（outputs）
+      - ./data/outputs:/usr/share/nginx/html/outputs:ro
+    depends_on:
+      - gemini2api
+    networks:
+      default:
+      gateway:
+        aliases:
+          - ${COMPOSE_PROJECT_NAME:-gemini2api}-frontend
 
 networks:
+  default:
+    name: ${COMPOSE_PROJECT_NAME:-gemini2api}_internal
   gateway:
     external: true
     name: ${GATEWAY_NETWORK_NAME:-gateway}

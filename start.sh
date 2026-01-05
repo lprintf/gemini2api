@@ -25,9 +25,7 @@ log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
 # 自动检测 docker compose 命令
 detect_compose() {
-    if command -v dc &>/dev/null; then
-        echo "dc"
-    elif docker compose version &>/dev/null; then
+    if docker compose version &>/dev/null; then
         echo "docker compose"
     elif docker-compose version &>/dev/null; then
         echo "docker-compose"
@@ -78,23 +76,21 @@ init_dirs() {
     chmod 777 data data/browser_data 2>/dev/null || true
 }
 
-# 启动 API 服务
+# 启动服务
 start_api() {
     generate_certs
 
-    log_info "Starting Gemini2API service..."
-    $DC up -d gemini2api
+    log_info "Starting Gemini2API services..."
+    $DC up -d
 
     log_info "Waiting for service to start..."
     sleep 5
 
-    if $DC ps gemini2api | grep -q "Up"; then
+    if $DC ps gemini2api | grep -q "Up\|running"; then
         log_info "Gemini2API started successfully!"
         echo ""
         echo "========================================"
-        echo "  API Service: http://localhost:${API_PORT:-8000}"
-        echo "  Admin Panel: http://localhost:${API_PORT:-8000}/admin"
-        echo "  API Docs:    http://localhost:${API_PORT:-8000}/docs"
+        echo "  Access: https://${COMPOSE_PROJECT_NAME:-gemini2api}.${DOMAIN}"
         echo "========================================"
         echo ""
         echo "Commands:"
@@ -116,7 +112,7 @@ do_login() {
     generate_certs
 
     # 确保容器运行
-    if ! $DC ps gemini2api 2>/dev/null | grep -q "Up"; then
+    if ! $DC ps gemini2api 2>/dev/null | grep -q "Up\|running"; then
         log_info "Starting container..."
         $DC up -d gemini2api
         sleep 3
@@ -163,7 +159,7 @@ stop_all() {
 
 # 查看日志
 show_logs() {
-    $DC logs -f gemini2api
+    $DC logs -f
 }
 
 # 构建镜像
@@ -180,7 +176,7 @@ show_help() {
     echo "Usage: $0 [command] [options]"
     echo ""
     echo "Commands:"
-    echo "  (default)     Start API service"
+    echo "  (default)     Start all services"
     echo "  login [id]    Start Weston + browser login (default account: 0)"
     echo "  stop          Stop all services"
     echo "  logs          Show logs"
@@ -188,14 +184,12 @@ show_help() {
     echo "  help          Show this help"
     echo ""
     echo "Environment variables:"
-    echo "  API_PORT      API service port (default: 8000)"
     echo "  RDP_PORT      RDP port for login (default: 3500)"
     echo "  TZ            Timezone (default: Asia/Shanghai)"
     echo ""
     echo "Examples:"
-    echo "  $0                      # Start API service"
+    echo "  $0                      # Start all services"
     echo "  $0 login 0              # Login with account 0"
-    echo "  API_PORT=9000 $0        # Start on port 9000"
 }
 
 # 主入口
