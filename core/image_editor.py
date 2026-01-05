@@ -1089,7 +1089,7 @@ class GeminiImageEditor(GeminiBrowser):
 
             # 多次尝试点击下载按钮（下载按钮可能未就绪，需要重试）
             download_timeout = 5000
-            max_click_attempts = 4
+            max_click_attempts = 6
 
             for attempt in range(max_click_attempts):
                 try:
