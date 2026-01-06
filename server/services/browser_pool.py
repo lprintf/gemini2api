@@ -64,7 +64,7 @@ class TabInstance:
             result = await self.editor.edit_image_enhanced(
                 input_image=input_image,
                 prompt=prompt,
-                output_dir=f"data/outputs/{task_id}",
+                output_dir="data/outputs/images",
                 model=model,
                 temporary_chat=False,
                 output_format="webp",

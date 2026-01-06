@@ -95,6 +95,13 @@ async def create_image_edit(
     Create an edited or extended image given an original image and a prompt.
 
     Compatible with OpenAI Images API.
+
+    **URL 格式说明**：当 response_format 为 "url" 时，返回的 url 字段格式为 `{date}/{hash}`，
+    完整访问路径需拼接为 `{base_url}/outputs/images/{url}.webp`。
+
+    示例：
+    - 返回值：`20260105/PH-p-i4eZsb1npm51sn_ZgFfa7DP8iQZzevQSFDhVkA`
+    - 完整 URL：`https://example.com/outputs/images/20260105/PH-p-i4eZsb1npm51sn_ZgFfa7DP8iQZzevQSFDhVkA.webp`
     """
     if browser_pool is None:
         raise HTTPException(status_code=500, detail="Browser pool not initialized")
@@ -135,8 +142,12 @@ async def create_image_edit(
 
         for path in result_paths:
             if response_format == "url":
-                # 返回文件路径作为 URL（实际部署时应该返回 HTTP URL）
-                data.append(ImageData(url=f"/outputs/{task_id}/{Path(path).name}"))
+                # 从路径提取日期目录和文件名：data/outputs/images/20260105/xxx.webp
+                # 返回相对路径，完整 URL 需拼接 {base_url}/outputs/images/{url}.webp
+                path_obj = Path(path)
+                date_dir = path_obj.parent.name  # 日期目录 (20260105)
+                file_hash = path_obj.stem  # 文件哈希 (不含扩展名)
+                data.append(ImageData(url=f"{date_dir}/{file_hash}"))
             else:  # b64_json
                 # 读取图片并编码为 base64
                 with open(path, "rb") as f:
