@@ -103,8 +103,11 @@ async def create_image_edit(
 
     Compatible with OpenAI Images API.
 
-    Returns preview images immediately. Use /v1/images/hd/{task_id}/{date}/{hash}
-    to download high-resolution versions.
+    Returns preview images immediately with URL format: `{date}/{hash}`.
+    - Preview: `/outputs/q/{date}/{hash}.{fmt}`
+    - HD: `/outputs/hd/{date}/{hash}.webp`
+
+    Use GET /v1/images/hd/{date}/{hash} to check HD status.
     """
     if browser_pool is None:
         raise HTTPException(status_code=500, detail="Browser pool not initialized")
@@ -139,17 +142,19 @@ async def create_image_edit(
         if not result or not result.get("images"):
             raise HTTPException(status_code=500, detail="Image edit failed")
 
-        # 构造响应 - 返回 {task_id}/{date}/{hash} 格式的 URL
+        # 构造响应 - 返回 {date}/{hash} 格式的 URL
         created = int(time.time())
         data = []
 
         for img_info in result["images"]:
             if response_format == "url":
-                # 返回 {task_id}/{date}/{hash} 格式，用于高清下载
-                data.append(ImageData(url=f"/outputs/{task_id}/{img_info['path']}"))
+                # 返回 {date}/{hash} 格式，客户端可拼接完整路径
+                # 预览图: /outputs/q/{date}/{hash}.{fmt}
+                # 高清图: /outputs/hd/{date}/{hash}.webp
+                data.append(ImageData(url=img_info['id']))
             else:  # b64_json
                 # 读取预览图并编码为 base64
-                preview_path = Path(f"data/outputs/{task_id}/{img_info['path']}")
+                preview_path = Path(f"data/outputs/q/{img_info['date']}/{img_info['hash']}.{img_info['format']}")
                 with open(preview_path, "rb") as f:
                     image_data = base64.b64encode(f.read()).decode()
                 data.append(ImageData(b64_json=image_data))
@@ -158,7 +163,13 @@ async def create_image_edit(
 
     except HTTPException:
         raise
+    except KeyError as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"KeyError: {e} - available keys: {list(result.get('images', [{}])[0].keys()) if result else 'no result'}")
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -176,9 +187,8 @@ async def get_task_status(
     raise HTTPException(status_code=501, detail="Async tasks not implemented yet")
 
 
-@router.get("/images/hd/{task_id}/{date}/{file_hash}", response_model=HDImageResponse)
+@router.get("/images/hd/{date}/{file_hash}", response_model=HDImageResponse)
 async def get_hd_image(
-    task_id: str,
     date: str,
     file_hash: str,
     authorization: Optional[str] = Header(None),
@@ -190,8 +200,7 @@ async def get_hd_image(
     This endpoint checks if the HD version is ready and returns its URL.
 
     Args:
-        task_id: The task ID from the original edit request
-        date: The date directory (e.g., 20260106)
+        date: The date directory (e.g., 20260107)
         file_hash: The hash of the preview image
 
     Returns:
@@ -199,10 +208,10 @@ async def get_hd_image(
     """
     import json
 
-    # 读取任务元数据
-    metadata_path = Path(f"data/outputs/{task_id}/metadata.json")
+    # 读取图片元数据
+    metadata_path = Path(f"data/outputs/meta/{date}/{file_hash}.json")
     if not metadata_path.exists():
-        raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
+        raise HTTPException(status_code=404, detail=f"Image {date}/{file_hash} not found")
 
     try:
         with open(metadata_path, "r") as f:
@@ -210,18 +219,8 @@ async def get_hd_image(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to read metadata: {e}")
 
-    # 查找指定 hash 的图片
-    image_info = None
-    for img in metadata.get("images", []):
-        if img.get("hash") == file_hash:
-            image_info = img
-            break
-
-    if image_info is None:
-        raise HTTPException(status_code=404, detail=f"Image hash {file_hash} not found in task {task_id}")
-
     # 检查 HD 状态
-    hd_status = image_info.get("hd_status", "pending")
+    hd_status = metadata.get("hd_status", "pending")
 
     if hd_status == "pending":
         # HD 下载尚未开始或正在进行
@@ -232,15 +231,11 @@ async def get_hd_image(
     elif hd_status == "failed":
         raise HTTPException(status_code=500, detail="HD image download failed")
     elif hd_status == "completed":
-        # HD 已完成
-        hd_path = image_info.get("hd_path")
-        if not hd_path:
-            raise HTTPException(status_code=500, detail="HD path not found in metadata")
-
+        # HD 已完成，返回路径
         return HDImageResponse(
-            url=f"/outputs/{task_id}/{hd_path}",
-            size=image_info.get("hd_size", 0),
-            dimensions=image_info.get("hd_dimensions", "unknown"),
+            url=f"/outputs/hd/{date}/{file_hash}.webp",
+            size=metadata.get("hd_size", 0),
+            dimensions=metadata.get("hd_dimensions", "unknown"),
         )
     else:
         # 未知状态，可能还在下载中

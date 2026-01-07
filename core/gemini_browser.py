@@ -230,8 +230,11 @@ class GeminiBrowser:
         )
 
         print("\n正在访问 Gemini...")
-        await self.page.goto("https://gemini.google.com", timeout=timeout)
-        await asyncio.sleep(3)
+        await self.page.goto(
+            "https://gemini.google.com/app",
+            wait_until="load",
+            timeout=timeout,
+        )
 
         # 检查登录状态
         title = await self.page.title()

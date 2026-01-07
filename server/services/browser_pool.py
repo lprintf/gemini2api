@@ -17,25 +17,27 @@ import json
 import time
 from collections import deque
 from datetime import datetime
+from enum import Enum
 from io import BytesIO
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-from enum import Enum
 
 from core.enhanced_editor import EnhancedGeminiImageEditor
+from core.watermark_remover import WatermarkRemover
 from server.core.database import get_db
 from server.core.models import BrowserConfig, TaskRecord
 
 
 class BrowserStatus(str, Enum):
     """浏览器状态"""
-    IDLE = "idle"           # 空闲，可接受任务
-    BUSY = "busy"           # 忙碌，正在处理任务
+
+    IDLE = "idle"  # 空闲，可接受任务
+    BUSY = "busy"  # 忙碌，正在处理任务
     DOWNLOADING_HD = "downloading_hd"  # 后台下载高清图中
-    STARTING = "starting"   # 启动中
-    STOPPING = "stopping"   # 停止中
-    ERROR = "error"         # 错误状态
-    STOPPED = "stopped"     # 已停止
+    STARTING = "starting"  # 启动中
+    STOPPING = "stopping"  # 停止中
+    ERROR = "error"  # 错误状态
+    STOPPED = "stopped"  # 已停止
 
 
 class TabInstance:
@@ -55,10 +57,14 @@ class TabInstance:
         self.hd_metadata: Optional[Dict[str, Any]] = None  # 预览图元数据
         self.hd_download_task: Optional[asyncio.Task] = None  # 后台高清下载任务
 
-    async def execute_task(self, task_id: str, input_image: str, prompt: str, model: str = "Fast") -> Optional[List[str]]:
+    async def execute_task(
+        self, task_id: str, input_image: str, prompt: str, model: str = "Fast"
+    ) -> Optional[List[str]]:
         """执行图片编辑任务"""
         if self.status != BrowserStatus.IDLE:
-            raise RuntimeError(f"Tab {self.browser_id}-{self.tab_id} is not idle (status: {self.status})")
+            raise RuntimeError(
+                f"Tab {self.browser_id}-{self.tab_id} is not idle (status: {self.status})"
+            )
 
         print(f"[Tab {self.browser_id}-{self.tab_id}] Executing task {task_id}")
         self.status = BrowserStatus.BUSY
@@ -84,7 +90,9 @@ class TabInstance:
             if result:
                 self.total_tasks += 1
                 result_paths = result
-                print(f"[Tab {self.browser_id}-{self.tab_id}] Task {task_id} completed successfully")
+                print(
+                    f"[Tab {self.browser_id}-{self.tab_id}] Task {task_id} completed successfully"
+                )
             else:
                 self.failed_tasks += 1
                 error_message = "No result returned"
@@ -107,16 +115,21 @@ class TabInstance:
             # 更新任务记录到数据库
             try:
                 db = get_db()
-                await db.update_task(task_id, {
-                    "browser_id": f"{self.browser_id}-tab{self.tab_id}",
-                    "status": "completed" if result_paths else "failed",
-                    "result_paths": result_paths,
-                    "error_message": error_message,
-                    "duration": duration,
-                    "completed_at": datetime.now(),
-                })
+                await db.update_task(
+                    task_id,
+                    {
+                        "browser_id": f"{self.browser_id}-tab{self.tab_id}",
+                        "status": "completed" if result_paths else "failed",
+                        "result_paths": result_paths,
+                        "error_message": error_message,
+                        "duration": duration,
+                        "completed_at": datetime.now(),
+                    },
+                )
             except Exception as db_error:
-                print(f"[Tab {self.browser_id}-{self.tab_id}] Failed to update task in DB: {db_error}")
+                print(
+                    f"[Tab {self.browser_id}-{self.tab_id}] Failed to update task in DB: {db_error}"
+                )
 
     async def execute_fast_task(
         self,
@@ -136,18 +149,24 @@ class TabInstance:
         4. 后台启动高清下载任务
         5. 高清下载完成后自动释放标签页
 
+        输出目录结构：
+        - 预览图：outputs/q/{date}/{hash}.{fmt}
+        - 高清图：outputs/hd/{date}/{hash}.webp
+        - 元数据：outputs/meta/{date}/{hash}.json
+
         Returns:
             Dict with preview images info:
             {
                 "task_id": "task-xxx",
                 "images": [
-                    {"hash": "abc123", "path": "20260106/abc123.jpg", "url": "..."}
+                    {"hash": "abc123", "id": "20260107/abc123", "url": "..."}
                 ],
-                "metadata_path": "data/outputs/task-xxx/metadata.json"
             }
         """
         if self.status != BrowserStatus.IDLE:
-            raise RuntimeError(f"Tab {self.browser_id}-{self.tab_id} is not idle (status: {self.status})")
+            raise RuntimeError(
+                f"Tab {self.browser_id}-{self.tab_id} is not idle (status: {self.status})"
+            )
 
         print(f"[Tab {self.browser_id}-{self.tab_id}] Executing fast task {task_id}")
         print(f"  Input: {input_image}")
@@ -160,8 +179,7 @@ class TabInstance:
 
         total_start = time.time()
         timings = {}
-        task_output_dir = Path(output_dir) / task_id
-        task_output_dir.mkdir(parents=True, exist_ok=True)
+        base_output_dir = Path(output_dir)
 
         try:
             # 1. 准备页面环境并执行生成
@@ -192,7 +210,9 @@ class TabInstance:
                 timeout=generation_timeout,
             )
             if not generation_success:
-                print(f"[Tab {self.browser_id}-{self.tab_id}] Generation timeout ({generation_timeout}s), waiting extra 10s...")
+                print(
+                    f"[Tab {self.browser_id}-{self.tab_id}] Generation timeout ({generation_timeout}s), waiting extra 10s..."
+                )
                 await asyncio.sleep(10)
             timings["generation"] = time.time() - stage_start
             print(f"  ⏱ [生成等待] {timings['generation']:.3f}s")
@@ -217,17 +237,19 @@ class TabInstance:
             if not image_urls:
                 raise RuntimeError("No generated images found")
 
-            # 5. 下载预览图并计算 hash
+            # 5. 下载预览图并计算 hash，保存到 outputs/q/{date}/{hash}.{fmt}
             date_str = datetime.now().strftime("%Y%m%d")
-            date_dir = task_output_dir / date_str
-            date_dir.mkdir(parents=True, exist_ok=True)
+            preview_dir = base_output_dir / "q" / date_str
+            preview_dir.mkdir(parents=True, exist_ok=True)
 
             images_info = []
             download_start = time.time()
             for i, url in enumerate(image_urls):
                 response = await page.request.get(url)
                 if not response.ok:
-                    print(f"[Tab {self.browser_id}-{self.tab_id}] Failed to download preview {i}: HTTP {response.status}")
+                    print(
+                        f"[Tab {self.browser_id}-{self.tab_id}] Failed to download preview {i}: HTTP {response.status}"
+                    )
                     continue
 
                 image_bytes = await response.body()
@@ -236,22 +258,30 @@ class TabInstance:
                 sha256_hash = hashlib.sha256(image_bytes).digest()
                 file_hash = base64.urlsafe_b64encode(sha256_hash).decode().rstrip("=")
 
-                # 检测格式并保存
+                # 检测格式并保存到 q/{date}/{hash}.{fmt}
                 fmt = self._detect_image_format(image_bytes)
-                preview_path = date_dir / f"{file_hash}.{fmt}"
+                preview_path = preview_dir / f"{file_hash}.{fmt}"
                 with open(preview_path, "wb") as f:
                     f.write(image_bytes)
 
-                images_info.append({
-                    "index": i,
-                    "hash": file_hash,
-                    "path": f"{date_str}/{file_hash}.{fmt}",
-                    "url": url,
-                    "size": len(image_bytes),
-                    "format": fmt,
-                })
+                # id 格式：{date}/{hash}，用于 API 返回和 HD 请求
+                image_id = f"{date_str}/{file_hash}"
 
-                print(f"[Tab {self.browser_id}-{self.tab_id}] Preview {i} saved: {file_hash[:16]}... ({len(image_bytes)/1024:.1f}KB)")
+                images_info.append(
+                    {
+                        "index": i,
+                        "hash": file_hash,
+                        "id": image_id,  # 统一标识符
+                        "date": date_str,
+                        "format": fmt,
+                        "url": url,
+                        "size": len(image_bytes),
+                    }
+                )
+
+                print(
+                    f"[Tab {self.browser_id}-{self.tab_id}] Preview {i} saved: {file_hash[:16]}... ({len(image_bytes)/1024:.1f}KB)"
+                )
 
             timings["download"] = time.time() - download_start
             print(f"  ⏱ [预览下载] {timings['download']:.3f}s ({len(images_info)} 张)")
@@ -259,24 +289,29 @@ class TabInstance:
             if not images_info:
                 raise RuntimeError("Failed to download any preview images")
 
-            # 6. 保存元数据（hd_status 初始为 pending）
-            metadata = {
-                "task_id": task_id,
-                "browser_id": self.browser_id,
-                "tab_id": self.tab_id,
-                "created_at": datetime.now().isoformat(),
-                "model": model,
-                "prompt": prompt,
-                "images": images_info,
-                "hd_status": "pending",  # pending → downloading → completed/failed
-            }
+            # 6. 为每张图保存独立的元数据到 outputs/meta/{date}/{hash}.json
+            meta_dir = base_output_dir / "meta" / date_str
+            meta_dir.mkdir(parents=True, exist_ok=True)
 
-            metadata_path = task_output_dir / "metadata.json"
-            with open(metadata_path, "w") as f:
-                json.dump(metadata, f, indent=2)
+            for img_info in images_info:
+                meta = {
+                    "task_id": task_id,
+                    "browser_id": self.browser_id,
+                    "tab_id": self.tab_id,
+                    "created_at": datetime.now().isoformat(),
+                    "model": model,
+                    "prompt": prompt,
+                    "image": img_info,
+                    "hd_status": "pending",  # pending → downloading → completed/failed
+                }
+                meta_path = meta_dir / f"{img_info['hash']}.json"
+                with open(meta_path, "w") as f:
+                    json.dump(meta, f, indent=2)
 
             duration = time.time() - total_start
-            print(f"\n[Tab {self.browser_id}-{self.tab_id}] Fast task {task_id} preview completed")
+            print(
+                f"\n[Tab {self.browser_id}-{self.tab_id}] Fast task {task_id} preview completed"
+            )
             print(f"  ⏱ 总耗时: {duration:.3f}s")
             print(f"    准备: {timings.get('prepare', 0):.3f}s")
             print(f"    提交: {timings.get('submit', 0):.3f}s")
@@ -287,13 +322,12 @@ class TabInstance:
 
             # 7. 设置状态为 DOWNLOADING_HD，启动后台高清下载任务
             self.status = BrowserStatus.DOWNLOADING_HD
-            self.hd_metadata = metadata
-            self._start_background_hd_download(task_output_dir, model)
+            self.hd_metadata = {"images": images_info, "date": date_str}
+            self._start_background_hd_download(base_output_dir, model)
 
             return {
                 "task_id": task_id,
                 "images": images_info,
-                "metadata_path": str(metadata_path),
             }
 
         except Exception as e:
@@ -301,26 +335,32 @@ class TabInstance:
             self.status = BrowserStatus.IDLE
             self.current_task_id = None
             self.hd_metadata = None
-            print(f"[Tab {self.browser_id}-{self.tab_id}] Fast task {task_id} error: {e}")
+            print(
+                f"[Tab {self.browser_id}-{self.tab_id}] Fast task {task_id} error: {e}"
+            )
             raise
 
-    def _start_background_hd_download(self, task_output_dir: Path, model: str):
-        """启动后台高清下载任务"""
+    def _start_background_hd_download(self, base_output_dir: Path, model: str):
+        """启动后台高清下载任务，保存到 outputs/hd/{date}/{hash}.webp"""
+
         async def download_all_hd():
             """下载所有图片的高清版本"""
             if not self.hd_metadata:
                 return
 
-            task_id = self.hd_metadata["task_id"]
             images = self.hd_metadata["images"]
+            date_str = self.hd_metadata["date"]
 
-            print(f"[Tab {self.browser_id}-{self.tab_id}] Starting background HD download for {len(images)} images...")
+            print(
+                f"[Tab {self.browser_id}-{self.tab_id}] Starting background HD download for {len(images)} images..."
+            )
 
-            # 更新状态为 downloading
-            self.hd_metadata["hd_status"] = "downloading"
-            metadata_path = task_output_dir / "metadata.json"
-            with open(metadata_path, "w") as f:
-                json.dump(self.hd_metadata, f, indent=2)
+            # HD 输出目录
+            hd_dir = base_output_dir / "hd" / date_str
+            hd_dir.mkdir(parents=True, exist_ok=True)
+
+            # 元数据目录
+            meta_dir = base_output_dir / "meta" / date_str
 
             hd_start = time.time()
             success_count = 0
@@ -329,20 +369,41 @@ class TabInstance:
                 try:
                     target_url = img_info["url"]
                     file_hash = img_info["hash"]
-                    date_str = img_info["path"].split("/")[0]
 
-                    print(f"[Tab {self.browser_id}-{self.tab_id}] Downloading HD for {file_hash[:16]}...")
+                    print(
+                        f"[Tab {self.browser_id}-{self.tab_id}] Downloading HD for {file_hash[:16]}..."
+                    )
 
                     # 使用 hover 下载按钮获取高清图
-                    hd_bytes = await self.editor._download_via_hover_button(target_url, "no_wait")
+                    hd_bytes = await self.editor._download_via_hover_button(
+                        target_url, "no_wait"
+                    )
 
                     if not hd_bytes:
-                        print(f"[Tab {self.browser_id}-{self.tab_id}] HD download failed for {file_hash[:16]}")
-                        img_info["hd_status"] = "failed"
+                        print(
+                            f"[Tab {self.browser_id}-{self.tab_id}] HD download failed for {file_hash[:16]}"
+                        )
+                        self._update_meta_hd_status(
+                            meta_dir / f"{file_hash}.json", "failed"
+                        )
                         continue
+
+                    # 去水印处理
+                    try:
+                        hd_bytes = WatermarkRemover.remove_watermark_from_bytes(
+                            hd_bytes, verbose=False
+                        )
+                        print(
+                            f"[Tab {self.browser_id}-{self.tab_id}] HD watermark removed for {file_hash[:16]}"
+                        )
+                    except Exception as wm_err:
+                        print(
+                            f"[Tab {self.browser_id}-{self.tab_id}] HD watermark removal failed for {file_hash[:16]}: {wm_err}"
+                        )
 
                     # 转换为 WebP
                     from PIL import Image
+
                     pil_img = Image.open(BytesIO(hd_bytes))
                     width, height = pil_img.size
 
@@ -350,36 +411,36 @@ class TabInstance:
                     pil_img.save(webp_buffer, "WEBP", lossless=True)
                     webp_data = webp_buffer.getvalue()
 
-                    # 保存高清图
-                    date_dir = task_output_dir / date_str
-                    hd_path = date_dir / f"{file_hash}_hd.webp"
-
+                    # 保存高清图到 hd/{date}/{hash}.webp
+                    hd_path = hd_dir / f"{file_hash}.webp"
                     with open(hd_path, "wb") as f:
                         f.write(webp_data)
 
                     # 更新元数据
-                    img_info["hd_path"] = f"{date_str}/{file_hash}_hd.webp"
-                    img_info["hd_size"] = len(webp_data)
-                    img_info["hd_dimensions"] = f"{width}x{height}"
-                    img_info["hd_status"] = "completed"
+                    self._update_meta_hd_status(
+                        meta_dir / f"{file_hash}.json",
+                        "completed",
+                        hd_size=len(webp_data),
+                        hd_dimensions=f"{width}x{height}",
+                    )
                     success_count += 1
 
-                    print(f"[Tab {self.browser_id}-{self.tab_id}] HD saved: {file_hash[:16]}... ({len(webp_data)/1024:.1f}KB, {width}x{height})")
+                    print(
+                        f"[Tab {self.browser_id}-{self.tab_id}] HD saved: {file_hash[:16]}... ({len(webp_data)/1024:.1f}KB, {width}x{height})"
+                    )
 
                 except Exception as e:
-                    print(f"[Tab {self.browser_id}-{self.tab_id}] HD download error for {img_info.get('hash', '?')[:16]}: {e}")
-                    img_info["hd_status"] = "failed"
+                    print(
+                        f"[Tab {self.browser_id}-{self.tab_id}] HD download error for {img_info.get('hash', '?')[:16]}: {e}"
+                    )
+                    self._update_meta_hd_status(
+                        meta_dir / f"{img_info.get('hash', '')}.json", "failed"
+                    )
 
-            # 更新最终状态
             hd_duration = time.time() - hd_start
-            self.hd_metadata["hd_status"] = "completed" if success_count == len(images) else "partial"
-            self.hd_metadata["hd_completed_at"] = datetime.now().isoformat()
-            self.hd_metadata["hd_duration"] = hd_duration
-
-            with open(metadata_path, "w") as f:
-                json.dump(self.hd_metadata, f, indent=2)
-
-            print(f"[Tab {self.browser_id}-{self.tab_id}] Background HD download completed: {success_count}/{len(images)} in {hd_duration:.3f}s")
+            print(
+                f"[Tab {self.browser_id}-{self.tab_id}] Background HD download completed: {success_count}/{len(images)} in {hd_duration:.3f}s"
+            )
 
             # 释放标签页，准备下一个任务
             self.status = BrowserStatus.IDLE
@@ -389,13 +450,33 @@ class TabInstance:
 
             # 预热环境（准备下一个任务）
             try:
-                print(f"[Tab {self.browser_id}-{self.tab_id}] Preheating for next task (model: {model})...")
-                await self.editor.prepare_page_environment(model=model, temporary_chat=False)
+                print(
+                    f"[Tab {self.browser_id}-{self.tab_id}] Preheating for next task (model: {model})..."
+                )
+                await self.editor.prepare_page_environment(
+                    model=model, temporary_chat=False
+                )
                 print(f"[Tab {self.browser_id}-{self.tab_id}] Preheat completed")
             except Exception as e:
                 print(f"[Tab {self.browser_id}-{self.tab_id}] Preheat failed: {e}")
 
         self.hd_download_task = asyncio.create_task(download_all_hd())
+
+    def _update_meta_hd_status(self, meta_path: Path, status: str, **kwargs):
+        """更新元数据中的 HD 状态"""
+        try:
+            if not meta_path.exists():
+                return
+            with open(meta_path, "r") as f:
+                meta = json.load(f)
+            meta["hd_status"] = status
+            meta["hd_completed_at"] = datetime.now().isoformat()
+            for k, v in kwargs.items():
+                meta[k] = v
+            with open(meta_path, "w") as f:
+                json.dump(meta, f, indent=2)
+        except Exception as e:
+            print(f"[Tab {self.browser_id}-{self.tab_id}] Failed to update meta: {e}")
 
     def _detect_image_format(self, data: bytes) -> str:
         """根据文件头检测图片格式"""
@@ -438,7 +519,9 @@ class BrowserInstance:
         self._request_times: deque = deque()  # 请求时间戳队列
 
         self.status = BrowserStatus.STOPPED
-        self.base_editor: Optional[EnhancedGeminiImageEditor] = None  # 主编辑器（用于创建标签页）
+        self.base_editor: Optional[EnhancedGeminiImageEditor] = (
+            None  # 主编辑器（用于创建标签页）
+        )
         self.tabs: List[TabInstance] = []  # 标签页列表
         self.created_at = datetime.now()
         self.last_active_at: Optional[datetime] = None
@@ -455,7 +538,10 @@ class BrowserInstance:
         current_time = time.time()
 
         # 清理过期的请求记录
-        while self._request_times and self._request_times[0] < current_time - self.rate_window:
+        while (
+            self._request_times
+            and self._request_times[0] < current_time - self.rate_window
+        ):
             self._request_times.popleft()
 
         # 检查是否超限
@@ -505,26 +591,41 @@ class BrowserInstance:
             fast_count = self.max_tabs - pro_count
 
             # Tab 0: 使用主编辑器（Fast 模型）
-            tab0 = TabInstance(tab_id=0, browser_id=self.browser_id, preferred_model="Fast")
+            tab0 = TabInstance(
+                tab_id=0, browser_id=self.browser_id, preferred_model="Fast"
+            )
             tab0.editor = self.base_editor
             self.tabs.append(tab0)
             print(f"[Browser {self.browser_id}] Tab 0 created (preferred: Fast)")
 
             # Tab 1+: 并行创建其他标签页
             if self.max_tabs > 1:
+
                 async def create_tab(tab_id: int, preferred_model: str) -> TabInstance:
                     """并行创建单个标签页"""
-                    tab = TabInstance(tab_id=tab_id, browser_id=self.browser_id, preferred_model=preferred_model)
+                    tab = TabInstance(
+                        tab_id=tab_id,
+                        browser_id=self.browser_id,
+                        preferred_model=preferred_model,
+                    )
 
                     # 在同一个 context 中创建新的 page
                     new_page = await self.base_editor.context.new_page()
 
                     # 导航到 Gemini 页面（预热）
                     try:
-                        await new_page.goto("https://gemini.google.com", timeout=30000)
-                        print(f"[Browser {self.browser_id}] Tab {tab_id} navigated to Gemini")
+                        await new_page.goto(
+                            "https://gemini.google.com/app",
+                            wait_until="load",
+                            timeout=60000,
+                        )
+                        print(
+                            f"[Browser {self.browser_id}] Tab {tab_id} navigated to Gemini"
+                        )
                     except Exception as e:
-                        print(f"[Browser {self.browser_id}] Tab {tab_id} navigation warning: {e}")
+                        print(
+                            f"[Browser {self.browser_id}] Tab {tab_id} navigation warning: {e}"
+                        )
 
                     # 创建新的编辑器实例，复用 context 但使用新的 page
                     new_editor = EnhancedGeminiImageEditor(
@@ -540,7 +641,9 @@ class BrowserInstance:
                     new_editor.page = new_page
                     tab.editor = new_editor
 
-                    print(f"[Browser {self.browser_id}] Tab {tab_id} created (preferred: {preferred_model})")
+                    print(
+                        f"[Browser {self.browser_id}] Tab {tab_id} created (preferred: {preferred_model})"
+                    )
                     return tab
 
                 # 并行创建 Tab 1 到 Tab (max_tabs-1)
@@ -556,17 +659,25 @@ class BrowserInstance:
 
             self.status = BrowserStatus.IDLE
             self.last_active_at = datetime.now()
-            print(f"[Browser {self.browser_id}] Started successfully with {len(self.tabs)} tabs")
+            print(
+                f"[Browser {self.browser_id}] Started successfully with {len(self.tabs)} tabs"
+            )
 
             # 记录日志到数据库
             try:
                 db = get_db()
-                await db.add_log("INFO", f"Browser {self.browser_id} started with {self.max_tabs} tabs", self.browser_id)
+                await db.add_log(
+                    "INFO",
+                    f"Browser {self.browser_id} started with {self.max_tabs} tabs",
+                    self.browser_id,
+                )
             except Exception:
                 pass
 
             # 预热所有标签页（并行执行）
-            print(f"[Browser {self.browser_id}] Preheating all {len(self.tabs)} tabs...")
+            print(
+                f"[Browser {self.browser_id}] Preheating all {len(self.tabs)} tabs..."
+            )
             preheat_start = time.time()
 
             async def preheat_tab(tab: TabInstance):
@@ -579,17 +690,27 @@ class BrowserInstance:
                     )
                     elapsed = time.time() - tab_start
                     if success:
-                        print(f"[Browser {self.browser_id}] Tab {tab.tab_id} ({tab.preferred_model}) preheated successfully ({elapsed:.3f}s)")
+                        print(
+                            f"[Browser {self.browser_id}] Tab {tab.tab_id} ({tab.preferred_model}) preheated successfully ({elapsed:.3f}s)"
+                        )
                     else:
-                        print(f"[Browser {self.browser_id}] Tab {tab.tab_id} ({tab.preferred_model}) preheat failed ({elapsed:.3f}s)")
+                        print(
+                            f"[Browser {self.browser_id}] Tab {tab.tab_id} ({tab.preferred_model}) preheat failed ({elapsed:.3f}s)"
+                        )
                 except Exception as e:
-                    print(f"[Browser {self.browser_id}] Tab {tab.tab_id} ({tab.preferred_model}) preheat error: {e}")
+                    print(
+                        f"[Browser {self.browser_id}] Tab {tab.tab_id} ({tab.preferred_model}) preheat error: {e}"
+                    )
 
             # 并行预热所有标签页
-            await asyncio.gather(*[preheat_tab(tab) for tab in self.tabs], return_exceptions=True)
+            await asyncio.gather(
+                *[preheat_tab(tab) for tab in self.tabs], return_exceptions=True
+            )
 
             preheat_elapsed = time.time() - preheat_start
-            print(f"[Browser {self.browser_id}] All tabs preheated in {preheat_elapsed:.3f}s")
+            print(
+                f"[Browser {self.browser_id}] All tabs preheated in {preheat_elapsed:.3f}s"
+            )
 
         except Exception as e:
             self.status = BrowserStatus.ERROR
@@ -598,7 +719,11 @@ class BrowserInstance:
             # 记录错误日志
             try:
                 db = get_db()
-                await db.add_log("ERROR", f"Browser {self.browser_id} failed to start: {e}", self.browser_id)
+                await db.add_log(
+                    "ERROR",
+                    f"Browser {self.browser_id} failed to start: {e}",
+                    self.browser_id,
+                )
             except Exception:
                 pass
 
@@ -616,7 +741,9 @@ class BrowserInstance:
                     if tab.editor and tab.tab_id > 0:  # 不关闭主编辑器的 page
                         await tab.editor.page.close()
                 except Exception as e:
-                    print(f"[Browser {self.browser_id}] Error closing tab {tab.tab_id}: {e}")
+                    print(
+                        f"[Browser {self.browser_id}] Error closing tab {tab.tab_id}: {e}"
+                    )
 
             # 关闭主浏览器（这会关闭 context 和所有剩余的 pages）
             if self.base_editor:
@@ -629,7 +756,9 @@ class BrowserInstance:
             # 记录日志
             try:
                 db = get_db()
-                await db.add_log("INFO", f"Browser {self.browser_id} stopped", self.browser_id)
+                await db.add_log(
+                    "INFO", f"Browser {self.browser_id} stopped", self.browser_id
+                )
             except Exception:
                 pass
 
@@ -637,7 +766,9 @@ class BrowserInstance:
             print(f"[Browser {self.browser_id}] Error while stopping: {e}")
             self.status = BrowserStatus.ERROR
 
-    def get_available_tab(self, preferred_model: Optional[str] = None) -> Optional[TabInstance]:
+    def get_available_tab(
+        self, preferred_model: Optional[str] = None
+    ) -> Optional[TabInstance]:
         """
         获取空闲的标签页（智能选择策略）
 
@@ -660,7 +791,9 @@ class BrowserInstance:
             return idle_tabs[0]
 
         # 按首选模型筛选
-        matching_tabs = [tab for tab in idle_tabs if tab.preferred_model == preferred_model]
+        matching_tabs = [
+            tab for tab in idle_tabs if tab.preferred_model == preferred_model
+        ]
 
         if matching_tabs:
             # 有匹配的标签页
@@ -684,7 +817,9 @@ class BrowserInstance:
         """获取忙碌的标签页数量"""
         return sum(1 for tab in self.tabs if tab.status == BrowserStatus.BUSY)
 
-    async def execute_task(self, task_id: str, input_image: str, prompt: str, model: str = "Fast") -> Optional[List[str]]:
+    async def execute_task(
+        self, task_id: str, input_image: str, prompt: str, model: str = "Fast"
+    ) -> Optional[List[str]]:
         """执行图片编辑任务（使用空闲的标签页）"""
         # 检查速率限制
         allowed, info = self.check_rate_limit()
@@ -698,9 +833,13 @@ class BrowserInstance:
         # 获取空闲标签页（传入模型偏好）
         tab = self.get_available_tab(preferred_model=model)
         if not tab:
-            raise RuntimeError(f"Browser {self.browser_id} has no available tabs (all {len(self.tabs)} tabs are busy)")
+            raise RuntimeError(
+                f"Browser {self.browser_id} has no available tabs (all {len(self.tabs)} tabs are busy)"
+            )
 
-        print(f"[Browser {self.browser_id}] Task {task_id} assigned to Tab {tab.tab_id} (preferred: {tab.preferred_model}, requested: {model})")
+        print(
+            f"[Browser {self.browser_id}] Task {task_id} assigned to Tab {tab.tab_id} (preferred: {tab.preferred_model}, requested: {model})"
+        )
 
         # 记录请求
         self.record_request()
@@ -739,16 +878,22 @@ class BrowserInstance:
         # 获取空闲标签页（传入模型偏好）
         tab = self.get_available_tab(preferred_model=model)
         if not tab:
-            raise RuntimeError(f"Browser {self.browser_id} has no available tabs (all {len(self.tabs)} tabs are busy)")
+            raise RuntimeError(
+                f"Browser {self.browser_id} has no available tabs (all {len(self.tabs)} tabs are busy)"
+            )
 
-        print(f"[Browser {self.browser_id}] Fast task {task_id} assigned to Tab {tab.tab_id} (preferred: {tab.preferred_model}, requested: {model})")
+        print(
+            f"[Browser {self.browser_id}] Fast task {task_id} assigned to Tab {tab.tab_id} (preferred: {tab.preferred_model}, requested: {model})"
+        )
 
         # 记录请求
         self.record_request()
 
         # 在标签页中执行快速任务
         try:
-            result = await tab.execute_fast_task(task_id, input_image, prompt, model, output_dir)
+            result = await tab.execute_fast_task(
+                task_id, input_image, prompt, model, output_dir
+            )
             if result:
                 self.total_tasks += 1
             else:
@@ -770,7 +915,9 @@ class BrowserInstance:
         try:
             # 尝试访问 Gemini 页面检查登录状态
             page = self.base_editor.page
-            await page.goto("https://gemini.google.com/", wait_until="networkidle", timeout=30000)
+            await page.goto(
+                "https://gemini.google.com/", wait_until="networkidle", timeout=30000
+            )
 
             # 检查是否有登录按钮或用户头像
             # 登录状态下通常会显示用户头像或账号信息
@@ -780,7 +927,9 @@ class BrowserInstance:
             sign_in_button = await page.query_selector('text="Sign in"')
             if not sign_in_button:
                 # 检查是否有用户头像（已登录状态）
-                avatar = await page.query_selector('[aria-label*="Account"], [data-ogsr-up], img[alt*="Account"]')
+                avatar = await page.query_selector(
+                    '[aria-label*="Account"], [data-ogsr-up], img[alt*="Account"]'
+                )
                 if avatar:
                     logged_in = True
 
@@ -828,7 +977,9 @@ class BrowserInstance:
             "status": self.status.value,
             "user_data_dir": self.user_data_dir,
             "created_at": self.created_at.isoformat(),
-            "last_active_at": self.last_active_at.isoformat() if self.last_active_at else None,
+            "last_active_at": (
+                self.last_active_at.isoformat() if self.last_active_at else None
+            ),
             "total_tasks": self.total_tasks,
             "failed_tasks": self.failed_tasks,
             "max_tabs": self.max_tabs,
@@ -893,13 +1044,23 @@ class BrowserPool:
 
                     # 启动浏览器
                     await browser.start()
-                    print(f"[BrowserPool] Loaded and started browser {config.browser_id}")
+                    print(
+                        f"[BrowserPool] Loaded and started browser {config.browser_id}"
+                    )
 
                 except Exception as e:
-                    print(f"[BrowserPool] Failed to load browser {config.browser_id}: {e}")
-                    await db.add_log("ERROR", f"Failed to load browser {config.browser_id}: {e}", config.browser_id)
+                    print(
+                        f"[BrowserPool] Failed to load browser {config.browser_id}: {e}"
+                    )
+                    await db.add_log(
+                        "ERROR",
+                        f"Failed to load browser {config.browser_id}: {e}",
+                        config.browser_id,
+                    )
 
-            await db.add_log("INFO", f"Browser pool loaded {len(self.browsers)} browsers")
+            await db.add_log(
+                "INFO", f"Browser pool loaded {len(self.browsers)} browsers"
+            )
 
         except Exception as e:
             print(f"[BrowserPool] Failed to load from database: {e}")
@@ -958,7 +1119,11 @@ class BrowserPool:
                     auto_start=auto_start,
                 )
                 await db.create_browser(config)
-                await db.add_log("INFO", f"Browser {browser_id_str} created with {max_tabs} tabs", browser_id_str)
+                await db.add_log(
+                    "INFO",
+                    f"Browser {browser_id_str} created with {max_tabs} tabs",
+                    browser_id_str,
+                )
             except Exception as e:
                 print(f"[BrowserPool] Failed to save browser to database: {e}")
                 # 继续创建实例，即使数据库保存失败
@@ -979,10 +1144,14 @@ class BrowserPool:
             if auto_start:
                 await browser.start()
 
-            print(f"[BrowserPool] Created browser {browser_id_str} (account: {account_name}, tabs: {max_tabs}, dir: {user_data_dir})")
+            print(
+                f"[BrowserPool] Created browser {browser_id_str} (account: {account_name}, tabs: {max_tabs}, dir: {user_data_dir})"
+            )
             return browser_id_str
 
-    async def update_browser(self, browser_id: str, updates: Dict) -> Optional[BrowserInstance]:
+    async def update_browser(
+        self, browser_id: str, updates: Dict
+    ) -> Optional[BrowserInstance]:
         """更新浏览器配置"""
         async with self._lock:
             if browser_id not in self.browsers:
@@ -1006,7 +1175,9 @@ class BrowserPool:
             try:
                 db = get_db()
                 await db.update_browser(browser_id, updates)
-                await db.add_log("INFO", f"Browser {browser_id} updated: {updates}", browser_id)
+                await db.add_log(
+                    "INFO", f"Browser {browser_id} updated: {updates}", browser_id
+                )
             except Exception as e:
                 print(f"[BrowserPool] Failed to update browser in database: {e}")
 
@@ -1039,7 +1210,9 @@ class BrowserPool:
 
         browser = self.browsers[browser_id]
         if browser.status != BrowserStatus.STOPPED:
-            raise RuntimeError(f"Browser {browser_id} is not stopped (status: {browser.status})")
+            raise RuntimeError(
+                f"Browser {browser_id} is not stopped (status: {browser.status})"
+            )
 
         await browser.start()
 
@@ -1054,10 +1227,13 @@ class BrowserPool:
 
         await browser.stop()
 
-    async def get_available_browser(self, strategy: str = "least_loaded") -> Optional[BrowserInstance]:
+    async def get_available_browser(
+        self, strategy: str = "least_loaded"
+    ) -> Optional[BrowserInstance]:
         """获取可用的浏览器（负载均衡）"""
         idle_browsers = [
-            browser for browser in self.browsers.values()
+            browser
+            for browser in self.browsers.values()
             if browser.status == BrowserStatus.IDLE
         ]
 
@@ -1073,6 +1249,7 @@ class BrowserPool:
         elif strategy == "random":
             # 随机选择
             import random
+
             return random.choice(idle_browsers)
         else:
             return idle_browsers[0]
@@ -1096,7 +1273,9 @@ class BrowserPool:
             "failed_tasks": sum(b.failed_tasks for b in self.browsers.values()),
         }
 
-    async def create_task_record(self, task_id: str, prompt: str, model: str, input_image: Optional[str] = None) -> TaskRecord:
+    async def create_task_record(
+        self, task_id: str, prompt: str, model: str, input_image: Optional[str] = None
+    ) -> TaskRecord:
         """创建任务记录"""
         task = TaskRecord(
             task_id=task_id,

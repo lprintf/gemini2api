@@ -205,75 +205,26 @@ class EnhancedGeminiImageEditor(GeminiImageEditor):
                 print(f"  ❌ 无法找到并点击 {model} 模型选项")
                 return False
 
-            # 验证切换结果（事件驱动，等待按钮文本变化）
-            # 等待菜单按钮文本更新（最多 2 秒）
-            try:
-                # 使用 wait_for_function 等待按钮文本变化
-                if model == "Fast":
-                    await self.page.wait_for_function(
-                        """
-                        (selector, keywords) => {
-                            const button = document.querySelector(selector);
-                            if (!button) return false;
-                            const text = button.innerText || '';
-                            return keywords.some(kw => text.includes(kw));
-                        }
-                        """,
-                        arg=[menu_button_selector, ["Fast", "快速", "fast"]],
-                        timeout=2000
-                    )
-                else:  # Pro
-                    await self.page.wait_for_function(
-                        """
-                        (selector, keywords) => {
-                            const button = document.querySelector(selector);
-                            if (!button) return false;
-                            const text = button.innerText || '';
-                            return keywords.some(kw => text.includes(kw));
-                        }
-                        """,
-                        arg=[menu_button_selector, ["Pro", "pro"]],
-                        timeout=2000
-                    )
-                print(f"✓ 成功切换到 {model} 模型")
-                return True
-            except Exception:
-                # 超时，用极短超时再次检查文本是否变化
-                print("  主等待超时，用极短超时再次检查...")
-                try:
-                    if model == "Fast":
-                        await self.page.wait_for_function(
-                            """
-                            (selector, keywords) => {
-                                const button = document.querySelector(selector);
-                                if (!button) return false;
-                                const text = button.innerText || '';
-                                return keywords.some(kw => text.includes(kw));
-                            }
-                            """,
-                            arg=[menu_button_selector, ["Fast", "快速", "fast"]],
-                            timeout=500  # 极短超时 500ms
-                        )
-                    else:  # Pro
-                        await self.page.wait_for_function(
-                            """
-                            (selector, keywords) => {
-                                const button = document.querySelector(selector);
-                                if (!button) return false;
-                                const text = button.innerText || '';
-                                return keywords.some(kw => text.includes(kw));
-                            }
-                            """,
-                            arg=[menu_button_selector, ["Pro", "pro"]],
-                            timeout=500  # 极短超时 500ms
-                        )
+            # 验证切换结果（参考图片生成验证逻辑）
+            # 等待菜单动画完成后读取按钮文本
+            await self.page.wait_for_timeout(300)
+
+            # 重新获取按钮并验证文本
+            verify_button = await self.page.wait_for_selector(
+                menu_button_selector, timeout=3000, state="attached"
+            )
+
+            if verify_button:
+                new_button_text = await verify_button.inner_text()
+                print(f"  切换后模型显示: '{new_button_text}'")
+
+                keywords = ["Fast", "快速", "flash"] if model == "Fast" else ["Pro", "pro"]
+                if any(kw in new_button_text or kw.lower() in new_button_text.lower() for kw in keywords):
                     print(f"✓ 成功切换到 {model} 模型")
                     return True
-                except Exception:
-                    # 再次超时，说明切换失败
-                    new_button_text = await menu_button.inner_text()
-                    print(f"⚠ 切换失败，模型仍显示: '{new_button_text}'")
-                    return False
+
+            print(f"⚠ 切换验证失败，当前显示: '{new_button_text}'")
+            return False
 
         except Exception as e:
             print(f"❌ 模型选择失败: {e}")
@@ -319,16 +270,14 @@ class EnhancedGeminiImageEditor(GeminiImageEditor):
                         selector, state="visible", timeout=2000
                     )
                     if menu_button:
-                        print(
-                            f"  找到主菜单按钮（选择器: {selector}），点击展开..."
-                        )
+                        print(f"  找到主菜单按钮（选择器: {selector}），点击展开...")
                         await menu_button.click()
                         # 等待菜单展开（事件驱动）
                         try:
                             await self.page.wait_for_selector(
                                 'div[role="menu"], nav[role="navigation"]',
                                 state="visible",
-                                timeout=2000
+                                timeout=2000,
                             )
                             print("  ✓ 菜单已展开")
                         except Exception:
@@ -372,9 +321,7 @@ class EnhancedGeminiImageEditor(GeminiImageEditor):
                         print("  验证临时对话模式是否启用...")
                         try:
                             temp_card = await self.page.wait_for_selector(
-                                ".temporary-chat-card",
-                                state="visible",
-                                timeout=3000
+                                ".temporary-chat-card", state="visible", timeout=3000
                             )
                         except Exception:
                             temp_card = None
@@ -431,7 +378,7 @@ class EnhancedGeminiImageEditor(GeminiImageEditor):
                                     temp_card = await self.page.wait_for_selector(
                                         ".temporary-chat-card",
                                         state="visible",
-                                        timeout=3000
+                                        timeout=3000,
                                     )
                                 except Exception:
                                     temp_card = None
@@ -488,13 +435,18 @@ class EnhancedGeminiImageEditor(GeminiImageEditor):
 
             # 检查是否是新对话页面（/app 后面没有路径，只有可能的查询参数）
             import re
+
             # 匹配 /app 后面直接是 ? 或 # 或结束
-            is_new_chat_url = bool(re.match(r'^https://[^/]+/app(?:[?#].*)?$', current_url))
+            is_new_chat_url = bool(
+                re.match(r"^https://[^/]+/app(?:[?#].*)?$", current_url)
+            )
 
             if is_new_chat_url:
                 # 已经在新对话页面，检查是否有输入框
                 try:
-                    input_box = await self.page.query_selector('div[contenteditable="true"]')
+                    input_box = await self.page.query_selector(
+                        'div[contenteditable="true"]'
+                    )
                     if input_box:
                         print(f"  当前已在新对话页面: {current_url}")
                         print("✓ 跳过刷新，保留已激活的功能")
@@ -551,6 +503,7 @@ class EnhancedGeminiImageEditor(GeminiImageEditor):
             是否成功触发激活
         """
         import time
+
         print("\n激活图片生成功能（稳定方法）...")
 
         try:
@@ -582,7 +535,7 @@ class EnhancedGeminiImageEditor(GeminiImageEditor):
                 try:
                     # 使用 wait_for_selector 事件驱动等待
                     tools_button = await self.page.wait_for_selector(
-                        selector, state="visible", timeout=2000
+                        selector, state="visible", timeout=5000
                     )
                     if tools_button:
                         print(f"  ✓ 找到 Tools 菜单（选择器: {selector}）")
@@ -603,8 +556,8 @@ class EnhancedGeminiImageEditor(GeminiImageEditor):
 
             # 使用多种选择器策略
             selectors = [
-                'text=Create images',
-                'text=生成图片',
+                "text=Create images",
+                "text=生成图片",
                 'button[jslog="271906"]',
             ]
 
@@ -613,12 +566,14 @@ class EnhancedGeminiImageEditor(GeminiImageEditor):
                 try:
                     selector_start = time.time()
                     option = await self.page.wait_for_selector(
-                        selector, timeout=500, state="visible"
+                        selector, timeout=3000, state="visible"
                     )
                     selector_time = time.time() - selector_start
 
                     if option:
-                        print(f"  ✓ 选择器 {i+1} 找到 ({selector_time:.3f}s): {selector[:30]}...")
+                        print(
+                            f"  ✓ 选择器 {i+1} 找到 ({selector_time:.3f}s): {selector[:30]}..."
+                        )
                         click_start = time.time()
                         # 使用 JavaScript 直接触发点击，绕过所有 Playwright 检查
                         await option.evaluate("el => el.click()")
@@ -656,9 +611,7 @@ class EnhancedGeminiImageEditor(GeminiImageEditor):
         try:
             # 等待"取消选择图片"按钮出现（事件驱动）
             deselect_button = await self.page.wait_for_selector(
-                ".toolbox-drawer-item-deselect-button",
-                timeout=3000,
-                state="visible"
+                ".toolbox-drawer-item-deselect-button", timeout=3000, state="visible"
             )
 
             if deselect_button:
@@ -747,6 +700,7 @@ class EnhancedGeminiImageEditor(GeminiImageEditor):
         except Exception as e:
             print(f"❌ 页面环境准备失败: {e}")
             import traceback
+
             traceback.print_exc()
             return False
 
@@ -756,15 +710,19 @@ class EnhancedGeminiImageEditor(GeminiImageEditor):
         prompt: str,
         model: Literal["Pro", "Fast"] = "Fast",
         temporary_chat: bool = False,
+        max_retries: int = 2,
     ) -> bool:
         """
         准备图片生成（上传图片、输入文本、选择模型、激活图片生成，但不提交）
+
+        如果遇到弹窗（如图片权利确认对话框），会自动关闭并重新开始准备流程。
 
         Args:
             input_image: 输入图片路径
             prompt: 编辑指令
             model: 使用的模型（"Pro" 或 "Fast"）
             temporary_chat: 是否使用临时对话
+            max_retries: 遇到弹窗时最大重试次数
 
         Returns:
             是否准备成功
@@ -775,40 +733,56 @@ class EnhancedGeminiImageEditor(GeminiImageEditor):
             elapsed = time.time() - start
             print(f"  ⏱ [{stage}] {elapsed:.3f}s")
 
-        try:
-            # 步骤1: 准备页面环境
-            if not await self.prepare_page_environment(model, temporary_chat):
-                return False
+        for attempt in range(max_retries + 1):
+            try:
+                if attempt > 0:
+                    print(f"\n🔄 重试准备流程（第 {attempt} 次）...")
 
-            # 步骤2: 粘贴图片
-            stage_start = time.time()
-            print("\n上传图片（粘贴方式）...")
-            upload_success = await self.upload_image_by_paste(input_image)
-            if not upload_success:
-                print("⚠ 粘贴上传失败，尝试点击上传方式...")
-                upload_success = await self.upload_image(input_image)
-                if not upload_success:
-                    print("❌ 图片上传失败")
+                # 步骤1: 准备页面环境
+                if not await self.prepare_page_environment(model, temporary_chat):
                     return False
-            log_time("图片上传", stage_start)
 
-            # 步骤3: 输入 Prompt
-            stage_start = time.time()
-            print("\n输入 Prompt...")
-            prompt_success = await self.input_prompt(prompt)
-            if not prompt_success:
-                print("❌ Prompt输入失败")
+                # 步骤2: 粘贴图片
+                stage_start = time.time()
+                print("\n上传图片（粘贴方式）...")
+                upload_success = await self.upload_image_by_paste(input_image)
+                if not upload_success:
+                    print("⚠ 粘贴上传失败，尝试点击上传方式...")
+                    upload_success = await self.upload_image(input_image)
+                    if not upload_success:
+                        print("❌ 图片上传失败")
+                        return False
+                log_time("图片上传", stage_start)
+
+                # 步骤3: 输入 Prompt
+                stage_start = time.time()
+                print("\n输入 Prompt...")
+                prompt_success = await self.input_prompt(prompt)
+                if not prompt_success:
+                    # Prompt 输入失败，检查是否有弹窗阻挡
+                    if await self._dismiss_consent_dialog():
+                        print("⚠ 检测到弹窗已关闭，重新开始准备流程...")
+                        continue
+                    print("❌ Prompt输入失败")
+                    return False
+                log_time("输入 Prompt", stage_start)
+
+                print("✓ 准备完成（已就绪可提交）")
+                return True
+
+            except Exception as e:
+                print(f"❌ 准备过程出错: {e}")
+                # 检查是否有弹窗导致异常
+                if await self._dismiss_consent_dialog():
+                    print("⚠ 检测到弹窗已关闭，重新开始准备流程...")
+                    continue
+                import traceback
+
+                traceback.print_exc()
                 return False
-            log_time("输入 Prompt", stage_start)
 
-            print("✓ 准备完成（已就绪可提交）")
-            return True
-
-        except Exception as e:
-            print(f"❌ 准备过程出错: {e}")
-            import traceback
-            traceback.print_exc()
-            return False
+        print("❌ 准备流程重试次数已用尽")
+        return False
 
     async def edit_image_enhanced(
         self,
@@ -912,7 +886,11 @@ class EnhancedGeminiImageEditor(GeminiImageEditor):
 
                         for img in images:
                             src = await img.get_attribute("src")
-                            if src and "googleusercontent" in src and "/a/ACg8oc" not in src:
+                            if (
+                                src
+                                and "googleusercontent" in src
+                                and "/a/ACg8oc" not in src
+                            ):
                                 generated_count += 1
 
                         if generated_count > 0:
@@ -940,7 +918,9 @@ class EnhancedGeminiImageEditor(GeminiImageEditor):
             output_date_path = output_path / date_dir
             output_date_path.mkdir(parents=True, exist_ok=True)
 
-            print(f"\n正在下载 {generated_count} 张图片（{output_format.upper()}格式）...")
+            print(
+                f"\n正在下载 {generated_count} 张图片（{output_format.upper()}格式）..."
+            )
             stage_start = time.time()
 
             # 按索引下载所有生成的图片（不依赖URL）
@@ -1009,7 +989,9 @@ class EnhancedGeminiImageEditor(GeminiImageEditor):
             try:
                 print("\n预热页面环境（为下次任务做准备）...")
                 preheat_start = time.time()
-                if await self.prepare_page_environment(model=model, temporary_chat=temporary_chat):
+                if await self.prepare_page_environment(
+                    model=model, temporary_chat=temporary_chat
+                ):
                     log_time("预热页面环境", preheat_start)
                 else:
                     print("⚠ 预热页面环境失败")

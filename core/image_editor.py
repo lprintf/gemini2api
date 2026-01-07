@@ -207,6 +207,50 @@ class GeminiImageEditor(GeminiBrowser):
             traceback.print_exc()
             return False
 
+    async def _dismiss_consent_dialog(self) -> bool:
+        """
+        检测并关闭同意/确认弹窗（如图片权利确认、隐私政策等）
+
+        在粘贴图片后，可能会弹出 "Create content from images" 对话框，
+        需要点击 "Agree" / "同意" 按钮才能继续。
+
+        此方法不等待，只检查当前是否有弹窗并尝试关闭。
+
+        Returns:
+            是否成功关闭弹窗（没有弹窗也返回 False）
+        """
+        try:
+            # 常见的同意按钮选择器（中英文）
+            agree_selectors = [
+                'button:has-text("Agree")',
+                'button:has-text("同意")',
+                'button:has-text("I agree")',
+                'button:has-text("Accept")',
+                'button:has-text("接受")',
+                'button:has-text("OK")',
+                'button:has-text("确定")',
+                # 对话框中的主要操作按钮
+                '[role="dialog"] button[data-mdc-dialog-action="accept"]',
+                '[role="dialog"] button.mdc-dialog__button--default',
+            ]
+
+            for selector in agree_selectors:
+                try:
+                    button = await self.page.query_selector(selector)
+                    if button and await button.is_visible():
+                        print("  ⚠ 检测到弹窗，点击同意按钮...")
+                        await button.click()  # 等待弹窗关闭（应该不用sleep,会自动等待副作用结束）
+                        print("  ✓ 弹窗已关闭")
+                        return True
+                except Exception:
+                    continue
+
+            return False
+
+        except Exception as e:
+            print(f"  ⚠ 弹窗检测异常: {e}")
+            return False
+
     async def verify_image_loaded(self, timeout: int = 20) -> bool:
         """
         验证图片是否加载成功（等待页面上出现 blob URL 的图片）
@@ -734,7 +778,9 @@ class GeminiImageEditor(GeminiBrowser):
 
         # 保存图片
         if output_format == "webp":
-            return await self._save_as_webp(image_bytes, save_path, lossless, remove_watermark)
+            return await self._save_as_webp(
+                image_bytes, save_path, lossless, remove_watermark
+            )
         else:
             return await self._save_as_png(image_bytes, save_path, remove_watermark)
 
@@ -810,7 +856,9 @@ class GeminiImageEditor(GeminiBrowser):
             # 去除水印（如果启用）
             if remove_watermark:
                 watermark_start = time.time()
-                img = WatermarkRemover.remove_watermark(img, watermark_size=None, verbose=True)
+                img = WatermarkRemover.remove_watermark(
+                    img, watermark_size=None, verbose=True
+                )
                 watermark_time = time.time() - watermark_start
                 print(f"    ⏱ [水印去除] {watermark_time:.3f}s")
 
@@ -870,7 +918,11 @@ class GeminiImageEditor(GeminiBrowser):
             return False, None
 
     async def _save_as_webp(
-        self, image_bytes: bytes, save_path: str, lossless: bool = True, remove_watermark: bool = True
+        self,
+        image_bytes: bytes,
+        save_path: str,
+        lossless: bool = True,
+        remove_watermark: bool = True,
     ) -> tuple[bool, str | None]:
         """将图片字节数据保存为 WebP 格式（可选去除水印）"""
         import base64
@@ -895,7 +947,9 @@ class GeminiImageEditor(GeminiBrowser):
             # 去除水印（如果启用）
             if remove_watermark:
                 watermark_start = time.time()
-                img = WatermarkRemover.remove_watermark(img, watermark_size=None, verbose=True)
+                img = WatermarkRemover.remove_watermark(
+                    img, watermark_size=None, verbose=True
+                )
                 watermark_time = time.time() - watermark_start
                 print(f"    ⏱ [水印去除] {watermark_time:.3f}s")
 
@@ -971,13 +1025,15 @@ class GeminiImageEditor(GeminiBrowser):
 
                 # 去除水印
                 watermark_start = time.time()
-                img = WatermarkRemover.remove_watermark(img, watermark_size=None, verbose=True)
+                img = WatermarkRemover.remove_watermark(
+                    img, watermark_size=None, verbose=True
+                )
                 watermark_time = time.time() - watermark_start
                 print(f"    ⏱ [水印去除] {watermark_time:.3f}s")
 
                 # 重新编码为字节数据
                 output = BytesIO()
-                img.save(output, format='PNG')
+                img.save(output, format="PNG")
                 image_bytes = output.getvalue()
 
             # 计算 SHA256 摘要

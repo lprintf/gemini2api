@@ -845,7 +845,9 @@ async def main():
                             images_info.append({
                                 "index": i,
                                 "hash": file_hash,
-                                "path": f"{date_str}/{file_hash}.{fmt}",
+                                "id": f"{date_str}/{file_hash}",
+                                "date": date_str,
+                                "format": fmt,
                                 "url": url,
                                 "size": len(image_bytes),
                             })
@@ -896,17 +898,17 @@ async def main():
                         print()
                         print("预览图路径（API 响应格式）:")
                         for img in images_info:
-                            print(f"  /outputs/task-xxx/{img['path']}")
+                            print(f"  {img['id']}")
 
                         # 保存到缓存供后续 hd 命令使用
                         if not hasattr(main, "preview_cache"):
                             main.preview_cache = {}
                         for img in images_info:
-                            cache_key = f"{date_str}/{img['hash']}"
+                            cache_key = f"{img['date']}/{img['hash']}"
                             main.preview_cache[cache_key] = {
                                 "url": img["url"],
                                 "index": img["index"],
-                                "path": str(date_dir / f"{img['hash']}.{detect_image_format(b'')}"),
+                                "path": str(date_dir / f"{img['hash']}.{img['format']}"),
                             }
 
                     except ValueError as e:
