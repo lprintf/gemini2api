@@ -11,10 +11,15 @@
 """
 
 import asyncio
+import base64
+import hashlib
+import json
 import time
 from collections import deque
 from datetime import datetime
-from typing import Dict, List, Optional
+from io import BytesIO
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 from enum import Enum
 
 from core.enhanced_editor import EnhancedGeminiImageEditor
@@ -26,6 +31,7 @@ class BrowserStatus(str, Enum):
     """浏览器状态"""
     IDLE = "idle"           # 空闲，可接受任务
     BUSY = "busy"           # 忙碌，正在处理任务
+    DOWNLOADING_HD = "downloading_hd"  # 后台下载高清图中
     STARTING = "starting"   # 启动中
     STOPPING = "stopping"   # 停止中
     ERROR = "error"         # 错误状态
@@ -45,6 +51,9 @@ class TabInstance:
         self.total_tasks = 0
         self.failed_tasks = 0
         self.last_active_at: Optional[datetime] = None
+        # 高清下载相关
+        self.hd_metadata: Optional[Dict[str, Any]] = None  # 预览图元数据
+        self.hd_download_task: Optional[asyncio.Task] = None  # 后台高清下载任务
 
     async def execute_task(self, task_id: str, input_image: str, prompt: str, model: str = "Fast") -> Optional[List[str]]:
         """执行图片编辑任务"""
@@ -108,6 +117,298 @@ class TabInstance:
                 })
             except Exception as db_error:
                 print(f"[Tab {self.browser_id}-{self.tab_id}] Failed to update task in DB: {db_error}")
+
+    async def execute_fast_task(
+        self,
+        task_id: str,
+        input_image: str,
+        prompt: str,
+        model: str = "Fast",
+        output_dir: str = "data/outputs",
+    ) -> Optional[Dict[str, Any]]:
+        """
+        执行快速预览任务，预览图返回后立即启动后台高清下载
+
+        流程：
+        1. 准备环境 → 提交生成 → 等待生成
+        2. 快速下载预览图（page.request.get）
+        3. 立即返回预览图信息给调用者
+        4. 后台启动高清下载任务
+        5. 高清下载完成后自动释放标签页
+
+        Returns:
+            Dict with preview images info:
+            {
+                "task_id": "task-xxx",
+                "images": [
+                    {"hash": "abc123", "path": "20260106/abc123.jpg", "url": "..."}
+                ],
+                "metadata_path": "data/outputs/task-xxx/metadata.json"
+            }
+        """
+        if self.status != BrowserStatus.IDLE:
+            raise RuntimeError(f"Tab {self.browser_id}-{self.tab_id} is not idle (status: {self.status})")
+
+        print(f"[Tab {self.browser_id}-{self.tab_id}] Executing fast task {task_id}")
+        print(f"  Input: {input_image}")
+        print(f"  Prompt: {prompt[:50]}...")
+        print(f"  Model: {model}")
+
+        self.status = BrowserStatus.BUSY
+        self.current_task_id = task_id
+        self.last_active_at = datetime.now()
+
+        total_start = time.time()
+        timings = {}
+        task_output_dir = Path(output_dir) / task_id
+        task_output_dir.mkdir(parents=True, exist_ok=True)
+
+        try:
+            # 1. 准备页面环境并执行生成
+            stage_start = time.time()
+            success = await self.editor.prepare_for_generation(
+                input_image=input_image,
+                prompt=prompt,
+                model=model,
+                temporary_chat=False,
+            )
+
+            if not success:
+                raise RuntimeError("Failed to prepare for generation")
+            timings["prepare"] = time.time() - stage_start
+            print(f"  ⏱ [准备阶段] {timings['prepare']:.3f}s")
+
+            # 2. 提交生成请求
+            stage_start = time.time()
+            if not await self.editor.submit_generation():
+                raise RuntimeError("Failed to submit generation")
+            timings["submit"] = time.time() - stage_start
+            print(f"  ⏱ [提交请求] {timings['submit']:.3f}s")
+
+            # 3. 等待生成完成
+            stage_start = time.time()
+            generation_timeout = 120  # 2分钟
+            generation_success = await self.editor.wait_for_generation(
+                timeout=generation_timeout,
+            )
+            if not generation_success:
+                print(f"[Tab {self.browser_id}-{self.tab_id}] Generation timeout ({generation_timeout}s), waiting extra 10s...")
+                await asyncio.sleep(10)
+            timings["generation"] = time.time() - stage_start
+            print(f"  ⏱ [生成等待] {timings['generation']:.3f}s")
+
+            # 4. 快速下载预览图（使用 page.request.get）
+            stage_start = time.time()
+            page = self.editor.page
+            containers = await page.query_selector_all("model-response")
+            if not containers:
+                raise RuntimeError("No response containers found")
+
+            last_container = containers[-1]
+            images = await last_container.query_selector_all("img")
+
+            # 过滤出生成的图片
+            image_urls = []
+            for img in images:
+                src = await img.get_attribute("src")
+                if src and "googleusercontent" in src and "/a/ACg8oc" not in src:
+                    image_urls.append(src)
+
+            if not image_urls:
+                raise RuntimeError("No generated images found")
+
+            # 5. 下载预览图并计算 hash
+            date_str = datetime.now().strftime("%Y%m%d")
+            date_dir = task_output_dir / date_str
+            date_dir.mkdir(parents=True, exist_ok=True)
+
+            images_info = []
+            download_start = time.time()
+            for i, url in enumerate(image_urls):
+                response = await page.request.get(url)
+                if not response.ok:
+                    print(f"[Tab {self.browser_id}-{self.tab_id}] Failed to download preview {i}: HTTP {response.status}")
+                    continue
+
+                image_bytes = await response.body()
+
+                # 计算 hash
+                sha256_hash = hashlib.sha256(image_bytes).digest()
+                file_hash = base64.urlsafe_b64encode(sha256_hash).decode().rstrip("=")
+
+                # 检测格式并保存
+                fmt = self._detect_image_format(image_bytes)
+                preview_path = date_dir / f"{file_hash}.{fmt}"
+                with open(preview_path, "wb") as f:
+                    f.write(image_bytes)
+
+                images_info.append({
+                    "index": i,
+                    "hash": file_hash,
+                    "path": f"{date_str}/{file_hash}.{fmt}",
+                    "url": url,
+                    "size": len(image_bytes),
+                    "format": fmt,
+                })
+
+                print(f"[Tab {self.browser_id}-{self.tab_id}] Preview {i} saved: {file_hash[:16]}... ({len(image_bytes)/1024:.1f}KB)")
+
+            timings["download"] = time.time() - download_start
+            print(f"  ⏱ [预览下载] {timings['download']:.3f}s ({len(images_info)} 张)")
+
+            if not images_info:
+                raise RuntimeError("Failed to download any preview images")
+
+            # 6. 保存元数据（hd_status 初始为 pending）
+            metadata = {
+                "task_id": task_id,
+                "browser_id": self.browser_id,
+                "tab_id": self.tab_id,
+                "created_at": datetime.now().isoformat(),
+                "model": model,
+                "prompt": prompt,
+                "images": images_info,
+                "hd_status": "pending",  # pending → downloading → completed/failed
+            }
+
+            metadata_path = task_output_dir / "metadata.json"
+            with open(metadata_path, "w") as f:
+                json.dump(metadata, f, indent=2)
+
+            duration = time.time() - total_start
+            print(f"\n[Tab {self.browser_id}-{self.tab_id}] Fast task {task_id} preview completed")
+            print(f"  ⏱ 总耗时: {duration:.3f}s")
+            print(f"    准备: {timings.get('prepare', 0):.3f}s")
+            print(f"    提交: {timings.get('submit', 0):.3f}s")
+            print(f"    生成: {timings.get('generation', 0):.3f}s")
+            print(f"    下载: {timings.get('download', 0):.3f}s")
+
+            self.total_tasks += 1
+
+            # 7. 设置状态为 DOWNLOADING_HD，启动后台高清下载任务
+            self.status = BrowserStatus.DOWNLOADING_HD
+            self.hd_metadata = metadata
+            self._start_background_hd_download(task_output_dir, model)
+
+            return {
+                "task_id": task_id,
+                "images": images_info,
+                "metadata_path": str(metadata_path),
+            }
+
+        except Exception as e:
+            self.failed_tasks += 1
+            self.status = BrowserStatus.IDLE
+            self.current_task_id = None
+            self.hd_metadata = None
+            print(f"[Tab {self.browser_id}-{self.tab_id}] Fast task {task_id} error: {e}")
+            raise
+
+    def _start_background_hd_download(self, task_output_dir: Path, model: str):
+        """启动后台高清下载任务"""
+        async def download_all_hd():
+            """下载所有图片的高清版本"""
+            if not self.hd_metadata:
+                return
+
+            task_id = self.hd_metadata["task_id"]
+            images = self.hd_metadata["images"]
+
+            print(f"[Tab {self.browser_id}-{self.tab_id}] Starting background HD download for {len(images)} images...")
+
+            # 更新状态为 downloading
+            self.hd_metadata["hd_status"] = "downloading"
+            metadata_path = task_output_dir / "metadata.json"
+            with open(metadata_path, "w") as f:
+                json.dump(self.hd_metadata, f, indent=2)
+
+            hd_start = time.time()
+            success_count = 0
+
+            for img_info in images:
+                try:
+                    target_url = img_info["url"]
+                    file_hash = img_info["hash"]
+                    date_str = img_info["path"].split("/")[0]
+
+                    print(f"[Tab {self.browser_id}-{self.tab_id}] Downloading HD for {file_hash[:16]}...")
+
+                    # 使用 hover 下载按钮获取高清图
+                    hd_bytes = await self.editor._download_via_hover_button(target_url, "no_wait")
+
+                    if not hd_bytes:
+                        print(f"[Tab {self.browser_id}-{self.tab_id}] HD download failed for {file_hash[:16]}")
+                        img_info["hd_status"] = "failed"
+                        continue
+
+                    # 转换为 WebP
+                    from PIL import Image
+                    pil_img = Image.open(BytesIO(hd_bytes))
+                    width, height = pil_img.size
+
+                    webp_buffer = BytesIO()
+                    pil_img.save(webp_buffer, "WEBP", lossless=True)
+                    webp_data = webp_buffer.getvalue()
+
+                    # 保存高清图
+                    date_dir = task_output_dir / date_str
+                    hd_path = date_dir / f"{file_hash}_hd.webp"
+
+                    with open(hd_path, "wb") as f:
+                        f.write(webp_data)
+
+                    # 更新元数据
+                    img_info["hd_path"] = f"{date_str}/{file_hash}_hd.webp"
+                    img_info["hd_size"] = len(webp_data)
+                    img_info["hd_dimensions"] = f"{width}x{height}"
+                    img_info["hd_status"] = "completed"
+                    success_count += 1
+
+                    print(f"[Tab {self.browser_id}-{self.tab_id}] HD saved: {file_hash[:16]}... ({len(webp_data)/1024:.1f}KB, {width}x{height})")
+
+                except Exception as e:
+                    print(f"[Tab {self.browser_id}-{self.tab_id}] HD download error for {img_info.get('hash', '?')[:16]}: {e}")
+                    img_info["hd_status"] = "failed"
+
+            # 更新最终状态
+            hd_duration = time.time() - hd_start
+            self.hd_metadata["hd_status"] = "completed" if success_count == len(images) else "partial"
+            self.hd_metadata["hd_completed_at"] = datetime.now().isoformat()
+            self.hd_metadata["hd_duration"] = hd_duration
+
+            with open(metadata_path, "w") as f:
+                json.dump(self.hd_metadata, f, indent=2)
+
+            print(f"[Tab {self.browser_id}-{self.tab_id}] Background HD download completed: {success_count}/{len(images)} in {hd_duration:.3f}s")
+
+            # 释放标签页，准备下一个任务
+            self.status = BrowserStatus.IDLE
+            self.current_task_id = None
+            self.hd_metadata = None
+            self.last_active_at = datetime.now()
+
+            # 预热环境（准备下一个任务）
+            try:
+                print(f"[Tab {self.browser_id}-{self.tab_id}] Preheating for next task (model: {model})...")
+                await self.editor.prepare_page_environment(model=model, temporary_chat=False)
+                print(f"[Tab {self.browser_id}-{self.tab_id}] Preheat completed")
+            except Exception as e:
+                print(f"[Tab {self.browser_id}-{self.tab_id}] Preheat failed: {e}")
+
+        self.hd_download_task = asyncio.create_task(download_all_hd())
+
+    def _detect_image_format(self, data: bytes) -> str:
+        """根据文件头检测图片格式"""
+        if data[:8] == b"\x89PNG\r\n\x1a\n":
+            return "png"
+        elif data[:2] == b"\xff\xd8":
+            return "jpg"
+        elif data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+            return "webp"
+        elif data[:6] in (b"GIF87a", b"GIF89a"):
+            return "gif"
+        else:
+            return "bin"
 
 
 class BrowserInstance:
@@ -407,6 +708,47 @@ class BrowserInstance:
         # 在标签页中执行任务
         try:
             result = await tab.execute_task(task_id, input_image, prompt, model)
+            if result:
+                self.total_tasks += 1
+            else:
+                self.failed_tasks += 1
+            self.last_active_at = datetime.now()
+            return result
+        except Exception:
+            self.failed_tasks += 1
+            raise
+
+    async def execute_fast_task(
+        self,
+        task_id: str,
+        input_image: str,
+        prompt: str,
+        model: str = "Fast",
+        output_dir: str = "data/outputs",
+    ) -> Optional[Dict[str, Any]]:
+        """执行快速预览任务（使用空闲的标签页）"""
+        # 检查速率限制
+        allowed, info = self.check_rate_limit()
+        if not allowed:
+            raise RuntimeError(
+                f"Browser {self.browser_id} rate limit exceeded. "
+                f"Limit: {info['limit']}/{info['window_seconds']}s, "
+                f"Reset at: {info['reset']}"
+            )
+
+        # 获取空闲标签页（传入模型偏好）
+        tab = self.get_available_tab(preferred_model=model)
+        if not tab:
+            raise RuntimeError(f"Browser {self.browser_id} has no available tabs (all {len(self.tabs)} tabs are busy)")
+
+        print(f"[Browser {self.browser_id}] Fast task {task_id} assigned to Tab {tab.tab_id} (preferred: {tab.preferred_model}, requested: {model})")
+
+        # 记录请求
+        self.record_request()
+
+        # 在标签页中执行快速任务
+        try:
+            result = await tab.execute_fast_task(task_id, input_image, prompt, model, output_dir)
             if result:
                 self.total_tasks += 1
             else:

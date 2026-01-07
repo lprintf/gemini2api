@@ -515,58 +515,6 @@ class GeminiImageEditor(GeminiBrowser):
 
                         if generated_count > 0:
                             print(f"✓ 检测到 {generated_count} 张生成的图片")
-                            # 等待 hover 下载按钮就绪（轮询检测）
-                            print("  等待 hover 下载按钮就绪...")
-
-                            button_ready = False
-                            max_attempts = 6  # 最多尝试 6 次（3 秒）
-
-                            for attempt in range(max_attempts):
-                                # 尝试 hover 第一张图片，看下载按钮是否出现
-                                try:
-                                    first_img = images[0]
-                                    # Hover 到图片
-                                    await self.page.evaluate(
-                                        """
-                                        (img) => {
-                                            const rect = img.getBoundingClientRect();
-                                            const x = rect.left + rect.width / 2;
-                                            const y = rect.top + rect.height / 2;
-                                            const mouseoverEvent = new MouseEvent('mouseover', {
-                                                bubbles: true,
-                                                cancelable: true,
-                                                view: window,
-                                                clientX: x,
-                                                clientY: y
-                                            });
-                                            img.dispatchEvent(mouseoverEvent);
-                                        }
-                                        """,
-                                        first_img,
-                                    )
-
-                                    # 检测下载按钮是否出现
-                                    download_button = await self.page.wait_for_selector(
-                                        'button[aria-label*="下载"], button[aria-label*="Download"]',
-                                        state="visible",
-                                        timeout=500,
-                                    )
-
-                                    if download_button:
-                                        print(
-                                            f"  ✓ 下载按钮已就绪（尝试 {attempt + 1}/{max_attempts}）"
-                                        )
-                                        button_ready = True
-                                        break
-                                except Exception:
-                                    # 按钮还没出现，等待 0.5 秒后重试
-                                    await asyncio.sleep(0.5)
-
-                            if not button_ready:
-                                print(
-                                    "  ⚠ 下载按钮未就绪（将使用 request API 作为 fallback）"
-                                )
-
                             return True
                         break
                 except Exception:

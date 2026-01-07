@@ -32,6 +32,7 @@ services:
       - ./weston.ini:/app/weston.ini:ro
       # TLS 证书（RDP 连接需要）
       - ./certs:/etc/weston:ro
+      - ./tests:/app/tests:ro
     environment:
       - TZ=${TZ:-Asia/Shanghai}
       - XDG_RUNTIME_DIR=/tmp
