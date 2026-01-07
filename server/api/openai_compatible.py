@@ -6,6 +6,8 @@ OpenAI 兼容 API
 
 import uuid
 import time
+import hashlib
+from datetime import datetime
 from fastapi import APIRouter, File, Form, UploadFile, HTTPException, Header, Depends, Request
 from fastapi.responses import JSONResponse
 from typing import Optional, Literal
@@ -23,6 +25,9 @@ router = APIRouter(prefix="/v1", tags=["OpenAI Compatible API"])
 # 全局变量（稍后由 app.py 初始化）
 browser_pool: Optional[BrowserPool] = None
 rate_limiter: Optional[RateLimiter] = None
+
+# 上传文件存储目录
+UPLOAD_DIR = Path("data/uploads")
 
 
 class ImageEditRequest(BaseModel):
@@ -90,7 +95,8 @@ async def check_rate_limit(request: Request, api_key: Optional[str] = Depends(ve
 @router.post("/images/edits", response_model=ImageEditResponse)
 async def create_image_edit(
     request: Request,
-    image: UploadFile = File(..., description="The image to edit"),
+    image: Optional[UploadFile] = File(None, description="The image to edit (optional if image_path provided)"),
+    image_path: Optional[str] = Form(None, description="Path to uploaded image: date/hash.fmt"),
     prompt: str = Form(..., description="A text description of the desired image edits"),
     model: str = Form("gemini-flash", description="Model to use: gemini-pro or gemini-flash"),
     n: int = Form(1, description="Number of images to generate"),
@@ -103,6 +109,10 @@ async def create_image_edit(
 
     Compatible with OpenAI Images API.
 
+    Two ways to provide the image:
+    1. Upload directly via `image` field (file upload)
+    2. Use `image_path` field with path from POST /v1/images/uploads (format: date/hash.fmt)
+
     Returns preview images immediately with URL format: `{date}/{hash}`.
     - Preview: `/outputs/q/{date}/{hash}.{fmt}`
     - HD: `/outputs/hd/{date}/{hash}.webp`
@@ -112,20 +122,32 @@ async def create_image_edit(
     if browser_pool is None:
         raise HTTPException(status_code=500, detail="Browser pool not initialized")
 
+    # 验证输入：必须提供 image 或 image_path
+    if image is None and image_path is None:
+        raise HTTPException(status_code=400, detail="Either 'image' or 'image_path' must be provided")
+
     # 获取可用浏览器
     browser = await browser_pool.get_available_browser()
     if browser is None:
         raise HTTPException(status_code=503, detail="No available browsers")
 
-    # 保存上传的图片
     task_id = f"task-{uuid.uuid4().hex[:12]}"
-    input_dir = Path(f"data/uploads/{task_id}")
-    input_dir.mkdir(parents=True, exist_ok=True)
 
-    input_path = input_dir / image.filename
-    with open(input_path, "wb") as f:
-        content = await image.read()
-        f.write(content)
+    # 确定输入图片路径
+    if image_path:
+        # 使用已上传的图片
+        input_path = Path(f"data/uploads/{image_path}")
+        if not input_path.exists():
+            raise HTTPException(status_code=404, detail=f"Image not found: {image_path}")
+    else:
+        # 保存上传的图片
+        input_dir = Path(f"data/uploads/{task_id}")
+        input_dir.mkdir(parents=True, exist_ok=True)
+
+        input_path = input_dir / image.filename
+        with open(input_path, "wb") as f:
+            content = await image.read()
+            f.write(content)
 
     # 转换模型名称
     gemini_model = "Pro" if "pro" in model.lower() else "Fast"
@@ -268,3 +290,50 @@ async def list_models(authorization: Optional[str] = Header(None)):
             },
         ]
     }
+
+
+class UploadResponse(BaseModel):
+    """上传响应"""
+    image_path: str  # 格式: 日期/hash.fmt
+
+
+@router.post("/images/uploads", response_model=UploadResponse)
+async def upload_image(
+    image: UploadFile = File(..., description="要上传的图片"),
+):
+    """
+    上传图片到服务器
+
+    返回图片路径 `日期/hash.fmt`，后续可用于 /v1/images/edits 接口的 image_path 参数。
+    前端可通过 `/uploads/{image_path}` 访问已上传的图片。
+    """
+    # 读取文件内容
+    content = await image.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Empty file")
+
+    # 计算 hash（与图片编辑返回的格式一致：base64url 编码的 sha256）
+    sha256_hash = hashlib.sha256(content).digest()
+    file_hash = base64.urlsafe_b64encode(sha256_hash).decode().rstrip("=")
+
+    # 获取文件扩展名
+    original_name = image.filename or "image.png"
+    ext = Path(original_name).suffix.lower() or ".png"
+    if ext.startswith("."):
+        ext = ext[1:]
+
+    # 按日期组织目录
+    date_str = datetime.now().strftime("%Y%m%d")
+    upload_dir = UPLOAD_DIR / date_str
+    upload_dir.mkdir(parents=True, exist_ok=True)
+
+    # 保存文件
+    file_name = f"{file_hash}.{ext}"
+    file_path = upload_dir / file_name
+
+    with open(file_path, "wb") as f:
+        f.write(content)
+
+    # 返回相对路径: 日期/hash.fmt
+    image_path = f"{date_str}/{file_hash}.{ext}"
+    return UploadResponse(image_path=image_path)
