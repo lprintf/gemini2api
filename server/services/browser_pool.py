@@ -332,6 +332,19 @@ class TabInstance:
 
         except Exception as e:
             self.failed_tasks += 1
+
+            # 保存错误截图用于调试
+            try:
+                if self.editor and self.editor.page:
+                    error_dir = base_output_dir / "errors"
+                    error_dir.mkdir(parents=True, exist_ok=True)
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    screenshot_path = error_dir / f"error_{self.browser_id}_{self.tab_id}_{timestamp}.png"
+                    await self.editor.page.screenshot(path=str(screenshot_path), full_page=True)
+                    print(f"[Tab {self.browser_id}-{self.tab_id}] Error screenshot saved: {screenshot_path}")
+            except Exception as screenshot_error:
+                print(f"[Tab {self.browser_id}-{self.tab_id}] Failed to save error screenshot: {screenshot_error}")
+
             self.status = BrowserStatus.IDLE
             self.current_task_id = None
             self.hd_metadata = None
