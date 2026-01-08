@@ -10,7 +10,9 @@
 import asyncio
 import base64
 import hashlib
+import math
 import os
+import random
 import sys
 import time
 from datetime import datetime
@@ -36,6 +38,56 @@ def detect_image_format(data: bytes) -> str:
         return "bin"
 
 
+def generate_human_path(start_x, start_y, end_x, end_y, steps=None):
+    """
+    生成拟人鼠标移动轨迹，使用贝塞尔曲线+随机抖动
+    返回 [(x, y), ...] 坐标列表
+    """
+    distance = math.sqrt((end_x - start_x) ** 2 + (end_y - start_y) ** 2)
+
+    # 根据距离自动计算步数
+    if steps is None:
+        steps = max(10, min(50, int(distance / 20)))
+
+    # 生成随机控制点（贝塞尔曲线）
+    # 控制点偏移量与距离成正比，增加自然感
+    ctrl_offset = distance * 0.3
+    ctrl1_x = start_x + (end_x - start_x) * 0.3 + random.uniform(-ctrl_offset, ctrl_offset)
+    ctrl1_y = start_y + (end_y - start_y) * 0.3 + random.uniform(-ctrl_offset, ctrl_offset)
+    ctrl2_x = start_x + (end_x - start_x) * 0.7 + random.uniform(-ctrl_offset, ctrl_offset)
+    ctrl2_y = start_y + (end_y - start_y) * 0.7 + random.uniform(-ctrl_offset, ctrl_offset)
+
+    path = []
+    for i in range(steps + 1):
+        t = i / steps
+
+        # 三次贝塞尔曲线
+        x = (
+            (1 - t) ** 3 * start_x
+            + 3 * (1 - t) ** 2 * t * ctrl1_x
+            + 3 * (1 - t) * t**2 * ctrl2_x
+            + t**3 * end_x
+        )
+        y = (
+            (1 - t) ** 3 * start_y
+            + 3 * (1 - t) ** 2 * t * ctrl1_y
+            + 3 * (1 - t) * t**2 * ctrl2_y
+            + t**3 * end_y
+        )
+
+        # 添加小幅随机抖动（中间点抖动大，两端抖动小）
+        jitter = 2 * math.sin(t * math.pi)  # 中间最大
+        x += random.uniform(-jitter, jitter)
+        y += random.uniform(-jitter, jitter)
+
+        path.append((int(x), int(y)))
+
+    # 确保最后一个点精确到达目标
+    path[-1] = (int(end_x), int(end_y))
+
+    return path
+
+
 async def get_last_response_images(page) -> list[str]:
     """获取最后一轮对话中的图片URL"""
     containers = await page.query_selector_all("model-response")
@@ -56,7 +108,7 @@ async def get_last_response_images(page) -> list[str]:
 
 async def main():
     # 配置
-    test_url = "https://gemini.google.com/app/07ac44601b8aed18#8f313e887254b0d5"
+    test_url = "https://gemini.google.com/app?hl=en_GB"
     user_data_dir = Path(__file__).parent.parent / "data" / "browser_data" / "0"
     output_dir = Path(__file__).parent.parent / "data" / "test_outputs"
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -978,6 +1030,115 @@ async def main():
                         fastest = results[0]
                         print(f"最快方法: {fastest[0]} ({fastest[1]:.3f}s)")
 
+                elif cmd == "shot" or cmd.startswith("shot "):
+                    # 截取当前页面截图
+                    parts = cmd.split(maxsplit=1)
+                    if len(parts) > 1:
+                        name = parts[1]
+                    else:
+
+                        name = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+                    screenshot_path = output_dir / f"screenshot_{name}.png"
+                    await page.screenshot(path=str(screenshot_path), full_page=True)
+                    print(f"✅ 截图已保存: {screenshot_path}")
+
+                elif cmd == "url":
+                    print(f"当前URL: {page.url}")
+
+                elif cmd.startswith("goto "):
+                    target_url = cmd[5:].strip()
+                    print(f"正在跳转到: {target_url}")
+                    await page.goto(target_url)
+                    print(f"✅ 已跳转，当前URL: {page.url}")
+
+                elif cmd.startswith("move "):
+                    # 拟人鼠标移动并截图
+                    parts = cmd.split()
+                    if len(parts) < 3:
+                        print("用法: move <x> <y> [name]")
+                        continue
+
+                    try:
+                        target_x = int(parts[1])
+                        target_y = int(parts[2])
+                        name = (
+                            parts[3]
+                            if len(parts) > 3
+                            else datetime.now().strftime("%Y%m%d_%H%M%S")
+                        )
+                    except ValueError:
+                        print("错误: x 和 y 必须是整数")
+                        continue
+
+                    # 获取当前鼠标位置（从页面中心开始，如果是第一次移动）
+                    try:
+                        current_pos = await page.evaluate(
+                            "() => window.__mousePos || {x: window.innerWidth/2, y: window.innerHeight/2}"
+                        )
+                        start_x, start_y = current_pos["x"], current_pos["y"]
+                    except Exception:
+                        viewport = page.viewport_size
+                        start_x = viewport["width"] // 2 if viewport else 640
+                        start_y = viewport["height"] // 2 if viewport else 360
+
+                    # 生成拟人轨迹
+                    path = generate_human_path(start_x, start_y, target_x, target_y)
+                    print(
+                        f"移动鼠标: ({start_x}, {start_y}) -> ({target_x}, {target_y}), {len(path)} 步"
+                    )
+
+                    # 逐步移动鼠标
+                    for x, y in path:
+                        await page.mouse.move(x, y)
+                        delay = random.uniform(0.01, 0.03)
+                        await asyncio.sleep(delay)
+
+                    # 记录鼠标位置
+                    await page.evaluate(
+                        f"() => window.__mousePos = {{x: {target_x}, y: {target_y}}}"
+                    )
+
+                    # 截图并绘制轨迹
+                    import io
+
+                    from PIL import Image, ImageDraw
+
+                    png_data = await page.screenshot()
+                    img = Image.open(io.BytesIO(png_data))
+                    draw = ImageDraw.Draw(img)
+
+                    # 绘制轨迹线（红色）
+                    for i in range(len(path) - 1):
+                        draw.line([path[i], path[i + 1]], fill=(255, 0, 0), width=2)
+
+                    # 绘制起点（绿色）和终点（蓝色）
+                    r = 5
+                    draw.ellipse(
+                        [
+                            path[0][0] - r,
+                            path[0][1] - r,
+                            path[0][0] + r,
+                            path[0][1] + r,
+                        ],
+                        fill=(0, 255, 0),
+                    )
+                    draw.ellipse(
+                        [
+                            path[-1][0] - r,
+                            path[-1][1] - r,
+                            path[-1][0] + r,
+                            path[-1][1] + r,
+                        ],
+                        fill=(0, 0, 255),
+                    )
+
+                    # 保存为 webp
+                    webp_path = output_dir / f"move_{name}.webp"
+                    img.save(webp_path, "WEBP", quality=50)
+
+                    print(f"✅ 移动完成，轨迹截图已保存: {webp_path}")
+
                 elif cmd == "help":
                     print("命令:")
                     print("  pause        - 打开 Playwright Inspector")
@@ -1004,6 +1165,10 @@ async def main():
                     print("  model <Pro|Fast> - 测试模型切换功能")
                     print("  env [Pro|Fast] - 测试页面环境准备（开启新对话+模型+激活）")
                     print("  prepare <image> <prompt> [model] - 测试准备阶段（环境+图片+文本）")
+                    print("  shot [name]  - 截取当前页面截图")
+                    print("  url          - 显示当前页面URL")
+                    print("  goto <url>   - 跳转到指定URL")
+                    print("  move <x> <y> [name] - 拟人鼠标移动并截图(webp)")
                     print("  quit         - 退出")
 
                 else:
