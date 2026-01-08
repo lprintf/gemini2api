@@ -96,7 +96,7 @@ async def check_rate_limit(request: Request, api_key: Optional[str] = Depends(ve
 async def create_image_edit(
     request: Request,
     image: Optional[UploadFile] = File(None, description="The image to edit (optional if image_path provided)"),
-    image_path: Optional[str] = Form(None, description="Path to uploaded image: date/hash.fmt"),
+    image_path: Optional[str] = Form(None, description="Path to image: uploads/{date}/{hash}.{fmt} or outputs/hd/{date}/{hash}.{fmt}"),
     prompt: str = Form(..., description="A text description of the desired image edits"),
     model: str = Form("gemini-flash", description="Model to use: gemini-pro or gemini-flash"),
     n: int = Form(1, description="Number of images to generate"),
@@ -111,7 +111,9 @@ async def create_image_edit(
 
     Two ways to provide the image:
     1. Upload directly via `image` field (file upload)
-    2. Use `image_path` field with path from POST /v1/images/uploads (format: date/hash.fmt)
+    2. Use `image_path` field with path:
+       - `uploads/{date}/{hash}.{fmt}` - from POST /v1/images/uploads
+       - `outputs/hd/{date}/{hash}.{fmt}` - previously generated HD image
 
     Returns preview images immediately with URL format: `{date}/{hash}`.
     - Preview: `/outputs/q/{date}/{hash}.{fmt}`
@@ -135,8 +137,16 @@ async def create_image_edit(
 
     # 确定输入图片路径
     if image_path:
-        # 使用已上传的图片
-        input_path = Path(f"data/uploads/{image_path}")
+        # 支持两种路径格式：
+        # - uploads/{date}/{hash}.{fmt}
+        # - outputs/hd/{date}/{hash}.{fmt}
+        if image_path.startswith("uploads/"):
+            input_path = Path(f"data/{image_path}")
+        elif image_path.startswith("outputs/"):
+            input_path = Path(f"data/{image_path}")
+        else:
+            raise HTTPException(status_code=400, detail="image_path must start with 'uploads/' or 'outputs/'")
+
         if not input_path.exists():
             raise HTTPException(status_code=404, detail=f"Image not found: {image_path}")
     else:
@@ -294,7 +304,7 @@ async def list_models(authorization: Optional[str] = Header(None)):
 
 class UploadResponse(BaseModel):
     """上传响应"""
-    image_path: str  # 格式: 日期/hash.fmt
+    image_path: str  # 格式: {date}/{hash}.{fmt}
 
 
 @router.post("/images/uploads", response_model=UploadResponse)
@@ -304,7 +314,7 @@ async def upload_image(
     """
     上传图片到服务器
 
-    返回图片路径 `日期/hash.fmt`，后续可用于 /v1/images/edits 接口的 image_path 参数。
+    返回图片路径 `{date}/{hash}.{fmt}`，后续可用于 /v1/images/edits 接口的 image_path 参数（需加前缀 uploads/）。
     前端可通过 `/uploads/{image_path}` 访问已上传的图片。
     """
     # 读取文件内容
@@ -334,6 +344,6 @@ async def upload_image(
     with open(file_path, "wb") as f:
         f.write(content)
 
-    # 返回相对路径: 日期/hash.fmt
+    # 返回相对路径: {date}/{hash}.{fmt}
     image_path = f"{date_str}/{file_hash}.{ext}"
     return UploadResponse(image_path=image_path)
