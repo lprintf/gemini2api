@@ -1274,28 +1274,30 @@ class BrowserPool:
         self, strategy: str = "least_loaded"
     ) -> Optional[BrowserInstance]:
         """获取可用的浏览器（负载均衡）"""
-        idle_browsers = [
+        # 只选择有空闲标签页的浏览器
+        available_browsers = [
             browser
             for browser in self.browsers.values()
             if browser.status == BrowserStatus.IDLE
+            and browser.get_available_tab() is not None
         ]
 
-        if not idle_browsers:
+        if not available_browsers:
             return None
 
         if strategy == "least_loaded":
-            # 选择任务数最少的浏览器
-            return min(idle_browsers, key=lambda b: b.total_tasks)
+            # 选择忙碌标签页最少的浏览器（即空闲标签页最多）
+            return min(available_browsers, key=lambda b: b.get_busy_tabs_count())
         elif strategy == "round_robin":
             # 简单轮询（选择第一个）
-            return idle_browsers[0]
+            return available_browsers[0]
         elif strategy == "random":
             # 随机选择
             import random
 
-            return random.choice(idle_browsers)
+            return random.choice(available_browsers)
         else:
-            return idle_browsers[0]
+            return available_browsers[0]
 
     def get_browser(self, browser_id: str) -> Optional[BrowserInstance]:
         """获取指定浏览器"""
