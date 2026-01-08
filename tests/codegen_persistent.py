@@ -1053,10 +1053,11 @@ async def main():
                     print(f"✅ 已跳转，当前URL: {page.url}")
 
                 elif cmd.startswith("move "):
-                    # 拟人鼠标移动并截图
+                    # 拟人鼠标移动并截图（自动吸附到最近按钮中心）
                     parts = cmd.split()
                     if len(parts) < 3:
                         print("用法: move <x> <y> [name]")
+                        print("  移动后会自动吸附到最近按钮中心（带随机偏移）")
                         continue
 
                     try:
@@ -1082,10 +1083,67 @@ async def main():
                         start_x = viewport["width"] // 2 if viewport else 640
                         start_y = viewport["height"] // 2 if viewport else 360
 
+                    # 查找最近的可见按钮并计算吸附位置
+                    snap_info = await page.evaluate(
+                        """([targetX, targetY]) => {
+                        const buttons = document.querySelectorAll('button');
+                        let nearest = null;
+                        let minDist = Infinity;
+
+                        for (const btn of buttons) {
+                            if (!btn.offsetParent) continue;  // 跳过隐藏的按钮
+                            const rect = btn.getBoundingClientRect();
+                            if (rect.width === 0 || rect.height === 0) continue;
+
+                            const centerX = rect.left + rect.width / 2;
+                            const centerY = rect.top + rect.height / 2;
+                            const dist = Math.sqrt((centerX - targetX) ** 2 + (centerY - targetY) ** 2);
+
+                            if (dist < minDist) {
+                                minDist = dist;
+                                nearest = {
+                                    centerX: centerX,
+                                    centerY: centerY,
+                                    width: rect.width,
+                                    height: rect.height,
+                                    dist: dist,
+                                    aria: btn.getAttribute('aria-label') || '',
+                                    text: (btn.textContent || '').trim().substring(0, 30)
+                                };
+                            }
+                        }
+                        return nearest;
+                    }""",
+                        [target_x, target_y],
+                    )
+
+                    # 计算最终目标位置（吸附到按钮中心 + 随机偏移）
+                    final_x, final_y = target_x, target_y
+                    snapped = False
+
+                    if snap_info and snap_info["dist"] < 100:  # 100px 范围内吸附
+                        # 在按钮中心附近添加随机偏移（按钮尺寸的 10-20%）
+                        offset_range_x = max(3, snap_info["width"] * 0.15)
+                        offset_range_y = max(3, snap_info["height"] * 0.15)
+                        offset_x = random.uniform(-offset_range_x, offset_range_x)
+                        offset_y = random.uniform(-offset_range_y, offset_range_y)
+
+                        final_x = int(snap_info["centerX"] + offset_x)
+                        final_y = int(snap_info["centerY"] + offset_y)
+                        snapped = True
+
+                        btn_label = snap_info["aria"] or snap_info["text"] or "(无标签)"
+                        print(
+                            f"检测到最近按钮: '{btn_label}' (距离 {snap_info['dist']:.0f}px)"
+                        )
+                        print(
+                            f"吸附到按钮中心: ({snap_info['centerX']:.0f}, {snap_info['centerY']:.0f}) + 偏移 ({offset_x:.1f}, {offset_y:.1f})"
+                        )
+
                     # 生成拟人轨迹
-                    path = generate_human_path(start_x, start_y, target_x, target_y)
+                    path = generate_human_path(start_x, start_y, final_x, final_y)
                     print(
-                        f"移动鼠标: ({start_x}, {start_y}) -> ({target_x}, {target_y}), {len(path)} 步"
+                        f"移动鼠标: ({start_x}, {start_y}) -> ({final_x}, {final_y}), {len(path)} 步"
                     )
 
                     # 逐步移动鼠标
@@ -1096,7 +1154,7 @@ async def main():
 
                     # 记录鼠标位置
                     await page.evaluate(
-                        f"() => window.__mousePos = {{x: {target_x}, y: {target_y}}}"
+                        f"() => window.__mousePos = {{x: {final_x}, y: {final_y}}}"
                     )
 
                     # 截图并绘制轨迹
@@ -1112,7 +1170,7 @@ async def main():
                     for i in range(len(path) - 1):
                         draw.line([path[i], path[i + 1]], fill=(255, 0, 0), width=2)
 
-                    # 绘制起点（绿色）和终点（蓝色）
+                    # 绘制起点（绿色）
                     r = 5
                     draw.ellipse(
                         [
@@ -1123,21 +1181,211 @@ async def main():
                         ],
                         fill=(0, 255, 0),
                     )
-                    draw.ellipse(
-                        [
-                            path[-1][0] - r,
-                            path[-1][1] - r,
-                            path[-1][0] + r,
-                            path[-1][1] + r,
-                        ],
-                        fill=(0, 0, 255),
-                    )
+
+                    # 绘制终点
+                    if snapped:
+                        # 吸附时：绘制按钮中心（黄色）和实际位置（蓝色）
+                        btn_cx, btn_cy = int(snap_info["centerX"]), int(snap_info["centerY"])
+                        draw.ellipse(
+                            [btn_cx - r, btn_cy - r, btn_cx + r, btn_cy + r],
+                            fill=(255, 255, 0),  # 黄色 = 按钮中心
+                        )
+                        draw.ellipse(
+                            [final_x - r, final_y - r, final_x + r, final_y + r],
+                            fill=(0, 0, 255),  # 蓝色 = 实际位置
+                        )
+                    else:
+                        # 未吸附：只绘制终点（蓝色）
+                        draw.ellipse(
+                            [
+                                path[-1][0] - r,
+                                path[-1][1] - r,
+                                path[-1][0] + r,
+                                path[-1][1] + r,
+                            ],
+                            fill=(0, 0, 255),
+                        )
 
                     # 保存为 webp
                     webp_path = output_dir / f"move_{name}.webp"
                     img.save(webp_path, "WEBP", quality=50)
 
                     print(f"✅ 移动完成，轨迹截图已保存: {webp_path}")
+
+                elif cmd.startswith("click "):
+                    # 鼠标点击并截图（自动吸附到最近按钮中心）
+                    parts = cmd.split()
+                    if len(parts) < 3:
+                        print("用法: click <x> <y> [name]")
+                        print("  先计算吸附位置，再拟人移动并点击")
+                        continue
+
+                    try:
+                        target_x = int(parts[1])
+                        target_y = int(parts[2])
+                        name = (
+                            parts[3]
+                            if len(parts) > 3
+                            else datetime.now().strftime("%Y%m%d_%H%M%S")
+                        )
+                    except ValueError:
+                        print("错误: x 和 y 必须是整数")
+                        continue
+
+                    # 获取当前鼠标位置
+                    try:
+                        current_pos = await page.evaluate(
+                            "() => window.__mousePos || {x: window.innerWidth/2, y: window.innerHeight/2}"
+                        )
+                        start_x, start_y = current_pos["x"], current_pos["y"]
+                    except Exception:
+                        viewport = page.viewport_size
+                        start_x = viewport["width"] // 2 if viewport else 640
+                        start_y = viewport["height"] // 2 if viewport else 360
+
+                    # 查找最近的可见按钮并计算吸附位置
+                    snap_info = await page.evaluate(
+                        """([targetX, targetY]) => {
+                        const buttons = document.querySelectorAll('button');
+                        let nearest = null;
+                        let minDist = Infinity;
+
+                        for (const btn of buttons) {
+                            if (!btn.offsetParent) continue;
+                            const rect = btn.getBoundingClientRect();
+                            if (rect.width === 0 || rect.height === 0) continue;
+
+                            const centerX = rect.left + rect.width / 2;
+                            const centerY = rect.top + rect.height / 2;
+                            const dist = Math.sqrt((centerX - targetX) ** 2 + (centerY - targetY) ** 2);
+
+                            if (dist < minDist) {
+                                minDist = dist;
+                                nearest = {
+                                    centerX: centerX,
+                                    centerY: centerY,
+                                    width: rect.width,
+                                    height: rect.height,
+                                    dist: dist,
+                                    aria: btn.getAttribute('aria-label') || '',
+                                    text: (btn.textContent || '').trim().substring(0, 30)
+                                };
+                            }
+                        }
+                        return nearest;
+                    }""",
+                        [target_x, target_y],
+                    )
+
+                    # 计算最终目标位置（吸附到按钮中心 + 随机偏移）
+                    final_x, final_y = target_x, target_y
+                    snapped = False
+
+                    if snap_info and snap_info["dist"] < 100:
+                        offset_range_x = max(3, snap_info["width"] * 0.15)
+                        offset_range_y = max(3, snap_info["height"] * 0.15)
+                        offset_x = random.uniform(-offset_range_x, offset_range_x)
+                        offset_y = random.uniform(-offset_range_y, offset_range_y)
+
+                        final_x = int(snap_info["centerX"] + offset_x)
+                        final_y = int(snap_info["centerY"] + offset_y)
+                        snapped = True
+
+                        btn_label = snap_info["aria"] or snap_info["text"] or "(无标签)"
+                        print(
+                            f"检测到最近按钮: '{btn_label}' (距离 {snap_info['dist']:.0f}px)"
+                        )
+                        print(
+                            f"吸附到按钮中心: ({snap_info['centerX']:.0f}, {snap_info['centerY']:.0f}) + 偏移 ({offset_x:.1f}, {offset_y:.1f})"
+                        )
+
+                    # 生成拟人轨迹并移动
+                    path = generate_human_path(start_x, start_y, final_x, final_y)
+                    print(
+                        f"移动鼠标: ({start_x}, {start_y}) -> ({final_x}, {final_y}), {len(path)} 步"
+                    )
+
+                    for x, y in path:
+                        await page.mouse.move(x, y)
+                        delay = random.uniform(0.01, 0.03)
+                        await asyncio.sleep(delay)
+
+                    # 记录鼠标位置
+                    await page.evaluate(
+                        f"() => window.__mousePos = {{x: {final_x}, y: {final_y}}}"
+                    )
+
+                    # 执行点击
+                    print(f"点击位置: ({final_x}, {final_y})")
+                    await page.mouse.click(final_x, final_y)
+
+                    # 等待页面响应
+                    await asyncio.sleep(0.5)
+
+                    # 截图并绘制轨迹和点击位置
+                    import io
+
+                    from PIL import Image, ImageDraw
+
+                    png_data = await page.screenshot()
+                    img = Image.open(io.BytesIO(png_data))
+                    draw = ImageDraw.Draw(img)
+
+                    # 绘制轨迹线（红色）
+                    for i in range(len(path) - 1):
+                        draw.line([path[i], path[i + 1]], fill=(255, 0, 0), width=2)
+
+                    # 绘制起点（绿色）
+                    r = 5
+                    draw.ellipse(
+                        [
+                            path[0][0] - r,
+                            path[0][1] - r,
+                            path[0][0] + r,
+                            path[0][1] + r,
+                        ],
+                        fill=(0, 255, 0),
+                    )
+
+                    # 绘制点击位置（蓝色圆圈 + 十字）
+                    click_r = 10
+                    draw.ellipse(
+                        [
+                            final_x - click_r,
+                            final_y - click_r,
+                            final_x + click_r,
+                            final_y + click_r,
+                        ],
+                        outline=(0, 0, 255),
+                        width=3,
+                    )
+                    # 十字标记
+                    cross_size = 15
+                    draw.line(
+                        [final_x - cross_size, final_y, final_x + cross_size, final_y],
+                        fill=(0, 0, 255),
+                        width=2,
+                    )
+                    draw.line(
+                        [final_x, final_y - cross_size, final_x, final_y + cross_size],
+                        fill=(0, 0, 255),
+                        width=2,
+                    )
+
+                    # 如果吸附了，额外绘制按钮中心（黄色）
+                    if snapped:
+                        btn_cx, btn_cy = int(snap_info["centerX"]), int(snap_info["centerY"])
+                        r = 5
+                        draw.ellipse(
+                            [btn_cx - r, btn_cy - r, btn_cx + r, btn_cy + r],
+                            fill=(255, 255, 0),
+                        )
+
+                    # 保存为 webp
+                    webp_path = output_dir / f"click_{name}.webp"
+                    img.save(webp_path, "WEBP", quality=50)
+
+                    print(f"✅ 点击完成，截图已保存: {webp_path}")
 
                 elif cmd == "help":
                     print("命令:")
@@ -1169,6 +1417,7 @@ async def main():
                     print("  url          - 显示当前页面URL")
                     print("  goto <url>   - 跳转到指定URL")
                     print("  move <x> <y> [name] - 拟人鼠标移动并截图(webp)")
+                    print("  click <x> <y> [name] - 拟人鼠标移动+点击并截图(webp)")
                     print("  quit         - 退出")
 
                 else:
