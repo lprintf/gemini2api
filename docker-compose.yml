@@ -15,10 +15,10 @@ services:
     # 如遇浏览器问题可取消注释
     # security_opt:
     #   - seccomp=unconfined
-    # ports:
-    #   - "${RDP_PORT}:3500"
-    #   - "${API_PORT}:8000"
-    #   # cloudflared access rdp --hostname rdp.example.com --url rdp://localhost:3389
+    ports:
+      - "${RDP_PORT}:3500"
+      - "${API_PORT}:8000"
+      # cloudflared access rdp --hostname rdp.example.com --url rdp://localhost:3389
     volumes:
       # 代码挂载（开发模式，修改后无需重新构建）
       - ./main.py:/app/main.py:ro

@@ -43,6 +43,17 @@ class RateLimitExceeded(Exception):
         )
 
 
+class NoAvailableTabs(Exception):
+    """没有可用标签页异常"""
+
+    def __init__(self, browser_id: str, total_tabs: int):
+        self.browser_id = browser_id
+        self.total_tabs = total_tabs
+        super().__init__(
+            f"Browser {browser_id} has no available tabs (all {total_tabs} tabs are busy)"
+        )
+
+
 class BrowserStatus(str, Enum):
     """浏览器状态"""
 
@@ -862,8 +873,9 @@ class BrowserInstance:
         # 获取空闲标签页（传入模型偏好）
         tab = self.get_available_tab(preferred_model=model)
         if not tab:
-            raise RuntimeError(
-                f"Browser {self.browser_id} has no available tabs (all {len(self.tabs)} tabs are busy)"
+            raise NoAvailableTabs(
+                browser_id=self.browser_id,
+                total_tabs=len(self.tabs)
             )
 
         print(
@@ -908,8 +920,9 @@ class BrowserInstance:
         # 获取空闲标签页（传入模型偏好）
         tab = self.get_available_tab(preferred_model=model)
         if not tab:
-            raise RuntimeError(
-                f"Browser {self.browser_id} has no available tabs (all {len(self.tabs)} tabs are busy)"
+            raise NoAvailableTabs(
+                browser_id=self.browser_id,
+                total_tabs=len(self.tabs)
             )
 
         print(

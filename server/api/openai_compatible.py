@@ -15,7 +15,7 @@ from pydantic import BaseModel
 from pathlib import Path
 import base64
 
-from server.services.browser_pool import BrowserPool, BrowserStatus, RateLimitExceeded
+from server.services.browser_pool import BrowserPool, BrowserStatus, RateLimitExceeded, NoAvailableTabs
 from server.services.rate_limiter import RateLimiter
 
 
@@ -208,6 +208,19 @@ async def create_image_edit(
                 }
             },
             headers={"Retry-After": str(e.retry_after)}
+        )
+    except NoAvailableTabs as e:
+        return JSONResponse(
+            status_code=429,
+            content={
+                "error": {
+                    "message": str(e),
+                    "type": "rate_limit_exceeded",
+                    "code": "no_available_tabs",
+                    "param": None,
+                }
+            },
+            headers={"Retry-After": "5"}  # 建议5秒后重试
         )
     except KeyError as e:
         import traceback

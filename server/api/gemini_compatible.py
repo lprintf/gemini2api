@@ -14,7 +14,7 @@ from typing import Optional, List, Literal
 from pydantic import BaseModel
 from pathlib import Path
 
-from server.services.browser_pool import BrowserPool, RateLimitExceeded
+from server.services.browser_pool import BrowserPool, RateLimitExceeded, NoAvailableTabs
 
 
 router = APIRouter(prefix="/v1beta", tags=["Gemini Compatible API"])
@@ -301,6 +301,24 @@ async def generate_content(
                 }
             },
             headers={"Retry-After": str(e.retry_after)}
+        )
+    except NoAvailableTabs as e:
+        return JSONResponse(
+            status_code=429,
+            content={
+                "error": {
+                    "code": 429,
+                    "message": str(e),
+                    "status": "RESOURCE_EXHAUSTED",
+                    "details": [
+                        {
+                            "@type": "type.googleapis.com/google.rpc.RetryInfo",
+                            "retryDelay": "5s"
+                        }
+                    ]
+                }
+            },
+            headers={"Retry-After": "5"}
         )
     except Exception as e:
         raise HTTPException(
