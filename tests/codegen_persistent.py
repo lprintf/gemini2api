@@ -2,11 +2,20 @@
 测试 Playwright 下载图片
 
 使用方法：
-    python test/codegen_persistent.py
+    python test/codegen_persistent.py [user_id]
+
+参数：
+    user_id: 可选，指定浏览器用户目录编号（默认为 0）
+
+示例：
+    python test/codegen_persistent.py       # 使用用户 0
+    python test/codegen_persistent.py 1     # 使用用户 1
+    python test/codegen_persistent.py 2     # 使用用户 2
 
 这会使用已登录的浏览器数据，提供交互式命令测试下载功能。
 """
 
+import argparse
 import asyncio
 import base64
 import hashlib
@@ -107,15 +116,35 @@ async def get_last_response_images(page) -> list[str]:
 
 
 async def main():
+    # 解析命令行参数
+    parser = argparse.ArgumentParser(
+        description="Playwright 下载测试 - 交互式命令工具",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+示例:
+  python tests/codegen_persistent.py       # 使用用户 0
+  python tests/codegen_persistent.py 1     # 使用用户 1
+  python tests/codegen_persistent.py 2     # 使用用户 2
+        """
+    )
+    parser.add_argument(
+        "user_id",
+        nargs="?",
+        default="0",
+        help="浏览器用户目录编号（默认: 0）"
+    )
+    args = parser.parse_args()
+
     # 配置
-    test_url = "https://gemini.google.com/app?hl=en_GB"
-    user_data_dir = Path(__file__).parent.parent / "data" / "browser_data" / "0"
+    test_url = "https://gemini.google.com/app"
+    user_data_dir = Path(__file__).parent.parent / "data" / "browser_data" / args.user_id
     output_dir = Path(__file__).parent.parent / "data" / "test_outputs"
     output_dir.mkdir(parents=True, exist_ok=True)
 
     print("=" * 60)
     print("Playwright 下载测试")
     print("=" * 60)
+    print(f"用户ID: {args.user_id}")
     print(f"测试页面: {test_url}")
     print(f"用户数据目录: {user_data_dir}")
     print(f"输出目录: {output_dir}")
@@ -1036,11 +1065,17 @@ async def main():
                     if len(parts) > 1:
                         name = parts[1]
                     else:
-
                         name = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-                    screenshot_path = output_dir / f"screenshot_{name}.png"
-                    await page.screenshot(path=str(screenshot_path), full_page=True)
+                    # 先截取 PNG，然后转换为 WebP
+                    from io import BytesIO
+                    from PIL import Image
+
+                    png_data = await page.screenshot(full_page=True)
+                    img = Image.open(BytesIO(png_data))
+
+                    screenshot_path = output_dir / f"screenshot_{name}.webp"
+                    img.save(screenshot_path, "WEBP", quality=50)
                     print(f"✅ 截图已保存: {screenshot_path}")
 
                 elif cmd == "url":
@@ -1051,6 +1086,49 @@ async def main():
                     print(f"正在跳转到: {target_url}")
                     await page.goto(target_url)
                     print(f"✅ 已跳转，当前URL: {page.url}")
+
+                elif cmd.startswith("scroll "):
+                    # 滚动页面
+                    parts = cmd.split()
+                    if len(parts) < 2:
+                        print("用法: scroll <down|up|top|bottom|<pixels>>")
+                        print("  down   - 向下滚动一屏")
+                        print("  up     - 向上滚动一屏")
+                        print("  top    - 滚动到顶部")
+                        print("  bottom - 滚动到底部")
+                        print("  <pixels> - 滚动指定像素（正数向下，负数向上）")
+                        continue
+
+                    action = parts[1]
+
+                    if action == "down":
+                        # 向下滚动一屏
+                        await page.evaluate("window.scrollBy(0, window.innerHeight * 0.8)")
+                        print("✅ 向下滚动一屏")
+                    elif action == "up":
+                        # 向上滚动一屏
+                        await page.evaluate("window.scrollBy(0, -window.innerHeight * 0.8)")
+                        print("✅ 向上滚动一屏")
+                    elif action == "top":
+                        # 滚动到顶部
+                        await page.evaluate("window.scrollTo(0, 0)")
+                        print("✅ 滚动到顶部")
+                    elif action == "bottom":
+                        # 滚动到底部
+                        await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                        print("✅ 滚动到底部")
+                    else:
+                        # 滚动指定像素
+                        try:
+                            pixels = int(action)
+                            await page.evaluate(f"window.scrollBy(0, {pixels})")
+                            direction = "向下" if pixels > 0 else "向上"
+                            print(f"✅ {direction}滚动 {abs(pixels)} 像素")
+                        except ValueError:
+                            print(f"错误: 未知的滚动操作 '{action}'")
+
+                    # 等待滚动完成
+                    await asyncio.sleep(0.3)
 
                 elif cmd.startswith("move "):
                     # 拟人鼠标移动并截图（自动吸附到最近按钮中心）
@@ -1409,15 +1487,18 @@ async def main():
                     print("  hd <date>/<hash> - 根据预览参数下载高清图")
                     print("  flow <n>     - 完整流程测试（预览→高清）")
                     print()
+                    print("  === 页面操作 ===")
+                    print("  shot [name]  - 截取当前页面截图")
+                    print("  url          - 显示当前页面URL")
+                    print("  goto <url>   - 跳转到指定URL")
+                    print("  scroll <action> - 滚动页面 (down/up/top/bottom/<pixels>)")
+                    print("  move <x> <y> [name] - 拟人鼠标移动并截图(webp)")
+                    print("  click <x> <y> [name] - 拟人鼠标移动+点击并截图(webp)")
+                    print()
                     print("  === 其他 ===")
                     print("  model <Pro|Fast> - 测试模型切换功能")
                     print("  env [Pro|Fast] - 测试页面环境准备（开启新对话+模型+激活）")
                     print("  prepare <image> <prompt> [model] - 测试准备阶段（环境+图片+文本）")
-                    print("  shot [name]  - 截取当前页面截图")
-                    print("  url          - 显示当前页面URL")
-                    print("  goto <url>   - 跳转到指定URL")
-                    print("  move <x> <y> [name] - 拟人鼠标移动并截图(webp)")
-                    print("  click <x> <y> [name] - 拟人鼠标移动+点击并截图(webp)")
                     print("  quit         - 退出")
 
                 else:
