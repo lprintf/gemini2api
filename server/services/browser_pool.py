@@ -28,6 +28,21 @@ from server.core.database import get_db
 from server.core.models import BrowserConfig, TaskRecord
 
 
+class RateLimitExceeded(Exception):
+    """速率限制异常"""
+
+    def __init__(self, browser_id: str, limit: int, window_seconds: int, reset_at: int):
+        self.browser_id = browser_id
+        self.limit = limit
+        self.window_seconds = window_seconds
+        self.reset_at = reset_at
+        self.retry_after = max(0, reset_at - int(time.time()))
+        super().__init__(
+            f"Browser {browser_id} rate limit exceeded. "
+            f"Limit: {limit}/{window_seconds}s, Reset at: {reset_at}"
+        )
+
+
 class BrowserStatus(str, Enum):
     """浏览器状态"""
 
@@ -837,10 +852,11 @@ class BrowserInstance:
         # 检查速率限制
         allowed, info = self.check_rate_limit()
         if not allowed:
-            raise RuntimeError(
-                f"Browser {self.browser_id} rate limit exceeded. "
-                f"Limit: {info['limit']}/{info['window_seconds']}s, "
-                f"Reset at: {info['reset']}"
+            raise RateLimitExceeded(
+                browser_id=self.browser_id,
+                limit=info['limit'],
+                window_seconds=info['window_seconds'],
+                reset_at=info['reset']
             )
 
         # 获取空闲标签页（传入模型偏好）
@@ -882,10 +898,11 @@ class BrowserInstance:
         # 检查速率限制
         allowed, info = self.check_rate_limit()
         if not allowed:
-            raise RuntimeError(
-                f"Browser {self.browser_id} rate limit exceeded. "
-                f"Limit: {info['limit']}/{info['window_seconds']}s, "
-                f"Reset at: {info['reset']}"
+            raise RateLimitExceeded(
+                browser_id=self.browser_id,
+                limit=info['limit'],
+                window_seconds=info['window_seconds'],
+                reset_at=info['reset']
             )
 
         # 获取空闲标签页（传入模型偏好）

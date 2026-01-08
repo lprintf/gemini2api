@@ -15,7 +15,7 @@ from pydantic import BaseModel
 from pathlib import Path
 import base64
 
-from server.services.browser_pool import BrowserPool, BrowserStatus
+from server.services.browser_pool import BrowserPool, BrowserStatus, RateLimitExceeded
 from server.services.rate_limiter import RateLimiter
 
 
@@ -195,6 +195,20 @@ async def create_image_edit(
 
     except HTTPException:
         raise
+    except RateLimitExceeded as e:
+        return JSONResponse(
+            status_code=429,
+            content={
+                "error": {
+                    "message": str(e),
+                    "type": "rate_limit_exceeded",
+                    "code": "rate_limit_exceeded",
+                    "param": None,
+                    "retry_after": e.retry_after,
+                }
+            },
+            headers={"Retry-After": str(e.retry_after)}
+        )
     except KeyError as e:
         import traceback
         traceback.print_exc()

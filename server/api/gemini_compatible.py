@@ -9,11 +9,12 @@ import uuid
 import time
 import base64
 from fastapi import APIRouter, HTTPException, Header, Request
+from fastapi.responses import JSONResponse
 from typing import Optional, List, Literal
 from pydantic import BaseModel
 from pathlib import Path
 
-from server.services.browser_pool import BrowserPool
+from server.services.browser_pool import BrowserPool, RateLimitExceeded
 
 
 router = APIRouter(prefix="/v1beta", tags=["Gemini Compatible API"])
@@ -283,6 +284,24 @@ async def generate_content(
 
     except HTTPException:
         raise
+    except RateLimitExceeded as e:
+        return JSONResponse(
+            status_code=429,
+            content={
+                "error": {
+                    "code": 429,
+                    "message": str(e),
+                    "status": "RESOURCE_EXHAUSTED",
+                    "details": [
+                        {
+                            "@type": "type.googleapis.com/google.rpc.RetryInfo",
+                            "retryDelay": f"{e.retry_after}s"
+                        }
+                    ]
+                }
+            },
+            headers={"Retry-After": str(e.retry_after)}
+        )
     except Exception as e:
         raise HTTPException(
             status_code=500,
