@@ -592,31 +592,21 @@
             const wrapper = document.getElementById('screenshotWrapper');
             const cursor = document.getElementById('cursorIndicator');
 
-            // 计算点击位置相对于原始图片的坐标
+            // 计算点击位置相对于视口的坐标
+            // 图片原始尺寸 = 视口尺寸，所以只需计算相对位置
             function getRelativeCoords(e) {
                 const rect = img.getBoundingClientRect();
-                // 使用图片的自然尺寸（原始像素尺寸）而不是显示尺寸
-                const naturalWidth = img.naturalWidth || viewportWidth;
-                const naturalHeight = img.naturalHeight || viewportHeight;
 
-                // 计算显示缩放比例
-                const scaleX = naturalWidth / rect.width;
-                const scaleY = naturalHeight / rect.height;
+                // 鼠标在显示图片上的相对位置 (0-1)
+                const relX = (e.clientX - rect.left) / rect.width;
+                const relY = (e.clientY - rect.top) / rect.height;
 
-                // 鼠标在显示图片上的位置
-                const displayX = e.clientX - rect.left;
-                const displayY = e.clientY - rect.top;
-
-                // 转换为原始图片上的像素位置
-                const imgX = displayX * scaleX;
-                const imgY = displayY * scaleY;
-
-                // 返回相对于视口的比例 (0-1)
+                // 返回相对比例和实际像素位置
                 return {
-                    x: imgX / viewportWidth,
-                    y: imgY / viewportHeight,
-                    actualX: Math.round(imgX / naturalWidth * viewportWidth),
-                    actualY: Math.round(imgY / naturalHeight * viewportHeight)
+                    x: relX,
+                    y: relY,
+                    actualX: Math.round(relX * viewportWidth),
+                    actualY: Math.round(relY * viewportHeight)
                 };
             }
 
