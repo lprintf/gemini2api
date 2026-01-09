@@ -431,6 +431,12 @@ class KeyboardInputRequest(BaseModel):
     key: Optional[str] = None  # 用于 press
 
 
+class NavigateRequest(BaseModel):
+    """导航请求"""
+    url: str
+    wait_until: str = "load"  # "load", "domcontentloaded", "networkidle"
+
+
 # 存储最近的点击位置（用于在截图上绘制标记）
 # 格式: {f"{browser_id}-{tab_id}": (x_pixel, y_pixel)}
 _last_click: dict = {}
@@ -648,3 +654,48 @@ async def send_keyboard_input(browser_id: str, tab_id: int, request: KeyboardInp
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Keyboard input failed: {str(e)}")
+
+
+@router.post("/browsers/{browser_id}/tabs/{tab_id}/navigate")
+async def navigate_tab(browser_id: str, tab_id: int, request: NavigateRequest):
+    """导航标签页到指定 URL"""
+    if browser_pool is None:
+        raise HTTPException(status_code=500, detail="Browser pool not initialized")
+
+    browser = browser_pool.get_browser(browser_id)
+    if browser is None:
+        raise HTTPException(status_code=404, detail=f"Browser {browser_id} not found")
+
+    # 查找指定的标签页
+    tab = None
+    for t in browser.tabs:
+        if t.tab_id == tab_id:
+            tab = t
+            break
+
+    if tab is None:
+        raise HTTPException(status_code=404, detail=f"Tab {tab_id} not found in browser {browser_id}")
+
+    if tab.editor is None or tab.editor.page is None:
+        raise HTTPException(status_code=400, detail=f"Tab {tab_id} is not ready")
+
+    try:
+        page = tab.editor.page
+
+        # 导航到指定 URL
+        await page.goto(request.url, wait_until=request.wait_until, timeout=30000)
+
+        # 获取当前页面信息
+        current_url = page.url
+        title = await page.title()
+
+        return {
+            "success": True,
+            "url": current_url,
+            "title": title,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Navigation failed: {str(e)}")

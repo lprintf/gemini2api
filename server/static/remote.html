@@ -174,6 +174,26 @@
             color: #888;
         }
 
+        /* URL 地址栏 */
+        .url-bar {
+            gap: 0.5rem;
+        }
+
+        .url-input {
+            flex: 1;
+            padding: 0.4rem 0.75rem;
+            border: 1px solid #444;
+            border-radius: 6px;
+            background: #1a1a2e;
+            color: white;
+            font-size: 0.85rem;
+        }
+
+        .url-input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
         /* 截图显示区 */
         .screenshot-container {
             flex: 1;
@@ -375,6 +395,15 @@
 
         <!-- 主内容区 -->
         <div class="main-content">
+            <!-- 地址栏 -->
+            <div class="toolbar url-bar">
+                <input type="text" id="urlInput" class="url-input" placeholder="Enter URL (e.g., chrome://settings/)"
+                    onkeydown="if(event.key==='Enter') navigateTo()">
+                <button class="btn btn-primary" onclick="navigateTo()" title="Navigate to URL">Go</button>
+                <button class="btn btn-secondary" onclick="goBack()" title="Go back">←</button>
+                <button class="btn btn-secondary" onclick="goForward()" title="Go forward">→</button>
+            </div>
+
             <div class="toolbar">
                 <button class="btn btn-primary" onclick="refreshScreenshot()" title="Refresh screenshot (R)">
                     Refresh
@@ -583,6 +612,72 @@
                 showToast('Screenshot failed: ' + e.message, 'error');
                 wrapper.classList.remove('loading');
                 isLoading = false;
+            }
+        }
+
+        // 导航到指定 URL
+        async function navigateTo() {
+            const urlInput = document.getElementById('urlInput');
+            const url = urlInput.value.trim();
+
+            if (!url) {
+                showToast('Please enter a URL', 'error');
+                return;
+            }
+
+            if (!selectedBrowser || selectedTab === null) {
+                showToast('Please select a browser and tab first', 'error');
+                return;
+            }
+
+            try {
+                showToast('Navigating...', '');
+
+                const response = await fetch(
+                    `${API_BASE}/browsers/${selectedBrowser}/tabs/${selectedTab}/navigate`,
+                    {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ url: url })
+                    }
+                );
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    document.getElementById('statusLastAction').textContent = `Navigated to: ${result.title || url}`;
+                    urlInput.value = result.url; // 更新为实际 URL
+                    showToast('Navigation successful', 'success');
+                    await refreshScreenshot();
+                } else {
+                    showToast(result.detail || 'Navigation failed', 'error');
+                }
+
+            } catch (e) {
+                showToast('Navigation failed: ' + e.message, 'error');
+            }
+        }
+
+        // 后退
+        async function goBack() {
+            if (!selectedBrowser || selectedTab === null) return;
+
+            try {
+                await sendKey('Alt+ArrowLeft');
+            } catch (e) {
+                // 备用方案：使用 history API
+                showToast('Back navigation attempted', '');
+            }
+        }
+
+        // 前进
+        async function goForward() {
+            if (!selectedBrowser || selectedTab === null) return;
+
+            try {
+                await sendKey('Alt+ArrowRight');
+            } catch (e) {
+                showToast('Forward navigation attempted', '');
             }
         }
 
