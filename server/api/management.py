@@ -4,20 +4,14 @@
 用于管理浏览器、配置、任务、日志等
 """
 
-from datetime import datetime
-from pathlib import Path
-
-from fastapi import APIRouter, HTTPException, Query, File, UploadFile
+from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import Response
 from pydantic import BaseModel
-from typing import Optional, List, Dict, Any
+from typing import Optional, List
+from io import BytesIO
 
 from server.services.browser_pool import BrowserPool
 from server.core.database import get_db
-from server.core.models import (
-    BrowserConfigCreate,
-    BrowserConfigUpdate,
-    GlobalConfigUpdate,
-)
 
 
 router = APIRouter(prefix="/api/admin", tags=["Management"])
@@ -417,3 +411,240 @@ async def get_dashboard():
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================== 远程控制 ====================
+
+class MouseInputRequest(BaseModel):
+    """鼠标输入请求"""
+    action: str  # "move", "click", "scroll"
+    x: float  # 相对于图片的 x 坐标 (0-1)
+    y: float  # 相对于图片的 y 坐标 (0-1)
+    button: str = "left"  # "left", "right", "middle"
+    scroll_delta: float = 0  # 滚动量
+
+
+class KeyboardInputRequest(BaseModel):
+    """键盘输入请求"""
+    action: str  # "type", "press"
+    text: Optional[str] = None  # 用于 type
+    key: Optional[str] = None  # 用于 press
+
+
+# 存储最近的点击位置（用于在截图上绘制标记）
+# 格式: {f"{browser_id}-{tab_id}": (x_pixel, y_pixel)}
+_last_click: dict = {}
+
+
+@router.get("/browsers/{browser_id}/tabs")
+async def list_browser_tabs(browser_id: str):
+    """获取浏览器的所有标签页"""
+    if browser_pool is None:
+        raise HTTPException(status_code=500, detail="Browser pool not initialized")
+
+    browser = browser_pool.get_browser(browser_id)
+    if browser is None:
+        raise HTTPException(status_code=404, detail=f"Browser {browser_id} not found")
+
+    tabs_info = []
+    for tab in browser.tabs:
+        tab_info = {
+            "tab_id": tab.tab_id,
+            "browser_id": tab.browser_id,
+            "preferred_model": tab.preferred_model,
+            "status": tab.status.value,
+            "total_tasks": tab.total_tasks,
+            "failed_tasks": tab.failed_tasks,
+            "current_task_id": tab.current_task_id,
+        }
+        # 尝试获取页面标题和 URL
+        if tab.editor and tab.editor.page:
+            try:
+                tab_info["url"] = tab.editor.page.url
+                tab_info["title"] = await tab.editor.page.title()
+            except Exception:
+                tab_info["url"] = None
+                tab_info["title"] = None
+        tabs_info.append(tab_info)
+
+    return {
+        "browser_id": browser_id,
+        "total_tabs": len(browser.tabs),
+        "tabs": tabs_info,
+    }
+
+
+@router.get("/browsers/{browser_id}/tabs/{tab_id}/screenshot")
+async def get_tab_screenshot(
+    browser_id: str,
+    tab_id: int,
+    quality: int = Query(50, ge=1, le=100, description="WebP 质量 (1-100)"),
+    full_page: bool = Query(False, description="是否截取整页"),
+):
+    """获取标签页截图 (WebP 格式)"""
+    if browser_pool is None:
+        raise HTTPException(status_code=500, detail="Browser pool not initialized")
+
+    browser = browser_pool.get_browser(browser_id)
+    if browser is None:
+        raise HTTPException(status_code=404, detail=f"Browser {browser_id} not found")
+
+    # 查找指定的标签页
+    tab = None
+    for t in browser.tabs:
+        if t.tab_id == tab_id:
+            tab = t
+            break
+
+    if tab is None:
+        raise HTTPException(status_code=404, detail=f"Tab {tab_id} not found in browser {browser_id}")
+
+    if tab.editor is None or tab.editor.page is None:
+        raise HTTPException(status_code=400, detail=f"Tab {tab_id} is not ready")
+
+    try:
+        # 截图到字节流
+        screenshot_bytes = await tab.editor.page.screenshot(
+            type="png",  # Playwright 原生只支持 png/jpeg
+            full_page=full_page,
+        )
+
+        # 转换为 PIL Image
+        from PIL import Image, ImageDraw
+        img = Image.open(BytesIO(screenshot_bytes))
+
+        # 获取视口尺寸
+        viewport_size = tab.editor.page.viewport_size or {"width": 1280, "height": 900}
+
+        # 如果有最近的点击位置，在图上画红点
+        tab_key = f"{browser_id}-{tab_id}"
+        if tab_key in _last_click:
+            click_x, click_y = _last_click[tab_key]
+            draw = ImageDraw.Draw(img)
+            # 画一个红色圆点（半径8像素）
+            r = 8
+            draw.ellipse([click_x - r, click_y - r, click_x + r, click_y + r], fill='red', outline='white', width=2)
+            # 画完后清除记录
+            del _last_click[tab_key]
+
+        webp_buffer = BytesIO()
+        img.save(webp_buffer, format="WEBP", quality=quality)
+        webp_bytes = webp_buffer.getvalue()
+
+        return Response(
+            content=webp_bytes,
+            media_type="image/webp",
+            headers={
+                "X-Viewport-Width": str(viewport_size["width"]),
+                "X-Viewport-Height": str(viewport_size["height"]),
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+            }
+        )
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Screenshot failed: {str(e)}")
+
+
+@router.post("/browsers/{browser_id}/tabs/{tab_id}/mouse")
+async def send_mouse_input(browser_id: str, tab_id: int, request: MouseInputRequest):
+    """发送鼠标输入到标签页"""
+    if browser_pool is None:
+        raise HTTPException(status_code=500, detail="Browser pool not initialized")
+
+    browser = browser_pool.get_browser(browser_id)
+    if browser is None:
+        raise HTTPException(status_code=404, detail=f"Browser {browser_id} not found")
+
+    # 查找指定的标签页
+    tab = None
+    for t in browser.tabs:
+        if t.tab_id == tab_id:
+            tab = t
+            break
+
+    if tab is None:
+        raise HTTPException(status_code=404, detail=f"Tab {tab_id} not found in browser {browser_id}")
+
+    if tab.editor is None or tab.editor.page is None:
+        raise HTTPException(status_code=400, detail=f"Tab {tab_id} is not ready")
+
+    try:
+        page = tab.editor.page
+        viewport_size = page.viewport_size or {"width": 1280, "height": 900}
+
+        # 将相对坐标转换为实际像素坐标（整数）
+        actual_x = int(request.x * viewport_size["width"])
+        actual_y = int(request.y * viewport_size["height"])
+
+        print(f"[Remote] Mouse {request.action}: ({actual_x}, {actual_y}) button={request.button}")
+
+        if request.action == "move":
+            await page.mouse.move(actual_x, actual_y)
+        elif request.action == "click":
+            # 先移动到目标位置，再点击
+            await page.mouse.move(actual_x, actual_y)
+            await page.mouse.down(button=request.button)
+            await page.mouse.up(button=request.button)
+            # 记录点击位置，供下次截图时画点
+            _last_click[f"{browser_id}-{tab_id}"] = (actual_x, actual_y)
+        elif request.action == "scroll":
+            await page.mouse.move(actual_x, actual_y)
+            await page.mouse.wheel(0, int(request.scroll_delta))
+        else:
+            raise HTTPException(status_code=400, detail=f"Unknown action: {request.action}")
+
+        return {
+            "success": True,
+            "action": request.action,
+            "x": actual_x,
+            "y": actual_y,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Mouse input failed: {str(e)}")
+
+
+@router.post("/browsers/{browser_id}/tabs/{tab_id}/keyboard")
+async def send_keyboard_input(browser_id: str, tab_id: int, request: KeyboardInputRequest):
+    """发送键盘输入到标签页"""
+    if browser_pool is None:
+        raise HTTPException(status_code=500, detail="Browser pool not initialized")
+
+    browser = browser_pool.get_browser(browser_id)
+    if browser is None:
+        raise HTTPException(status_code=404, detail=f"Browser {browser_id} not found")
+
+    # 查找指定的标签页
+    tab = None
+    for t in browser.tabs:
+        if t.tab_id == tab_id:
+            tab = t
+            break
+
+    if tab is None:
+        raise HTTPException(status_code=404, detail=f"Tab {tab_id} not found in browser {browser_id}")
+
+    if tab.editor is None or tab.editor.page is None:
+        raise HTTPException(status_code=400, detail=f"Tab {tab_id} is not ready")
+
+    try:
+        page = tab.editor.page
+
+        if request.action == "type" and request.text:
+            await page.keyboard.type(request.text)
+        elif request.action == "press" and request.key:
+            await page.keyboard.press(request.key)
+        else:
+            raise HTTPException(status_code=400, detail="Invalid keyboard action or missing parameters")
+
+        return {
+            "success": True,
+            "action": request.action,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Keyboard input failed: {str(e)}")
