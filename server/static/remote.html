@@ -1,0 +1,861 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Remote Control - Gemini2API</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+            min-height: 100vh;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 0.75rem 1.5rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+        }
+
+        .header h1 {
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+
+        .container {
+            display: flex;
+            height: calc(100vh - 52px);
+        }
+
+        /* 左侧选择器 */
+        .sidebar {
+            width: 280px;
+            background: #16213e;
+            border-right: 1px solid #333;
+            padding: 1rem;
+            overflow-y: auto;
+        }
+
+        .sidebar h3 {
+            font-size: 0.9rem;
+            color: #888;
+            margin-bottom: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .browser-list, .tab-list {
+            list-style: none;
+        }
+
+        .browser-item, .tab-item {
+            padding: 0.6rem 0.75rem;
+            margin-bottom: 0.25rem;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 0.9rem;
+        }
+
+        .browser-item:hover, .tab-item:hover {
+            background: rgba(102, 126, 234, 0.2);
+        }
+
+        .browser-item.active, .tab-item.active {
+            background: rgba(102, 126, 234, 0.4);
+            border-left: 3px solid #667eea;
+        }
+
+        .browser-item .status, .tab-item .status {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+
+        .status.idle { background: #28a745; }
+        .status.busy { background: #ffc107; }
+        .status.stopped { background: #6c757d; }
+        .status.error { background: #dc3545; }
+
+        .tab-item .model-badge {
+            font-size: 0.7rem;
+            padding: 0.1rem 0.4rem;
+            border-radius: 3px;
+            margin-left: 0.5rem;
+            background: rgba(255,255,255,0.1);
+        }
+
+        /* 主内容区 */
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .toolbar {
+            background: #16213e;
+            padding: 0.5rem 1rem;
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+            border-bottom: 1px solid #333;
+        }
+
+        .btn {
+            padding: 0.4rem 0.8rem;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.3rem;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #5a6fd6;
+        }
+
+        .btn-secondary {
+            background: #444;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #555;
+        }
+
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .toolbar .separator {
+            width: 1px;
+            height: 24px;
+            background: #444;
+            margin: 0 0.5rem;
+        }
+
+        .toolbar .info {
+            margin-left: auto;
+            font-size: 0.8rem;
+            color: #888;
+        }
+
+        /* 截图显示区 */
+        .screenshot-container {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+            overflow: auto;
+            background: #0f0f23;
+        }
+
+        .screenshot-wrapper {
+            position: relative;
+            display: inline-block;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        #screenshot {
+            display: block;
+            max-width: 100%;
+            max-height: calc(100vh - 160px);
+            cursor: crosshair;
+        }
+
+        .screenshot-wrapper.loading::after {
+            content: 'Loading...';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.7);
+            padding: 1rem 2rem;
+            border-radius: 8px;
+            color: white;
+        }
+
+        /* 鼠标位置指示器 */
+        .cursor-indicator {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            border: 2px solid #ff0;
+            border-radius: 50%;
+            pointer-events: none;
+            transform: translate(-50%, -50%);
+            display: none;
+            z-index: 10;
+        }
+
+        /* 占位状态 */
+        .placeholder {
+            text-align: center;
+            color: #666;
+            padding: 2rem;
+        }
+
+        .placeholder-icon {
+            font-size: 4rem;
+            margin-bottom: 1rem;
+        }
+
+        /* 状态栏 */
+        .statusbar {
+            background: #16213e;
+            padding: 0.4rem 1rem;
+            font-size: 0.75rem;
+            color: #888;
+            display: flex;
+            gap: 2rem;
+            border-top: 1px solid #333;
+        }
+
+        .statusbar span {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.3rem;
+        }
+
+        /* Toast */
+        .toast {
+            position: fixed;
+            bottom: 4rem;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #333;
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            z-index: 2000;
+            display: none;
+            font-size: 0.9rem;
+        }
+
+        .toast.show {
+            display: block;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .toast.success { background: #28a745; }
+        .toast.error { background: #dc3545; }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateX(-50%) translateY(20px); }
+            to { opacity: 1; transform: translateX(-50%) translateY(0); }
+        }
+
+        /* 键盘输入弹窗 */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.7);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal.show {
+            display: flex;
+        }
+
+        .modal-content {
+            background: #1a1a2e;
+            border-radius: 12px;
+            padding: 1.5rem;
+            width: 400px;
+            max-width: 90%;
+            border: 1px solid #333;
+        }
+
+        .modal-title {
+            font-size: 1.1rem;
+            margin-bottom: 1rem;
+        }
+
+        .modal-input {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid #444;
+            border-radius: 6px;
+            background: #16213e;
+            color: white;
+            font-size: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .modal-input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .modal-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 0.5rem;
+        }
+
+        /* 快捷键提示 */
+        .shortcuts-hint {
+            font-size: 0.75rem;
+            color: #666;
+            margin-top: 0.5rem;
+        }
+
+        .shortcuts-hint kbd {
+            background: #333;
+            padding: 0.1rem 0.4rem;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Remote Control</h1>
+        <div class="header-actions">
+            <a href="/admin" class="btn btn-secondary">Back to Admin</a>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- 左侧边栏 -->
+        <div class="sidebar">
+            <h3>Browsers</h3>
+            <ul id="browserList" class="browser-list">
+                <li class="browser-item">Loading...</li>
+            </ul>
+
+            <h3 style="margin-top: 1.5rem;">Tabs</h3>
+            <ul id="tabList" class="tab-list">
+                <li class="tab-item" style="color: #666;">Select a browser first</li>
+            </ul>
+        </div>
+
+        <!-- 主内容区 -->
+        <div class="main-content">
+            <div class="toolbar">
+                <button class="btn btn-primary" onclick="refreshScreenshot()" title="Refresh screenshot (R)">
+                    Refresh
+                </button>
+                <button class="btn btn-secondary" onclick="toggleAutoRefresh()" id="autoRefreshBtn" title="Auto refresh after actions">
+                    Auto: ON
+                </button>
+                <div class="separator"></div>
+                <button class="btn btn-secondary" onclick="showKeyboardModal()" title="Type text (T)">
+                    Keyboard
+                </button>
+                <button class="btn btn-secondary" onclick="sendKey('Enter')" title="Press Enter">
+                    Enter
+                </button>
+                <button class="btn btn-secondary" onclick="sendKey('Escape')" title="Press Escape">
+                    Esc
+                </button>
+                <div class="separator"></div>
+                <button class="btn btn-secondary" onclick="sendKey('F5')" title="Refresh page">
+                    F5
+                </button>
+                <div class="info" id="viewportInfo">-</div>
+            </div>
+
+            <div class="screenshot-container" id="screenshotContainer">
+                <div class="placeholder" id="placeholder">
+                    <div class="placeholder-icon">:(</div>
+                    <div>Select a browser and tab to view screenshot</div>
+                </div>
+                <div class="screenshot-wrapper" id="screenshotWrapper" style="display: none;">
+                    <img id="screenshot" alt="Tab Screenshot">
+                    <div class="cursor-indicator" id="cursorIndicator"></div>
+                </div>
+            </div>
+
+            <div class="statusbar">
+                <span id="statusCoords">Coords: -</span>
+                <span id="statusLastAction">Last action: -</span>
+                <span id="statusTime">Updated: -</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- 键盘输入弹窗 -->
+    <div class="modal" id="keyboardModal">
+        <div class="modal-content">
+            <div class="modal-title">Type Text</div>
+            <input type="text" class="modal-input" id="keyboardInput" placeholder="Enter text to type...">
+            <div class="shortcuts-hint">
+                Press <kbd>Enter</kbd> to send, <kbd>Escape</kbd> to cancel
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="hideKeyboardModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="sendTypedText()">Send</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div id="toast" class="toast"></div>
+
+    <script>
+        const API_BASE = '/api/admin';
+
+        let selectedBrowser = null;
+        let selectedTab = null;
+        let viewportWidth = 1280;
+        let viewportHeight = 900;
+        let autoRefresh = true;
+        let isLoading = false;
+
+        // 初始化
+        document.addEventListener('DOMContentLoaded', () => {
+            loadBrowsers();
+            setupScreenshotEvents();
+            setupKeyboardShortcuts();
+        });
+
+        // 加载浏览器列表
+        async function loadBrowsers() {
+            try {
+                const response = await fetch(`${API_BASE}/browsers`);
+                const data = await response.json();
+
+                const list = document.getElementById('browserList');
+                if (data.browsers.length === 0) {
+                    list.innerHTML = '<li class="browser-item" style="color: #666;">No browsers available</li>';
+                    return;
+                }
+
+                list.innerHTML = data.browsers.map(b => `
+                    <li class="browser-item ${selectedBrowser === b.browser_id ? 'active' : ''}"
+                        onclick="selectBrowser('${b.browser_id}')"
+                        data-browser-id="${b.browser_id}">
+                        <span class="status ${b.status}"></span>
+                        ${b.browser_id} - ${escapeHtml(b.account_name)}
+                    </li>
+                `).join('');
+
+            } catch (e) {
+                showToast('Failed to load browsers: ' + e.message, 'error');
+            }
+        }
+
+        // 选择浏览器
+        async function selectBrowser(browserId) {
+            selectedBrowser = browserId;
+            selectedTab = null;
+
+            // 更新 UI
+            document.querySelectorAll('.browser-item').forEach(el => {
+                el.classList.toggle('active', el.dataset.browserId === browserId);
+            });
+
+            // 加载标签页
+            await loadTabs(browserId);
+        }
+
+        // 加载标签页列表
+        async function loadTabs(browserId) {
+            try {
+                const response = await fetch(`${API_BASE}/browsers/${browserId}/tabs`);
+                const data = await response.json();
+
+                const list = document.getElementById('tabList');
+                if (data.tabs.length === 0) {
+                    list.innerHTML = '<li class="tab-item" style="color: #666;">No tabs available</li>';
+                    return;
+                }
+
+                list.innerHTML = data.tabs.map(t => `
+                    <li class="tab-item ${selectedTab === t.tab_id ? 'active' : ''}"
+                        onclick="selectTab(${t.tab_id})"
+                        data-tab-id="${t.tab_id}">
+                        <span class="status ${t.status}"></span>
+                        Tab ${t.tab_id}
+                        <span class="model-badge">${t.preferred_model}</span>
+                    </li>
+                `).join('');
+
+            } catch (e) {
+                showToast('Failed to load tabs: ' + e.message, 'error');
+            }
+        }
+
+        // 选择标签页
+        async function selectTab(tabId) {
+            selectedTab = tabId;
+
+            // 更新 UI
+            document.querySelectorAll('.tab-item').forEach(el => {
+                el.classList.toggle('active', parseInt(el.dataset.tabId) === tabId);
+            });
+
+            // 刷新截图
+            await refreshScreenshot();
+        }
+
+        // 刷新截图
+        async function refreshScreenshot() {
+            if (!selectedBrowser || selectedTab === null) {
+                showToast('Please select a browser and tab first', 'error');
+                return;
+            }
+
+            if (isLoading) return;
+            isLoading = true;
+
+            const wrapper = document.getElementById('screenshotWrapper');
+            const placeholder = document.getElementById('placeholder');
+            const img = document.getElementById('screenshot');
+
+            wrapper.classList.add('loading');
+
+            try {
+                const response = await fetch(
+                    `${API_BASE}/browsers/${selectedBrowser}/tabs/${selectedTab}/screenshot?quality=50&_t=${Date.now()}`
+                );
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+
+                // 获取视口尺寸
+                viewportWidth = parseInt(response.headers.get('X-Viewport-Width') || '1280');
+                viewportHeight = parseInt(response.headers.get('X-Viewport-Height') || '900');
+                document.getElementById('viewportInfo').textContent = `${viewportWidth} x ${viewportHeight}`;
+
+                // 显示图片
+                const blob = await response.blob();
+                const url = URL.createObjectURL(blob);
+
+                img.onload = () => {
+                    URL.revokeObjectURL(img.src);
+                    wrapper.classList.remove('loading');
+                    isLoading = false;
+                };
+
+                img.src = url;
+                placeholder.style.display = 'none';
+                wrapper.style.display = 'inline-block';
+
+                document.getElementById('statusTime').textContent = `Updated: ${new Date().toLocaleTimeString()}`;
+
+            } catch (e) {
+                showToast('Screenshot failed: ' + e.message, 'error');
+                wrapper.classList.remove('loading');
+                isLoading = false;
+            }
+        }
+
+        // 设置截图交互事件
+        function setupScreenshotEvents() {
+            const img = document.getElementById('screenshot');
+            const wrapper = document.getElementById('screenshotWrapper');
+            const cursor = document.getElementById('cursorIndicator');
+
+            // 计算点击位置相对于原始图片的坐标
+            function getRelativeCoords(e) {
+                const rect = img.getBoundingClientRect();
+                // 使用图片的自然尺寸（原始像素尺寸）而不是显示尺寸
+                const naturalWidth = img.naturalWidth || viewportWidth;
+                const naturalHeight = img.naturalHeight || viewportHeight;
+
+                // 计算显示缩放比例
+                const scaleX = naturalWidth / rect.width;
+                const scaleY = naturalHeight / rect.height;
+
+                // 鼠标在显示图片上的位置
+                const displayX = e.clientX - rect.left;
+                const displayY = e.clientY - rect.top;
+
+                // 转换为原始图片上的像素位置
+                const imgX = displayX * scaleX;
+                const imgY = displayY * scaleY;
+
+                // 返回相对于视口的比例 (0-1)
+                return {
+                    x: imgX / viewportWidth,
+                    y: imgY / viewportHeight,
+                    actualX: Math.round(imgX / naturalWidth * viewportWidth),
+                    actualY: Math.round(imgY / naturalHeight * viewportHeight)
+                };
+            }
+
+            // 鼠标移动 - 显示坐标
+            img.addEventListener('mousemove', (e) => {
+                const coords = getRelativeCoords(e);
+                document.getElementById('statusCoords').textContent = `Coords: ${coords.actualX}, ${coords.actualY}`;
+
+                // 显示光标指示器
+                const rect = img.getBoundingClientRect();
+                cursor.style.display = 'block';
+                cursor.style.left = (e.clientX - rect.left) + 'px';
+                cursor.style.top = (e.clientY - rect.top) + 'px';
+            });
+
+            // 鼠标离开
+            img.addEventListener('mouseleave', () => {
+                cursor.style.display = 'none';
+            });
+
+            // 点击事件
+            img.addEventListener('click', async (e) => {
+                e.preventDefault();
+                const coords = getRelativeCoords(e);
+                await sendMouseAction('click', coords.x, coords.y);
+            });
+
+            // 右键点击
+            img.addEventListener('contextmenu', async (e) => {
+                e.preventDefault();
+                const coords = getRelativeCoords(e);
+                await sendMouseAction('click', coords.x, coords.y, 'right');
+            });
+
+            // 滚轮事件
+            img.addEventListener('wheel', async (e) => {
+                e.preventDefault();
+                const coords = getRelativeCoords(e);
+                await sendMouseAction('scroll', coords.x, coords.y, 'left', e.deltaY);
+            });
+        }
+
+        // 发送鼠标动作
+        async function sendMouseAction(action, x, y, button = 'left', scrollDelta = 0) {
+            if (!selectedBrowser || selectedTab === null) return;
+
+            try {
+                const response = await fetch(
+                    `${API_BASE}/browsers/${selectedBrowser}/tabs/${selectedTab}/mouse`,
+                    {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            action: action,
+                            x: x,
+                            y: y,
+                            button: button,
+                            scroll_delta: scrollDelta
+                        })
+                    }
+                );
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    document.getElementById('statusLastAction').textContent =
+                        `Last action: ${action} at (${Math.round(result.x)}, ${Math.round(result.y)})`;
+
+                    // 自动刷新截图
+                    if (autoRefresh && action === 'click') {
+                        // 等待页面响应后刷新
+                        setTimeout(refreshScreenshot, 300);
+                    }
+                } else {
+                    showToast(result.detail || 'Action failed', 'error');
+                }
+
+            } catch (e) {
+                showToast('Mouse action failed: ' + e.message, 'error');
+            }
+        }
+
+        // 发送键盘按键
+        async function sendKey(key) {
+            if (!selectedBrowser || selectedTab === null) {
+                showToast('Please select a browser and tab first', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(
+                    `${API_BASE}/browsers/${selectedBrowser}/tabs/${selectedTab}/keyboard`,
+                    {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            action: 'press',
+                            key: key
+                        })
+                    }
+                );
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    document.getElementById('statusLastAction').textContent = `Last action: press ${key}`;
+                    if (autoRefresh) {
+                        setTimeout(refreshScreenshot, 300);
+                    }
+                } else {
+                    showToast(result.detail || 'Key press failed', 'error');
+                }
+
+            } catch (e) {
+                showToast('Key press failed: ' + e.message, 'error');
+            }
+        }
+
+        // 发送输入文本
+        async function sendTypedText() {
+            const input = document.getElementById('keyboardInput');
+            const text = input.value;
+
+            if (!text) {
+                hideKeyboardModal();
+                return;
+            }
+
+            if (!selectedBrowser || selectedTab === null) {
+                showToast('Please select a browser and tab first', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(
+                    `${API_BASE}/browsers/${selectedBrowser}/tabs/${selectedTab}/keyboard`,
+                    {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            action: 'type',
+                            text: text
+                        })
+                    }
+                );
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    document.getElementById('statusLastAction').textContent = `Last action: typed "${text.substring(0, 20)}..."`;
+                    hideKeyboardModal();
+                    input.value = '';
+                    if (autoRefresh) {
+                        setTimeout(refreshScreenshot, 300);
+                    }
+                } else {
+                    showToast(result.detail || 'Type failed', 'error');
+                }
+
+            } catch (e) {
+                showToast('Type failed: ' + e.message, 'error');
+            }
+        }
+
+        // 键盘快捷键
+        function setupKeyboardShortcuts() {
+            document.addEventListener('keydown', (e) => {
+                // 如果在输入框中则不处理
+                if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+                    // 在键盘弹窗中按 Enter 发送
+                    if (e.key === 'Enter' && document.getElementById('keyboardModal').classList.contains('show')) {
+                        e.preventDefault();
+                        sendTypedText();
+                    }
+                    // Escape 关闭弹窗
+                    if (e.key === 'Escape') {
+                        hideKeyboardModal();
+                    }
+                    return;
+                }
+
+                // R - 刷新截图
+                if (e.key === 'r' || e.key === 'R') {
+                    e.preventDefault();
+                    refreshScreenshot();
+                }
+
+                // T - 打开键盘输入
+                if (e.key === 't' || e.key === 'T') {
+                    e.preventDefault();
+                    showKeyboardModal();
+                }
+
+                // Escape - 发送 Escape 键
+                if (e.key === 'Escape') {
+                    sendKey('Escape');
+                }
+            });
+        }
+
+        // 切换自动刷新
+        function toggleAutoRefresh() {
+            autoRefresh = !autoRefresh;
+            document.getElementById('autoRefreshBtn').textContent = `Auto: ${autoRefresh ? 'ON' : 'OFF'}`;
+        }
+
+        // 显示键盘输入弹窗
+        function showKeyboardModal() {
+            document.getElementById('keyboardModal').classList.add('show');
+            document.getElementById('keyboardInput').focus();
+        }
+
+        // 隐藏键盘输入弹窗
+        function hideKeyboardModal() {
+            document.getElementById('keyboardModal').classList.remove('show');
+        }
+
+        // Toast 提示
+        function showToast(message, type = '') {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.className = 'toast show ' + type;
+            setTimeout(() => toast.classList.remove('show'), 3000);
+        }
+
+        // HTML 转义
+        function escapeHtml(str) {
+            if (!str) return '';
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
+        // 点击弹窗外部关闭
+        document.getElementById('keyboardModal').addEventListener('click', (e) => {
+            if (e.target.id === 'keyboardModal') {
+                hideKeyboardModal();
+            }
+        });
+    </script>
+</body>
+</html>

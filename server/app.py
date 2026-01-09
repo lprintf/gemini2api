@@ -5,7 +5,6 @@ FastAPI 应用主入口
 from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse
 from contextlib import asynccontextmanager
 import uvicorn
@@ -134,6 +133,15 @@ async def admin_page():
     if admin_html.exists():
         return FileResponse(admin_html)
     return HTMLResponse("<h1>Admin page not found</h1>", status_code=404)
+
+
+@app.get("/remote", response_class=HTMLResponse)
+async def remote_page():
+    """远程控制页面"""
+    remote_html = STATIC_DIR / "remote.html"
+    if remote_html.exists():
+        return FileResponse(remote_html)
+    return HTMLResponse("<h1>Remote control page not found</h1>", status_code=404)
 
 
 @app.get("/", response_class=HTMLResponse)
