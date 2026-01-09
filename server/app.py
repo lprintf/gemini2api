@@ -3,7 +3,7 @@ FastAPI 应用主入口
 """
 
 from pathlib import Path
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, FileResponse
 from contextlib import asynccontextmanager
@@ -14,6 +14,7 @@ from server.config import init_config_from_db, init_config_sync, get_config
 from server.services.browser_pool import BrowserPool
 from server.services.rate_limiter import RateLimiter
 from server.api import openai_compatible, management, gemini_compatible
+from server.auth import verify_admin
 
 
 # 全局变量
@@ -127,8 +128,8 @@ STATIC_DIR = Path(__file__).parent / "static"
 
 
 @app.get("/admin", response_class=HTMLResponse)
-async def admin_page():
-    """管理页面"""
+async def admin_page(username: str = Depends(verify_admin)):
+    """管理页面（需要身份认证）"""
     admin_html = STATIC_DIR / "admin.html"
     if admin_html.exists():
         return FileResponse(admin_html)
@@ -136,8 +137,8 @@ async def admin_page():
 
 
 @app.get("/remote", response_class=HTMLResponse)
-async def remote_page():
-    """远程控制页面"""
+async def remote_page(username: str = Depends(verify_admin)):
+    """远程控制页面（需要身份认证）"""
     remote_html = STATIC_DIR / "remote.html"
     if remote_html.exists():
         return FileResponse(remote_html)

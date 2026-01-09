@@ -1,10 +1,10 @@
 """
 管理 API
 
-用于管理浏览器、配置、任务、日志等
+用于管理浏览器、配置、任务、日志等（需要身份认证）
 """
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 from fastapi.responses import Response
 from pydantic import BaseModel
 from typing import Optional, List
@@ -12,9 +12,14 @@ from io import BytesIO
 
 from server.services.browser_pool import BrowserPool
 from server.core.database import get_db
+from server.auth import verify_admin
 
 
-router = APIRouter(prefix="/api/admin", tags=["Management"])
+router = APIRouter(
+    prefix="/api/admin",
+    tags=["Management"],
+    dependencies=[Depends(verify_admin)]  # 对整个路由器应用认证
+)
 
 
 # 全局变量（由 app.py 初始化）
