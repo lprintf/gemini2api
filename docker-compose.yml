@@ -15,7 +15,7 @@ services:
     # 如遇浏览器问题可取消注释
     # security_opt:
     #   - seccomp=unconfined
-    ports:
+    # ports:
       # - "${RDP_PORT}:3500"
       # - "${API_PORT}:8000"
       # cloudflared access rdp --hostname rdp.example.com --url rdp://localhost:3389
