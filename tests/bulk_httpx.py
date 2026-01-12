@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import random
 import sys
 import time
@@ -120,14 +121,19 @@ def scan_images(images_dir: Path, exts: list[str], min_images: int = 0) -> list[
     allowed = {ext.lower().lstrip(".") for ext in exts}
     images = []
 
-    for path in images_dir.iterdir():
-        if path.is_file():
-            ext = path.suffix.lower().lstrip(".")
-            if ext in allowed:
-                images.append(path)
-                # 达到最小数量后停止扫描
-                if min_images > 0 and len(images) >= min_images:
-                    break
+    # 使用 os.scandir 而不是 Path.iterdir()，性能更好
+    with os.scandir(images_dir) as entries:
+        for entry in entries:
+            # is_file(follow_symlinks=False) 避免额外的 stat 调用
+            if entry.is_file(follow_symlinks=False):
+                name = entry.name
+                if "." in name:
+                    ext = name.rsplit(".", 1)[1].lower()
+                    if ext in allowed:
+                        images.append(Path(entry.path))
+                        # 达到最小数量后停止扫描
+                        if min_images > 0 and len(images) >= min_images:
+                            break
 
     return images
 
@@ -328,7 +334,7 @@ def parse_args() -> Config:
     parser.add_argument(
         "--max-concurrent",
         type=int,
-        default=2,
+        default=5,
         help="最大并发数",
     )
     parser.add_argument(
