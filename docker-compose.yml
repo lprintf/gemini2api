@@ -9,16 +9,16 @@ services:
     image: gemini2api:latest
     # container_name: gemini2api
     # hostname: gemini2api
-    restart: always
+    restart: unless-stopped
     # Chromium 共享内存
     shm_size: 8gb
     # 如遇浏览器问题可取消注释
     # security_opt:
     #   - seccomp=unconfined
     # ports:
-      # - "${RDP_PORT}:3500"
-      # - "${API_PORT}:8000"
-      # cloudflared access rdp --hostname rdp.example.com --url rdp://localhost:3389
+    # - "${RDP_PORT}:3500"
+    # - "${API_PORT}:8000"
+    # cloudflared access rdp --hostname rdp.example.com --url rdp://localhost:3389
     volumes:
       # 代码挂载（开发模式，修改后无需重新构建）
       - ./main.py:/app/main.py:ro
@@ -48,7 +48,7 @@ services:
 
   frontend:
     image: nginx:alpine
-    restart: always
+    restart: unless-stopped
     # ports:
     #   - "${FRONTEND_PORT:-8080}:80"
     volumes:
