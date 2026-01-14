@@ -12,6 +12,11 @@ services:
     restart: unless-stopped
     # Chromium 共享内存
     shm_size: 8gb
+    # GPU 加速（可选）
+    devices:
+      - /dev/dri:/dev/dri:ro
+    group_add:
+      - video
     # 如遇浏览器问题可取消注释
     # security_opt:
     #   - seccomp=unconfined
