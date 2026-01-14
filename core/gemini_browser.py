@@ -192,8 +192,38 @@ class GeminiBrowser:
         self.playwright = await async_playwright().start()
 
         # 准备启动参数
+        # CPU优化配置 容器环境 - 针对高并发场景优化
         launch_args = [
-            "--disable-blink-features=AutomationControlled",
+            "--no-sandbox",
+            "--disable-setuid-sandbox",
+            "--disable-gpu",
+            "--disable-software-rasterizer",
+            "--disable-extensions",
+            "--disable-background-networking",
+            "--disable-sync",
+            "--metrics-recording-only",
+            "--no-first-run",
+            "--disable-breakpad",
+            "--no-default-browser-check",
+            # ✅ 移除了所有 disable-throttling 参数！让后台 Tab 休眠
+            # 禁用不必要的功能
+            "--disable-hang-monitor",
+            "--disable-ipc-flooding-protection",
+            "--disable-client-side-phishing-detection",
+            "--disable-component-update",
+            "--disable-domain-reliability",
+            "--disable-features=TranslateUI,BlinkGenPropertyTrees,IsolateOrigins,site-per-process",
+            "--disable-popup-blocking",
+            "--disable-prompt-on-repost",
+            "--disable-default-apps",
+            # 性能相关
+            "--memory-pressure-off",
+            "--max-gum-fps=1",
+            "--mute-audio",
+            "--headless=new",
+            # 渲染优化
+            "--disable-partial-raster",
+            "--disable-skia-runtime-opts",
         ]
 
         # 如果是有头模式且在 Wayland 环境，添加 ozone 平台参数

@@ -45,17 +45,17 @@ class EnhancedGeminiImageEditor(GeminiImageEditor):
         """设置页面事件监听"""
         print("\n设置事件监听...")
 
-        # 监听控制台消息
-        self.page.on(
-            "console",
-            lambda msg: self._log_event(
-                "console",
-                {
-                    "type": msg.type,
-                    "text": msg.text,
-                },
-            ),
-        )
+        # # 监听控制台消息
+        # self.page.on(
+        #     "console",
+        #     lambda msg: self._log_event(
+        #         "console",
+        #         {
+        #             "type": msg.type,
+        #             "text": msg.text,
+        #         },
+        #     ),
+        # )
 
         # 监听页面导航
         self.page.on(
@@ -218,8 +218,13 @@ class EnhancedGeminiImageEditor(GeminiImageEditor):
                 new_button_text = await verify_button.inner_text()
                 print(f"  切换后模型显示: '{new_button_text}'")
 
-                keywords = ["Fast", "快速", "flash"] if model == "Fast" else ["Pro", "pro"]
-                if any(kw in new_button_text or kw.lower() in new_button_text.lower() for kw in keywords):
+                keywords = (
+                    ["Fast", "快速", "flash"] if model == "Fast" else ["Pro", "pro"]
+                )
+                if any(
+                    kw in new_button_text or kw.lower() in new_button_text.lower()
+                    for kw in keywords
+                ):
                     print(f"✓ 成功切换到 {model} 模型")
                     return True
 

@@ -365,11 +365,20 @@ class TabInstance:
                     error_dir = base_output_dir / "errors"
                     error_dir.mkdir(parents=True, exist_ok=True)
                     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                    screenshot_path = error_dir / f"error_{self.browser_id}_{self.tab_id}_{timestamp}.png"
-                    await self.editor.page.screenshot(path=str(screenshot_path), full_page=True)
-                    print(f"[Tab {self.browser_id}-{self.tab_id}] Error screenshot saved: {screenshot_path}")
+                    screenshot_path = (
+                        error_dir
+                        / f"error_{self.browser_id}_{self.tab_id}_{timestamp}.png"
+                    )
+                    await self.editor.page.screenshot(
+                        path=str(screenshot_path), full_page=True
+                    )
+                    print(
+                        f"[Tab {self.browser_id}-{self.tab_id}] Error screenshot saved: {screenshot_path}"
+                    )
             except Exception as screenshot_error:
-                print(f"[Tab {self.browser_id}-{self.tab_id}] Failed to save error screenshot: {screenshot_error}")
+                print(
+                    f"[Tab {self.browser_id}-{self.tab_id}] Failed to save error screenshot: {screenshot_error}"
+                )
 
             self.status = BrowserStatus.IDLE
             self.current_task_id = None
@@ -607,12 +616,12 @@ class BrowserInstance:
         self.status = BrowserStatus.STARTING
 
         try:
-            # 创建主编辑器
+            # 创建主编辑器（高并发场景禁用日志）
             self.base_editor = EnhancedGeminiImageEditor(
                 account_id=0,
                 headless=self.headless,
                 proxy=self.proxy,
-                enable_logging=True,
+                enable_logging=False,  # 禁用事件监听，节省CPU
                 user_data_dir=self.user_data_dir,
             )
 
@@ -865,18 +874,15 @@ class BrowserInstance:
         if not allowed:
             raise RateLimitExceeded(
                 browser_id=self.browser_id,
-                limit=info['limit'],
-                window_seconds=info['window_seconds'],
-                reset_at=info['reset']
+                limit=info["limit"],
+                window_seconds=info["window_seconds"],
+                reset_at=info["reset"],
             )
 
         # 获取空闲标签页（传入模型偏好）
         tab = self.get_available_tab(preferred_model=model)
         if not tab:
-            raise NoAvailableTabs(
-                browser_id=self.browser_id,
-                total_tabs=len(self.tabs)
-            )
+            raise NoAvailableTabs(browser_id=self.browser_id, total_tabs=len(self.tabs))
 
         print(
             f"[Browser {self.browser_id}] Task {task_id} assigned to Tab {tab.tab_id} (preferred: {tab.preferred_model}, requested: {model})"
@@ -912,18 +918,15 @@ class BrowserInstance:
         if not allowed:
             raise RateLimitExceeded(
                 browser_id=self.browser_id,
-                limit=info['limit'],
-                window_seconds=info['window_seconds'],
-                reset_at=info['reset']
+                limit=info["limit"],
+                window_seconds=info["window_seconds"],
+                reset_at=info["reset"],
             )
 
         # 获取空闲标签页（传入模型偏好）
         tab = self.get_available_tab(preferred_model=model)
         if not tab:
-            raise NoAvailableTabs(
-                browser_id=self.browser_id,
-                total_tabs=len(self.tabs)
-            )
+            raise NoAvailableTabs(browser_id=self.browser_id, total_tabs=len(self.tabs))
 
         print(
             f"[Browser {self.browser_id}] Fast task {task_id} assigned to Tab {tab.tab_id} (preferred: {tab.preferred_model}, requested: {model})"
@@ -1047,8 +1050,8 @@ class BrowserPool:
     def __init__(
         self,
         min_browsers: int = 1,
-        max_browsers: int = 10,
-        browser_rate_limit: int = 10,  # 每个浏览器的速率限制
+        max_browsers: int = 20,
+        browser_rate_limit: int = 9,  # 每个浏览器的速率限制
         browser_rate_window: int = 60,  # 速率限制时间窗口
     ):
         self.browsers: Dict[str, BrowserInstance] = {}
