@@ -71,9 +71,18 @@ generate_certs() {
 
 # 创建必要目录
 init_dirs() {
-    mkdir -p data/browser_data data/logs data/outputs data/uploads certs
+    # 从 .env 文件读取 DATA_DIR,否则使用默认值 ./data
+    local data_dir="${DATA_DIR:-}"
+    if [ -z "$data_dir" ] && [ -f ".env" ]; then
+        data_dir=$(grep -E "^DATA_DIR=" .env 2>/dev/null | cut -d'=' -f2)
+    fi
+    # 如果仍为空,使用默认值
+    data_dir="${data_dir:-./data}"
+
+    # 创建必要的子目录
+    mkdir -p "$data_dir/browser_data" "$data_dir/logs" "$data_dir/outputs" "$data_dir/uploads" certs
     # 确保有写入权限
-    chmod 777 data data/browser_data 2>/dev/null || true
+    chmod 777 "$data_dir" "$data_dir/browser_data" 2>/dev/null || true
 }
 
 # 启动服务

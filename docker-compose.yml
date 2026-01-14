@@ -9,7 +9,7 @@ services:
     image: gemini2api:latest
     # container_name: gemini2api
     # hostname: gemini2api
-    restart: aways
+    restart: always
     # Chromium 共享内存
     shm_size: 8gb
     # 如遇浏览器问题可取消注释
@@ -48,15 +48,15 @@ services:
 
   frontend:
     image: nginx:alpine
-    restart: aways
+    restart: always
     # ports:
     #   - "${FRONTEND_PORT:-8080}:80"
     volumes:
       # nginx 配置挂载到 default.conf.template（覆盖 nginx 默认配置）
       - ./nginx.template.conf:/etc/nginx/templates/default.conf.template:ro
       # 静态文件目录（outputs）
-      - ./data/outputs:/usr/share/nginx/html/outputs:ro
-      - ./data/uploads:/usr/share/nginx/html/uploads:ro
+      - ${DATA_DIR:-./data}/outputs:/usr/share/nginx/html/outputs:ro
+      - ${DATA_DIR:-./data}/uploads:/usr/share/nginx/html/uploads:ro
     depends_on:
       - gemini2api
     networks:
