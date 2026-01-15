@@ -104,7 +104,7 @@ class TabInstance:
         error_message = None
 
         try:
-            result = await self.editor.edit_image_enhanced(
+            result = await self.editor.edit_image(
                 input_image=input_image,
                 prompt=prompt,
                 output_dir="data/outputs/images",
@@ -426,7 +426,7 @@ class TabInstance:
 
                     # 使用 hover 下载按钮获取高清图
                     hd_bytes = await self.editor._download_via_hover_button(
-                        target_url, "no_wait"
+                        target_url
                     )
 
                     if not hd_bytes:
@@ -503,7 +503,7 @@ class TabInstance:
                 print(
                     f"[Tab {self.browser_id}-{self.tab_id}] Preheating for next task (model: {model})..."
                 )
-                await self.editor.prepare_page_environment(
+                await self.editor.prepare_environment(
                     model=model, temporary_chat=False
                 )
                 print(f"[Tab {self.browser_id}-{self.tab_id}] Preheat completed")

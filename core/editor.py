@@ -271,7 +271,7 @@ class GeminiEditor:
         except Exception:
             return False
 
-    async def prepare_environment(self, model: Literal["Pro", "Fast"] = "Fast") -> bool:
+    async def prepare_environment(self, model: Literal["Pro", "Fast"] = "Fast", temporary_chat: bool = False) -> bool:
         """准备页面环境（新对话 + 激活图片生成 + 选择模型）"""
         try:
             if not await self.start_new_chat():
@@ -292,6 +292,45 @@ class GeminiEditor:
         except Exception as e:
             print(f"页面环境准备失败: {e}")
             return False
+
+    async def prepare_for_generation(
+        self,
+        input_image: str,
+        prompt: str,
+        model: Literal["Pro", "Fast"] = "Fast",
+        temporary_chat: bool = False,
+        max_retries: int = 2,
+    ) -> bool:
+        """准备图片生成（上传图片、输入文本，但不提交）"""
+        for attempt in range(max_retries + 1):
+            try:
+                if attempt > 0:
+                    print(f"重试准备流程（第 {attempt} 次）...")
+
+                if not await self.prepare_environment(model, temporary_chat):
+                    return False
+
+                if not await self.upload_image_by_paste(input_image):
+                    print("图片上传失败")
+                    return False
+
+                if not await self.input_prompt(prompt):
+                    if await self._dismiss_consent_dialog():
+                        continue
+                    return False
+
+                return True
+            except Exception as e:
+                print(f"准备过程出错: {e}")
+                if await self._dismiss_consent_dialog():
+                    continue
+                return False
+
+        return False
+
+    async def submit_generation(self) -> bool:
+        """submit 的别名"""
+        return await self.submit()
 
     # =========================================================================
     # 图片上传
@@ -351,6 +390,7 @@ class GeminiEditor:
             """,
                 [image_base64, mime_type, file_ext],
             )
+            print("图片粘贴上传完成")
 
             return result.get("success", False)
         except Exception as e:
@@ -549,6 +589,18 @@ class GeminiEditor:
                         await asyncio.sleep(0.5)
                     continue
 
+            return None
+        except Exception:
+            return None
+
+    async def _download_via_hover_button(self, url: str) -> Optional[bytes]:
+        """通过 URL 找到图片并 hover 下载（browser_pool 兼容）"""
+        try:
+            images = await self.page.query_selector_all("img")
+            for img in images:
+                src = await img.get_attribute("src")
+                if src and src == url:
+                    return await self._download_via_hover(img)
             return None
         except Exception:
             return None

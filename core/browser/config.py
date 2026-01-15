@@ -77,6 +77,6 @@ def get_launch_args(proxy: str = None) -> list[str]:
 # 默认配置
 # =============================================================================
 
-DEFAULT_VIEWPORT = {"width": 512, "height": 1024}
+DEFAULT_VIEWPORT = {"width": 430, "height": 932} # 模拟手机浏览器尺寸
 DEFAULT_TIMEOUT = 60000  # 60 秒
 DEFAULT_PERMISSIONS = ["clipboard-read", "clipboard-write"]
