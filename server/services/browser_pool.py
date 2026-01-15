@@ -1065,7 +1065,7 @@ class BrowserPool:
         self._next_id = 0  # 自增 ID 计数器
 
     async def load_from_db(self):
-        """从数据库加载浏览器配置"""
+        """从数据库加载浏览器配置（并行启动）"""
         try:
             db = get_db()
 
@@ -1077,37 +1077,62 @@ class BrowserPool:
 
             print(f"[BrowserPool] Loading {len(configs)} browsers from database...")
 
+            if not configs:
+                await db.add_log("INFO", "Browser pool loaded 0 browsers")
+                return
+
+            # 先创建所有 BrowserInstance 对象
             for config in configs:
+                browser = BrowserInstance(
+                    browser_id=config.browser_id,
+                    account_name=config.account_name,
+                    proxy=config.proxy,
+                    headless=config.headless,
+                    user_data_dir=config.user_data_dir,
+                    rate_limit=config.rate_limit,
+                    rate_window=config.rate_window,
+                )
+                self.browsers[config.browser_id] = browser
+
+            # 并行启动所有浏览器
+            async def start_browser_safe(browser: BrowserInstance) -> tuple[str, bool, str]:
+                """安全启动单个浏览器，返回 (browser_id, success, error_msg)"""
                 try:
-                    browser = BrowserInstance(
-                        browser_id=config.browser_id,
-                        account_name=config.account_name,
-                        proxy=config.proxy,
-                        headless=config.headless,
-                        user_data_dir=config.user_data_dir,
-                        rate_limit=config.rate_limit,
-                        rate_window=config.rate_window,
-                    )
-                    self.browsers[config.browser_id] = browser
-
-                    # 启动浏览器
                     await browser.start()
-                    print(
-                        f"[BrowserPool] Loaded and started browser {config.browser_id}"
-                    )
-
+                    return (browser.browser_id, True, "")
                 except Exception as e:
-                    print(
-                        f"[BrowserPool] Failed to load browser {config.browser_id}: {e}"
-                    )
+                    return (browser.browser_id, False, str(e))
+
+            print(f"[BrowserPool] Starting {len(self.browsers)} browsers in parallel...")
+            start_time = time.time()
+
+            results = await asyncio.gather(
+                *[start_browser_safe(b) for b in self.browsers.values()]
+            )
+
+            # 处理启动结果
+            success_count = 0
+            for browser_id, success, error_msg in results:
+                if success:
+                    success_count += 1
+                    print(f"[BrowserPool] Browser {browser_id} started successfully")
+                else:
+                    print(f"[BrowserPool] Failed to start browser {browser_id}: {error_msg}")
                     await db.add_log(
                         "ERROR",
-                        f"Failed to load browser {config.browser_id}: {e}",
-                        config.browser_id,
+                        f"Failed to load browser {browser_id}: {error_msg}",
+                        browser_id,
                     )
 
+            elapsed = time.time() - start_time
+            print(
+                f"[BrowserPool] Parallel startup completed: {success_count}/{len(configs)} "
+                f"browsers in {elapsed:.2f}s"
+            )
+
             await db.add_log(
-                "INFO", f"Browser pool loaded {len(self.browsers)} browsers"
+                "INFO",
+                f"Browser pool loaded {success_count}/{len(configs)} browsers in {elapsed:.2f}s"
             )
 
         except Exception as e:
