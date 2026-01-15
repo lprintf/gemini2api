@@ -30,10 +30,40 @@ class TabInstance:
         self.current_task_id: Optional[str] = None
         self.total_tasks = 0
         self.failed_tasks = 0
+        self.consecutive_failures = 0  # 连续失败次数
         self.last_active_at: Optional[datetime] = None
         # 高清下载相关
         self.hd_metadata: Optional[Dict[str, Any]] = None  # 预览图元数据
         self.hd_download_task: Optional[asyncio.Task] = None  # 后台高清下载任务
+
+    async def reinitialize(self) -> bool:
+        """重新初始化标签页（刷新页面并预热环境）"""
+        print(f"[Tab {self.browser_id}-{self.tab_id}] Reinitializing...")
+        self.status = BrowserStatus.STARTING
+
+        try:
+            if self.editor and self.editor.page:
+                # 刷新页面
+                await self.editor.page.goto(
+                    "https://gemini.google.com/app",
+                    wait_until="load",
+                    timeout=60000,
+                )
+                # 预热环境
+                await self.editor.prepare_environment(
+                    model=self.preferred_model,
+                    temporary_chat=False,
+                )
+                self.consecutive_failures = 0
+                self.status = BrowserStatus.IDLE
+                print(f"[Tab {self.browser_id}-{self.tab_id}] Reinitialized successfully")
+                return True
+        except Exception as e:
+            print(f"[Tab {self.browser_id}-{self.tab_id}] Reinitialize failed: {e}")
+            self.status = BrowserStatus.ERROR
+            return False
+
+        return False
 
     async def execute_task(
         self, task_id: str, input_image: str, prompt: str, model: str = "Fast"
@@ -67,6 +97,7 @@ class TabInstance:
 
             if result:
                 self.total_tasks += 1
+                self.consecutive_failures = 0  # 成功后重置连续失败计数
                 result_paths = result
                 print(
                     f"[Tab {self.browser_id}-{self.tab_id}] Task {task_id} completed successfully"
@@ -76,38 +107,55 @@ class TabInstance:
                 error_message = "No result returned"
                 print(f"[Tab {self.browser_id}-{self.tab_id}] Task {task_id} failed")
 
+            # 成功完成后清理
+            await self._finalize_task(task_id, result_paths, error_message, start_time)
             return result
 
         except Exception as e:
             self.failed_tasks += 1
+            self.consecutive_failures += 1
             error_message = str(e)
             print(f"[Tab {self.browser_id}-{self.tab_id}] Task {task_id} error: {e}")
+
+            # 后台重新初始化标签页
+            print(
+                f"[Tab {self.browser_id}-{self.tab_id}] Starting background reinitialize..."
+            )
+            asyncio.create_task(self._reinit_after_error())
             raise
 
-        finally:
-            self.status = BrowserStatus.IDLE
-            self.current_task_id = None
-            self.last_active_at = datetime.now()
-            duration = time.time() - start_time
+    async def _reinit_after_error(self):
+        """错误后重新初始化（内部方法）"""
+        self.current_task_id = None
+        await self.reinitialize()
 
-            # 更新任务记录到数据库
-            try:
-                db = get_db()
-                await db.update_task(
-                    task_id,
-                    {
-                        "browser_id": f"{self.browser_id}-tab{self.tab_id}",
-                        "status": "completed" if result_paths else "failed",
-                        "result_paths": result_paths,
-                        "error_message": error_message,
-                        "duration": duration,
-                        "completed_at": datetime.now(),
-                    },
-                )
-            except Exception as db_error:
-                print(
-                    f"[Tab {self.browser_id}-{self.tab_id}] Failed to update task in DB: {db_error}"
-                )
+    async def _finalize_task(
+        self, task_id: str, result_paths, error_message, start_time: float
+    ):
+        """完成任务后的清理工作"""
+        self.status = BrowserStatus.IDLE
+        self.current_task_id = None
+        self.last_active_at = datetime.now()
+        duration = time.time() - start_time
+
+        # 更新任务记录到数据库
+        try:
+            db = get_db()
+            await db.update_task(
+                task_id,
+                {
+                    "browser_id": f"{self.browser_id}-tab{self.tab_id}",
+                    "status": "completed" if result_paths else "failed",
+                    "result_paths": result_paths,
+                    "error_message": error_message,
+                    "duration": duration,
+                    "completed_at": datetime.now(),
+                },
+            )
+        except Exception as db_error:
+            print(
+                f"[Tab {self.browser_id}-{self.tab_id}] Failed to update task in DB: {db_error}"
+            )
 
     async def execute_fast_task(
         self,
@@ -310,6 +358,7 @@ class TabInstance:
 
         except Exception as e:
             self.failed_tasks += 1
+            self.consecutive_failures += 1
 
             # 保存错误截图用于调试
             try:
@@ -332,12 +381,18 @@ class TabInstance:
                     f"[Tab {self.browser_id}-{self.tab_id}] Failed to save error screenshot: {screenshot_error}"
                 )
 
-            self.status = BrowserStatus.IDLE
             self.current_task_id = None
             self.hd_metadata = None
             print(
                 f"[Tab {self.browser_id}-{self.tab_id}] Fast task {task_id} error: {e}"
             )
+
+            # 后台重新初始化标签页
+            print(
+                f"[Tab {self.browser_id}-{self.tab_id}] Starting background reinitialize (consecutive failures: {self.consecutive_failures})..."
+            )
+            asyncio.create_task(self.reinitialize())
+
             raise
 
     def _start_background_hd_download(self, base_output_dir: Path, model: str):
