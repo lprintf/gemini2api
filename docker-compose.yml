@@ -1,5 +1,4 @@
-# Gemini2API Docker Compose 配置
-# 单容器：API 服务 + 按需有头模式
+# Gemini2API Docker Compose 配置（无头模式）
 
 services:
   gemini2api:
@@ -7,49 +6,17 @@ services:
       context: .
       dockerfile: Dockerfile
     image: gemini2api:latest
-    # container_name: gemini2api
-    # hostname: gemini2api
     restart: unless-stopped
-    # Chromium 共享内存（重要：支持多标签页和并发）
     shm_size: 32gb
-
-    # # CPU/内存限制（优化12核CPU使用）
-    # mem_limit: 24g    # 内存限制
-    # cpus: "20"        # 允许使用20线程（留4个给系统）
-
-    # GPU 加速配置（已禁用 - 测试显示CPU渲染更优）
-    # 测试结果：ASPEED显卡性能有限，CPU优化模式性能提升1.3%
-    # 推荐使用CPU并发优化（8-10个浏览器实例）获得8-10倍性能提升
-    # devices:
-    #   - /dev/dri:/dev/dri:ro
-    # group_add:
-    #   - video
-
-    # 如遇浏览器问题可取消注释
-    # security_opt:
-    #   - seccomp=unconfined
-    # ports:
-    # - "${RDP_PORT}:3500"
-    # - "${API_PORT}:8000"
-    # cloudflared access rdp --hostname rdp.example.com --url rdp://localhost:3389
     volumes:
-      # 代码挂载（开发模式，修改后无需重新构建）
       - ./main.py:/app/main.py:ro
       - ./core:/app/core:ro
       - ./server:/app/server:ro
-      # 数据目录（包含 browser_data, gemini.db, logs, outputs 等）
       - ${DATA_DIR:-./data}:/app/data
-      # 配置文件
       - ./config:/app/config:ro
-      # Weston RDP 配置
-      - ./weston.ini:/app/weston.ini:ro
-      # TLS 证书（RDP 连接需要）
-      - ./certs:/etc/weston:ro
       - ./tests:/app/tests:ro
     environment:
       - TZ=${TZ:-Asia/Shanghai}
-      - XDG_RUNTIME_DIR=/tmp
-      - WAYLAND_DISPLAY=wayland-0
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
       interval: 30s

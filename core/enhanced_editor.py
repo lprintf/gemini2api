@@ -39,7 +39,7 @@ class EnhancedGeminiImageEditor(GeminiImageEditor):
     def __init__(
         self,
         account_id: int = 0,
-        headless: bool = False,
+        headless: bool = True,
         proxy: Optional[str] = None,
         enable_logging: bool = True,
         user_data_dir: Optional[Path] = None,
@@ -963,7 +963,7 @@ async def main():
 
     # 创建编辑器（启用事件日志）
     editor = EnhancedGeminiImageEditor(
-        account_id=0, headless=False, enable_logging=True
+        account_id=0, enable_logging=True
     )
 
     try:

@@ -28,7 +28,7 @@ class GeminiImageEditor(GeminiBrowser):
     def __init__(
         self,
         account_id: int = 0,
-        headless: bool = False,
+        headless: bool = True,
         proxy: Optional[str] = None,
         user_data_dir: Optional[Path] = None,
     ):
