@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from core.browser import AVATAR_PATTERN
-from core.enhanced_editor import EnhancedGeminiImageEditor
+from core.editor import GeminiEditor
 from core.watermark_remover import WatermarkRemover
 from server.core.database import get_db
 from server.core.models import BrowserConfig, TaskRecord
@@ -74,7 +74,7 @@ class TabInstance:
     def __init__(self, tab_id: int, browser_id: str, preferred_model: str = "Fast"):
         self.tab_id = tab_id
         self.browser_id = browser_id
-        self.editor: Optional[EnhancedGeminiImageEditor] = None
+        self.editor: Optional[GeminiEditor] = None
         self.status = BrowserStatus.IDLE
         self.preferred_model = preferred_model  # 标签页的首选模型
         self.current_task_id: Optional[str] = None
@@ -569,7 +569,7 @@ class BrowserInstance:
         self._request_times: deque = deque()  # 请求时间戳队列
 
         self.status = BrowserStatus.STOPPED
-        self.base_editor: Optional[EnhancedGeminiImageEditor] = (
+        self.base_editor: Optional[GeminiEditor] = (
             None  # 主编辑器（用于创建标签页）
         )
         self.tabs: List[TabInstance] = []  # 标签页列表
@@ -619,9 +619,8 @@ class BrowserInstance:
 
         try:
             # 创建主编辑器（高并发场景禁用日志）
-            self.base_editor = EnhancedGeminiImageEditor(
+            self.base_editor = GeminiEditor(
                 account_id=0,
-                headless=self.headless,
                 proxy=self.proxy,
                 enable_logging=False,  # 禁用事件监听，节省CPU
                 user_data_dir=self.user_data_dir,
@@ -678,9 +677,8 @@ class BrowserInstance:
                         )
 
                     # 创建新的编辑器实例，复用 context 但使用新的 page
-                    new_editor = EnhancedGeminiImageEditor(
+                    new_editor = GeminiEditor(
                         account_id=0,
-                        headless=self.headless,
                         proxy=self.proxy,
                         enable_logging=False,  # 只在主编辑器启用日志
                         user_data_dir=self.user_data_dir,
