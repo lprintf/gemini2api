@@ -748,23 +748,3 @@ GeminiBrowser = GeminiEditor
 GeminiImageEditor = GeminiEditor
 EnhancedGeminiImageEditor = GeminiEditor
 
-
-async def main():
-    """示例"""
-    editor = GeminiEditor(account_id=0)
-    try:
-        await editor.launch()
-        result = await editor.edit_image(
-            input_image="data/lamp.webp",
-            prompt="把这个灯变成蓝色的",
-            output_dir="output",
-            model="Fast",
-        )
-        if result:
-            print(f"生成 {len(result)} 张图片")
-    finally:
-        await editor.close()
-
-
-if __name__ == "__main__":
-    asyncio.run(main())
