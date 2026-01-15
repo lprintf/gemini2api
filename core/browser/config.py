@@ -13,16 +13,16 @@ import os
 BASE_ARGS = [
     "--no-sandbox",
     "--disable-setuid-sandbox",
-    "--disable-gpu",
-    "--disable-software-rasterizer",
-    "--disable-extensions",
-    "--disable-background-networking",
-    "--disable-sync",
-    "--metrics-recording-only",
-    "--no-first-run",
-    "--disable-breakpad",
-    "--no-default-browser-check",
-    "--mute-audio",
+    # "--disable-gpu",
+    # "--disable-software-rasterizer",
+    # "--disable-extensions",
+    # "--disable-background-networking",
+    # "--disable-sync",
+    # "--metrics-recording-only",
+    # "--no-first-run",
+    # "--disable-breakpad",
+    # "--no-default-browser-check",
+    # "--mute-audio",
 ]
 
 # =============================================================================
@@ -30,8 +30,8 @@ BASE_ARGS = [
 # =============================================================================
 
 # 禁用不必要的功能（减少 CPU 占用）
+# 注意：--force-device-scale-factor 命令行参数不可靠，改用 Playwright 的 device_scale_factor 参数
 PERFORMANCE_ARGS = [
-    "--force-device-scale-factor=0.5",  # 缩放因子设为 0.5，减少渲染像素量，节省 GPU/CPU
     # "--disable-hang-monitor",
     # "--disable-ipc-flooding-protection",
     # "--disable-client-side-phishing-detection",
@@ -110,6 +110,6 @@ def get_launch_args(headless: bool = True, proxy: str = None) -> list[str]:
 # 默认配置
 # =============================================================================
 
-DEFAULT_VIEWPORT = {"width": 384, "height": 512}  # 原 768x1024 减半，配合 0.5 缩放因子节省资源
+DEFAULT_VIEWPORT = {"width": 512, "height": 1024}
 DEFAULT_TIMEOUT = 60000  # 60 秒
 DEFAULT_PERMISSIONS = ["clipboard-read", "clipboard-write"]
