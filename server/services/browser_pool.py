@@ -732,7 +732,7 @@ class BrowserInstance:
                 """预热单个标签页（使用其首选模型）"""
                 try:
                     tab_start = time.time()
-                    success = await tab.editor.prepare_page_environment(
+                    success = await tab.editor.prepare_environment(
                         model=tab.preferred_model,  # 使用标签页的首选模型
                         temporary_chat=False,
                     )
