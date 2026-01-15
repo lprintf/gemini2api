@@ -12,20 +12,18 @@ import uvicorn
 from server.core.database import init_db, close_db, get_db
 from server.config import init_config_from_db, init_config_sync, get_config
 from server.services.browser_pool import BrowserPool
-from server.services.rate_limiter import RateLimiter
 from server.api import openai_compatible, management, gemini_compatible
 from server.auth import verify_admin
 
 
 # 全局变量
 browser_pool: BrowserPool | None = None
-rate_limiter: RateLimiter | None = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
-    global browser_pool, rate_limiter
+    global browser_pool
 
     # 启动时初始化
     print("Starting Gemini Image Edit API Server...")
@@ -54,16 +52,8 @@ async def lifespan(app: FastAPI):
     print("Loading browsers from database...")
     await browser_pool.load_from_db()
 
-    # 初始化速率限制器（保留用于全局统计，但不用于速率限制）
-    rate_limiter = RateLimiter(
-        default_limit=config.rate_limit.default_limit,
-        window_seconds=config.rate_limit.window_seconds,
-    )
-    print("Rate limiter ready (browser-level limiting enabled)")
-
     # 将全局变量注入到 API 模块
     openai_compatible.browser_pool = browser_pool
-    openai_compatible.rate_limiter = rate_limiter
     management.browser_pool = browser_pool
     gemini_compatible.browser_pool = browser_pool
 

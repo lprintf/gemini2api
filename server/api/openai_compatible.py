@@ -16,7 +16,6 @@ from pathlib import Path
 import base64
 
 from server.services.browser_pool import BrowserPool, BrowserStatus, RateLimitExceeded, NoAvailableTabs
-from server.services.rate_limiter import RateLimiter
 
 
 router = APIRouter(prefix="/v1", tags=["OpenAI Compatible API"])
@@ -24,7 +23,6 @@ router = APIRouter(prefix="/v1", tags=["OpenAI Compatible API"])
 
 # 全局变量（稍后由 app.py 初始化）
 browser_pool: Optional[BrowserPool] = None
-rate_limiter: Optional[RateLimiter] = None
 
 # 上传文件存储目录
 UPLOAD_DIR = Path("data/uploads")
