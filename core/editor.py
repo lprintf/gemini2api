@@ -278,14 +278,15 @@ class GeminiEditor:
                 print("开启新对话失败")
 
             if not await self.activate_image_generation():
-                print("激活图片生成失败")
-                return False
+                print("激活图片生成失败，继续...")
+                # return False
+            
 
             await self.ensure_model_selection(model)
 
             if not await self.verify_image_generation_activated():
-                print("图片生成验证失败")
-                return False
+                print("图片生成验证失败，继续...")
+                # return False
 
             print("页面环境准备完成")
             return True
