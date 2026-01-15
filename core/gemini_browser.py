@@ -32,6 +32,8 @@ from typing import Optional
 
 from playwright.async_api import BrowserContext, Page, async_playwright
 
+from .browser import DEFAULT_PERMISSIONS, DEFAULT_VIEWPORT, get_launch_args
+
 
 class GeminiBrowser:
     """Gemini浏览器管理器"""
@@ -173,14 +175,14 @@ class GeminiBrowser:
             print(f"⚠️  创建浏览器数据目录: {self.user_data_dir}")
             self.user_data_dir.mkdir(parents=True, exist_ok=True)
 
-        # 检查是否有登录状态（cookies）
-        cookies_file = self.user_data_dir / "cookies.json"
-        has_cookies = cookies_file.exists()
+        # # 检查是否有登录状态（cookies）todo：不准确，现在不使用start.sh 登陆
+        # cookies_file = self.user_data_dir / "cookies.json"
+        # has_cookies = cookies_file.exists()
 
-        if not has_cookies:
-            print(f"⚠️  警告: 账户 {self.account_id} 未登录 Google")
-            print("   首次使用需要手动登录，浏览器会自动保存登录状态")
-            print(f"   或运行: python gemini_browser.py login {self.account_id}")
+        # if not has_cookies:
+        #     print(f"⚠️  警告: 账户 {self.account_id} 未登录 Google")
+        #     print("   首次使用需要手动登录，浏览器会自动保存登录状态")
+        #     print(f"   或运行: python gemini_browser.py login {self.account_id}")
 
         mode = "无头模式" if self.headless else "GUI模式"
         print("=" * 60)
@@ -191,66 +193,19 @@ class GeminiBrowser:
         # 创建playwright实例并保持
         self.playwright = await async_playwright().start()
 
-        # 准备启动参数
-        # CPU优化配置 容器环境 - 针对高并发场景优化
-        launch_args = [
-            "--no-sandbox",
-            "--disable-setuid-sandbox",
-            "--disable-gpu",
-            "--disable-software-rasterizer",
-            "--disable-extensions",
-            "--disable-background-networking",
-            "--disable-sync",
-            "--metrics-recording-only",
-            "--no-first-run",
-            "--disable-breakpad",
-            "--no-default-browser-check",
-            # ✅ 移除了所有 disable-throttling 参数！让后台 Tab 休眠
-            # 禁用不必要的功能
-            "--disable-hang-monitor",
-            "--disable-ipc-flooding-protection",
-            "--disable-client-side-phishing-detection",
-            "--disable-component-update",
-            "--disable-domain-reliability",
-            "--disable-features=TranslateUI,BlinkGenPropertyTrees,IsolateOrigins,site-per-process",
-            "--disable-popup-blocking",
-            "--disable-prompt-on-repost",
-            "--disable-default-apps",
-            # 性能相关
-            "--memory-pressure-off",
-            "--max-gum-fps=1",
-            "--mute-audio",
-            "--headless=new",
-            # 渲染优化
-            "--disable-partial-raster",
-            "--disable-skia-runtime-opts",
-        ]
+        # 使用统一的启动参数配置
+        launch_args = get_launch_args(headless=self.headless, proxy=self.proxy)
 
-        # 如果是有头模式且在 Wayland 环境，添加 ozone 平台参数
-        import os
-
-        if not self.headless:
-            wayland_display = os.environ.get("WAYLAND_DISPLAY")
-            if wayland_display:
-                launch_args.extend(
-                    [
-                        "--ozone-platform=wayland",
-                        "--enable-features=UseOzonePlatform",
-                    ]
-                )
-
-        # 如果配置了代理，添加代理参数
         if self.proxy:
-            launch_args.append(f"--proxy-server={self.proxy}")
             print(f"使用代理: {self.proxy}")
 
         # 使用保存的持久化上下文
         self.context = await self.playwright.chromium.launch_persistent_context(
             str(self.user_data_dir),
             headless=self.headless,
-            viewport={"width": 1280, "height": 900},
+            viewport=DEFAULT_VIEWPORT,
             args=launch_args,
-            permissions=["clipboard-read", "clipboard-write"],  # 预授权剪贴板权限
+            permissions=DEFAULT_PERMISSIONS,
         )
 
         self.page = (

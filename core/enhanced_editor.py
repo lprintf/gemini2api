@@ -14,6 +14,22 @@ import json
 from pathlib import Path
 from typing import Literal, Optional
 
+from .browser import (
+    IMAGE_GEN_DESELECT,
+    IMAGE_GEN_OPTION,
+    INPUT_BOX,
+    MAIN_MENU_BUTTON,
+    MODEL_MENU_BUTTON,
+    MODEL_OPTION_FAST,
+    MODEL_OPTION_PRO,
+    RESPONSE_CONTAINER,
+    TEMP_CHAT_BUTTON,
+    TEMP_CHAT_CARD,
+    TEMP_CHAT_TITLE,
+    TOOLS_BUTTON,
+    get_model_keywords,
+    is_generated_image,
+)
 from .image_editor import GeminiImageEditor
 
 
@@ -127,29 +143,28 @@ class EnhancedGeminiImageEditor(GeminiImageEditor):
         print(f"\n确保模型选择为: {model}")
 
         try:
-            # 查找模型选择按钮（基于 Codegen）
-            menu_button_selector = '[data-test-id="bard-mode-menu-button"]'
-
-            # 等待按钮出现（注意：按钮可能有 hidden class，但仍然可以交互）
-            # 使用 state="attached" 而不是 "visible"
+            # 等待模型菜单按钮出现
             await self.page.wait_for_selector(
-                menu_button_selector, timeout=5000, state="attached"
+                MODEL_MENU_BUTTON, timeout=5000, state="attached"
             )
 
             # 获取当前显示的模型
-            menu_button = self.page.locator(menu_button_selector)
-
-            # 获取按钮内的文本来判断当前模型
+            menu_button = self.page.locator(MODEL_MENU_BUTTON)
             button_text = await menu_button.inner_text()
             print(f"  当前模型显示: '{button_text}'")
 
-            # 判断当前是哪个模型
-            is_currently_fast = (
-                "Fast" in button_text
-                or "快速" in button_text
-                or "fast" in button_text.lower()
+            # 使用统一的关键词检查
+            fast_keywords = get_model_keywords("Fast")
+            pro_keywords = get_model_keywords("Pro")
+
+            is_currently_fast = any(
+                kw in button_text or kw.lower() in button_text.lower()
+                for kw in fast_keywords
             )
-            is_currently_pro = "Pro" in button_text or "pro" in button_text.lower()
+            is_currently_pro = any(
+                kw in button_text or kw.lower() in button_text.lower()
+                for kw in pro_keywords
+            )
 
             # 判断是否已经是目标模型
             if model == "Fast" and is_currently_fast:
@@ -162,29 +177,19 @@ class EnhancedGeminiImageEditor(GeminiImageEditor):
             # 需要切换模型
             print(f"  切换到 {model} 模型...")
 
-            # 步骤1: 点击菜单按钮并等待目标模型选项出现，然后立即点击（事件驱动）
-            # 确定要等待的选项（根据目标模型）
-            if model == "Fast":
-                target_menu_selectors = [
-                    '[data-test-id="bard-mode-option-fast"]',
-                    '[data-test-id="bard-mode-option-快速"]',
-                    '[data-test-id="bard-mode-option-Flash"]',
-                ]
-            else:  # Pro
-                target_menu_selectors = [
-                    '[data-test-id="bard-mode-option-pro"]',
-                    '[data-test-id="bard-mode-option-Pro"]',
-                ]
+            # 根据目标模型确定选项选择器
+            target_menu_selectors = (
+                MODEL_OPTION_FAST if model == "Fast" else MODEL_OPTION_PRO
+            )
 
             clicked = False
             for attempt in range(3):
                 await menu_button.click(no_wait_after=True)
                 print(f"  ✓ 点击菜单按钮（尝试 {attempt + 1}/3）")
 
-                # 等待目标模型选项出现并立即点击（事件驱动）
+                # 等待目标模型选项出现并立即点击
                 for selector in target_menu_selectors:
                     try:
-                        # wait_for_selector 会监听DOM变化，一旦元素可见就立即返回
                         option = await self.page.wait_for_selector(
                             selector, timeout=1000, state="visible"
                         )
@@ -205,22 +210,19 @@ class EnhancedGeminiImageEditor(GeminiImageEditor):
                 print(f"  ❌ 无法找到并点击 {model} 模型选项")
                 return False
 
-            # 验证切换结果（参考图片生成验证逻辑）
-            # 等待菜单动画完成后读取按钮文本
+            # 验证切换结果
             await self.page.wait_for_timeout(300)
 
             # 重新获取按钮并验证文本
             verify_button = await self.page.wait_for_selector(
-                menu_button_selector, timeout=3000, state="attached"
+                MODEL_MENU_BUTTON, timeout=3000, state="attached"
             )
 
             if verify_button:
                 new_button_text = await verify_button.inner_text()
                 print(f"  切换后模型显示: '{new_button_text}'")
 
-                keywords = (
-                    ["Fast", "快速", "flash"] if model == "Fast" else ["Pro", "pro"]
-                )
+                keywords = get_model_keywords(model)
                 if any(
                     kw in new_button_text or kw.lower() in new_button_text.lower()
                     for kw in keywords
@@ -255,29 +257,15 @@ class EnhancedGeminiImageEditor(GeminiImageEditor):
             # 步骤1: 确保左侧菜单展开
             print("  检查左侧菜单状态...")
 
-            # 查找主菜单按钮（侧边栏未展开时显示）
-            # 基于真实DOM: button.main-menu-button[aria-label="主菜单"]
-            menu_button_selectors = [
-                "button.main-menu-button",
-                'button[data-test-id="side-nav-menu-button"]',
-                'button[aria-label="主菜单"]',
-                'button[aria-label="Main menu"]',
-                'button[aria-label*="展开菜单"]',
-                'button[aria-label*="Expand menu"]',
-                'button mat-icon[fonticon="menu"]',
-            ]
-
             menu_expanded = False
-            for selector in menu_button_selectors:
+            for selector in MAIN_MENU_BUTTON:
                 try:
-                    # 使用 wait_for_selector 等待按钮出现（事件驱动，更高效）
                     menu_button = await self.page.wait_for_selector(
                         selector, state="visible", timeout=2000
                     )
                     if menu_button:
-                        print(f"  找到主菜单按钮（选择器: {selector}），点击展开...")
+                        print(f"  找到主菜单按钮，点击展开...")
                         await menu_button.click()
-                        # 等待菜单展开（事件驱动）
                         try:
                             await self.page.wait_for_selector(
                                 'div[role="menu"], nav[role="navigation"]',
@@ -300,40 +288,27 @@ class EnhancedGeminiImageEditor(GeminiImageEditor):
 
             # wait_for_selector 已经在下面，不需要固定 sleep
 
-            # 临时对话按钮的多种选择器
-            temp_chat_selectors = [
-                # 基于 aria-label
-                'button[aria-label*="临时"]',
-                'button[aria-label*="Temporary"]',
-                # 基于文本
-                'button:has-text("临时对话")',
-                'button:has-text("Temporary chat")',
-                # 基于部分文本匹配
-                '*:has-text("临时对话")',
-                '*:has-text("Temporary chat")',
-            ]
-
-            for selector in temp_chat_selectors:
+            for selector in TEMP_CHAT_BUTTON:
                 try:
                     temp_button = await self.page.wait_for_selector(
                         selector, timeout=3000, state="visible"
                     )
                     if temp_button:
-                        print(f"  ✓ 找到临时对话按钮（选择器: {selector}）")
+                        print(f"  ✓ 找到临时对话按钮")
                         await temp_button.click()
 
-                        # 验证：等待临时对话说明卡片出现（事件驱动）
+                        # 验证：等待临时对话说明卡片出现
                         print("  验证临时对话模式是否启用...")
                         try:
                             temp_card = await self.page.wait_for_selector(
-                                ".temporary-chat-card", state="visible", timeout=3000
+                                TEMP_CHAT_CARD, state="visible", timeout=3000
                             )
                         except Exception:
                             temp_card = None
 
                         if temp_card:
                             # 检查卡片标题
-                            card_title = await temp_card.query_selector(".gds-title-l")
+                            card_title = await temp_card.query_selector(TEMP_CHAT_TITLE)
                             if card_title:
                                 title_text = await card_title.text_content()
                                 print(f"  找到临时对话卡片，标题: {title_text}")
@@ -352,7 +327,6 @@ class EnhancedGeminiImageEditor(GeminiImageEditor):
             # 如果所有选择器都失败，尝试通过文本内容直接匹配
             print("  尝试通过文本内容匹配...")
             try:
-                # 获取侧边栏中的所有按钮
                 all_buttons = await self.page.query_selector_all("button")
 
                 for button in all_buttons:
@@ -360,7 +334,6 @@ class EnhancedGeminiImageEditor(GeminiImageEditor):
                         text = await button.text_content()
                         aria_label = await button.get_attribute("aria-label")
 
-                        # 检查文本或 aria-label 是否包含"临时"或"Temporary"
                         if (
                             text and ("临时" in text or "temporary" in text.lower())
                         ) or (
@@ -370,18 +343,16 @@ class EnhancedGeminiImageEditor(GeminiImageEditor):
                                 or "temporary" in aria_label.lower()
                             )
                         ):
-                            # 确保按钮可见
                             if await button.is_visible():
                                 print(
                                     f"  ✓ 通过文本匹配找到: text='{text}', aria-label='{aria_label}'"
                                 )
                                 await button.click()
 
-                                # 验证：等待临时对话说明卡片出现（事件驱动）
                                 print("  验证临时对话模式是否启用...")
                                 try:
                                     temp_card = await self.page.wait_for_selector(
-                                        ".temporary-chat-card",
+                                        TEMP_CHAT_CARD,
                                         state="visible",
                                         timeout=3000,
                                     )
@@ -390,7 +361,7 @@ class EnhancedGeminiImageEditor(GeminiImageEditor):
 
                                 if temp_card:
                                     card_title = await temp_card.query_selector(
-                                        ".gds-title-l"
+                                        TEMP_CHAT_TITLE
                                     )
                                     if card_title:
                                         title_text = await card_title.text_content()
@@ -515,9 +486,7 @@ class EnhancedGeminiImageEditor(GeminiImageEditor):
             # 先检查是否已经激活（避免重复激活）
             step_start = time.time()
             print("  检查是否已激活...")
-            deselect_button = await self.page.query_selector(
-                ".toolbox-drawer-item-deselect-button"
-            )
+            deselect_button = await self.page.query_selector(IMAGE_GEN_DESELECT)
             if deselect_button:
                 label = await deselect_button.get_attribute("aria-label")
                 if label and "图片" in label or "image" in label.lower():
@@ -529,21 +498,14 @@ class EnhancedGeminiImageEditor(GeminiImageEditor):
             step_start = time.time()
             print("  查找 Tools 菜单图标...")
 
-            tools_selectors = [
-                "button.toolbox-drawer-button",
-                'button[aria-label="工具"]',
-                'button[aria-label="Tools"]',
-            ]
-
             tools_button = None
-            for selector in tools_selectors:
+            for selector in TOOLS_BUTTON:
                 try:
-                    # 使用 wait_for_selector 事件驱动等待
                     tools_button = await self.page.wait_for_selector(
                         selector, state="visible", timeout=5000
                     )
                     if tools_button:
-                        print(f"  ✓ 找到 Tools 菜单（选择器: {selector}）")
+                        print(f"  ✓ 找到 Tools 菜单")
                         break
                 except Exception:
                     continue
@@ -559,15 +521,8 @@ class EnhancedGeminiImageEditor(GeminiImageEditor):
             click_menu_time = time.time()
             print(f"  ✓ 点击 Tools 菜单 ({click_menu_time - step_start:.3f}s)")
 
-            # 使用多种选择器策略
-            selectors = [
-                "text=Create images",
-                "text=生成图片",
-                'button[jslog="271906"]',
-            ]
-
             clicked = False
-            for i, selector in enumerate(selectors):
+            for i, selector in enumerate(IMAGE_GEN_OPTION):
                 try:
                     selector_start = time.time()
                     option = await self.page.wait_for_selector(
@@ -580,7 +535,6 @@ class EnhancedGeminiImageEditor(GeminiImageEditor):
                             f"  ✓ 选择器 {i+1} 找到 ({selector_time:.3f}s): {selector[:30]}..."
                         )
                         click_start = time.time()
-                        # 使用 JavaScript 直接触发点击，绕过所有 Playwright 检查
                         await option.evaluate("el => el.click()")
                         click_time = time.time() - click_start
                         print(f"  ✓ 点击选项完成 ({click_time:.3f}s)")
@@ -614,9 +568,9 @@ class EnhancedGeminiImageEditor(GeminiImageEditor):
         """
         print("  验证图片生成激活状态...")
         try:
-            # 等待"取消选择图片"按钮出现（事件驱动）
+            # 等待"取消选择图片"按钮出现
             deselect_button = await self.page.wait_for_selector(
-                ".toolbox-drawer-item-deselect-button", timeout=3000, state="visible"
+                IMAGE_GEN_DESELECT, timeout=3000, state="visible"
             )
 
             if deselect_button:
@@ -875,14 +829,8 @@ class EnhancedGeminiImageEditor(GeminiImageEditor):
             stage_start = time.time()
 
             # 统计图片数量
-            container_selectors = [
-                "model-response",
-                "message-content model-response",
-                "response-container",
-            ]
-
             generated_count = 0
-            for selector in container_selectors:
+            for selector in RESPONSE_CONTAINER:
                 try:
                     containers = await self.page.query_selector_all(selector)
                     if containers:
@@ -891,11 +839,7 @@ class EnhancedGeminiImageEditor(GeminiImageEditor):
 
                         for img in images:
                             src = await img.get_attribute("src")
-                            if (
-                                src
-                                and "googleusercontent" in src
-                                and "/a/ACg8oc" not in src
-                            ):
+                            if is_generated_image(src):
                                 generated_count += 1
 
                         if generated_count > 0:

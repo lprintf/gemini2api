@@ -22,7 +22,6 @@ if TYPE_CHECKING:
 
 import httpx
 
-
 DEFAULT_PROMPT = (
     "Generate a high-resolution wide-angle interior editorial image set in a Scandinavian living room. "
     "The lamp should be clearly visible yet proportionally balanced in the full-room view, placed naturally "
@@ -163,7 +162,7 @@ async def send_request(
         )
 
         latency = time.perf_counter() - start
-        
+
         try:
             payload = response.json()
         except json.JSONDecodeError:
@@ -298,7 +297,7 @@ def parse_args() -> Config:
     parser.add_argument(
         "--images-dir",
         type=Path,
-        default=Path("/imagedata/home/lixudong_fte_01/nova_data_merge_service/images"),
+        default=Path("/data/gemini2api/sample_images/"),
         help="图片目录",
     )
     parser.add_argument(
@@ -309,7 +308,7 @@ def parse_args() -> Config:
     parser.add_argument(
         "--sample-size",
         type=int,
-        default=10,
+        default=30,
         help="采样数量",
     )
     parser.add_argument(
@@ -334,7 +333,7 @@ def parse_args() -> Config:
     parser.add_argument(
         "--max-concurrent",
         type=int,
-        default=5,
+        default=30,
         help="最大并发数",
     )
     parser.add_argument(
@@ -345,7 +344,7 @@ def parse_args() -> Config:
     )
     parser.add_argument(
         "--url",
-        default="https://gemini2api.littleprintf.dpdns.org/v1/images/edits",
+        default="https://g2api.littleprintf.dpdns.org/v1/images/edits",
         help="API 地址",
     )
     parser.add_argument(
@@ -355,8 +354,8 @@ def parse_args() -> Config:
     )
     parser.add_argument(
         "--model",
-        # default="gemini-flash",
-        default="gemini-pro",
+        default="gemini-flash",
+        # default="gemini-pro",
         help="模型名称",
     )
     parser.add_argument(
@@ -378,7 +377,7 @@ def parse_args() -> Config:
     parser.add_argument(
         "--out-jsonl",
         type=Path,
-        default=Path("/imagedata/home/lixudong_fte_01/nova_data_merge_service/out_files_httpx.jsonl"),
+        default=Path("/data/gemini2api/out_files_httpx.jsonl"),
         help="输出文件路径",
     )
 
@@ -438,7 +437,9 @@ async def main() -> int:
 
     # 打印配置
     print(f"[config] images: {len(all_images)} total, {sample_size} sampled")
-    print(f"[config] rps={config.rps} concurrent={config.max_concurrent} timeout={config.timeout}s")
+    print(
+        f"[config] rps={config.rps} concurrent={config.max_concurrent} timeout={config.timeout}s"
+    )
     print(f"[config] url={config.url}")
     print()
 

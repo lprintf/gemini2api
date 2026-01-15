@@ -8,6 +8,16 @@ import asyncio
 from pathlib import Path
 from typing import List, Optional
 
+from .browser import (
+    AGREE_BUTTON,
+    DOWNLOAD_BUTTON,
+    IMAGE_GEN_DESELECT,
+    INPUT_BOX,
+    RESPONSE_CONTAINER,
+    SUBMIT_BUTTON,
+    UPLOAD_MENU_BUTTON,
+    is_generated_image,
+)
 from .gemini_browser import GeminiBrowser
 from .watermark_remover import WatermarkRemover
 
@@ -113,7 +123,7 @@ class GeminiImageEditor(GeminiBrowser):
             # 等待输入框就绪
             print("  等待输入框就绪...")
             input_box = await self.page.wait_for_selector(
-                'div[contenteditable="true"]', state="visible", timeout=10000
+                INPUT_BOX, state="visible", timeout=10000
             )
 
             if not input_box:
@@ -220,21 +230,7 @@ class GeminiImageEditor(GeminiBrowser):
             是否成功关闭弹窗（没有弹窗也返回 False）
         """
         try:
-            # 常见的同意按钮选择器（中英文）
-            agree_selectors = [
-                'button:has-text("Agree")',
-                'button:has-text("同意")',
-                'button:has-text("I agree")',
-                'button:has-text("Accept")',
-                'button:has-text("接受")',
-                'button:has-text("OK")',
-                'button:has-text("确定")',
-                # 对话框中的主要操作按钮
-                '[role="dialog"] button[data-mdc-dialog-action="accept"]',
-                '[role="dialog"] button.mdc-dialog__button--default',
-            ]
-
-            for selector in agree_selectors:
+            for selector in AGREE_BUTTON:
                 try:
                     button = await self.page.query_selector(selector)
                     if button and await button.is_visible():
@@ -427,7 +423,7 @@ class GeminiImageEditor(GeminiBrowser):
             # 等待contenteditable的输入框就绪
             print("  等待输入框就绪...")
             prompt_input = await self.page.wait_for_selector(
-                'div[contenteditable="true"]', state="visible", timeout=10000
+                INPUT_BOX, state="visible", timeout=10000
             )
 
             if prompt_input:
@@ -454,15 +450,8 @@ class GeminiImageEditor(GeminiBrowser):
         print("\n正在提交生成请求...")
 
         try:
-            # 中英文提交按钮选择器
-            submit_selectors = [
-                'button[aria-label*="发送"]',  # 中文
-                'button[aria-label*="Send"]',  # 英文
-                'button[aria-label*="submit"]',  # 英文备选
-            ]
-
             submit_button = None
-            for selector in submit_selectors:
+            for selector in SUBMIT_BUTTON:
                 try:
                     submit_button = await self.page.wait_for_selector(
                         selector, state="visible", timeout=3000
@@ -582,21 +571,10 @@ class GeminiImageEditor(GeminiBrowser):
             图片URL列表（已去重，排除头像）
         """
         # 策略：定位最新的模型回复容器
-        # Gemini 的 DOM 结构：message-content > model-response > response-container
         print("\n正在定位最新的对话回复...")
 
-        # 尝试多种选择器策略
-        container_selectors = [
-            # 方案1: 直接找所有 model-response 容器，取最后一个
-            "model-response",
-            # 方案2: 通过 message-content 找
-            "message-content model-response",
-            # 方案3: 通过 response-container
-            "response-container",
-        ]
-
         container = None
-        for selector in container_selectors:
+        for selector in RESPONSE_CONTAINER:
             try:
                 containers = await self.page.query_selector_all(selector)
                 if containers:
@@ -625,43 +603,40 @@ class GeminiImageEditor(GeminiBrowser):
             src = await img.get_attribute("src")
             alt = await img.get_attribute("alt")
 
-            # 过滤条件：
-            # 1. googleusercontent域名
-            # 2. 不是头像（排除ACg8oc开头的URL和包含"个人资料"、"照片"等的alt）
-            if src and "googleusercontent" in src:
-                # 排除头像URL
-                if "/a/ACg8oc" in src:
-                    continue
-                if alt and any(
-                    keyword in alt
-                    for keyword in ["个人资料", "照片", "profile", "photo"]
-                ):
-                    continue
+            # 使用统一的过滤函数
+            if not is_generated_image(src):
+                continue
 
-                import re
-                from urllib.parse import urlparse, urlunparse
+            # 额外检查 alt 属性排除头像
+            if alt and any(
+                keyword in alt for keyword in ["个人资料", "照片", "profile", "photo"]
+            ):
+                continue
 
-                parsed = urlparse(src)
+            import re
+            from urllib.parse import urlparse, urlunparse
 
-                # Google图片URL的尺寸参数在路径末尾
-                path = parsed.path
-                # 移除 =w..., =s..., =h... 等尺寸参数
-                path_without_size = re.sub(r"=[wsh]\d+.*$", "", path)
+            parsed = urlparse(src)
 
-                base_url = urlunparse(
-                    (parsed.scheme, parsed.netloc, path_without_size, "", "", "")
-                )
+            # Google图片URL的尺寸参数在路径末尾
+            path = parsed.path
+            # 移除 =w..., =s..., =h... 等尺寸参数
+            path_without_size = re.sub(r"=[wsh]\d+.*$", "", path)
 
-                # 区分缩略图和高清图
-                is_thumbnail = "w160" in src or "h160" in src
+            base_url = urlunparse(
+                (parsed.scheme, parsed.netloc, path_without_size, "", "", "")
+            )
 
-                if is_thumbnail:
-                    print(f"  跳过缩略图[{idx}]: {src[:100]}...")
-                    thumbnail_info.append((src, idx, base_url))
-                else:
-                    print(f"  [{idx}] Full URL: {src}")
-                    print(f"       Base URL: {base_url}")
-                    image_info.append((src, idx, base_url))
+            # 区分缩略图和高清图
+            is_thumbnail = "w160" in src or "h160" in src
+
+            if is_thumbnail:
+                print(f"  跳过缩略图[{idx}]: {src[:100]}...")
+                thumbnail_info.append((src, idx, base_url))
+            else:
+                print(f"  [{idx}] Full URL: {src}")
+                print(f"       Base URL: {base_url}")
+                image_info.append((src, idx, base_url))
 
         # 去重策略：按base URL去重
         url_map = {}  # base_url -> src
@@ -1112,15 +1087,8 @@ class GeminiImageEditor(GeminiBrowser):
             )
 
             # 等待下载按钮出现
-            download_button_selectors = [
-                'button[aria-label*="下载"]',
-                'button[aria-label*="Download"]',
-                'button[aria-label*="保存"]',
-                'button[aria-label*="Save"]',
-            ]
-
             download_button = None
-            for selector in download_button_selectors:
+            for selector in DOWNLOAD_BUTTON:
                 try:
                     download_button = await self.page.wait_for_selector(
                         selector, state="visible", timeout=1000
@@ -1250,18 +1218,10 @@ class GeminiImageEditor(GeminiBrowser):
                 target_img,
             )
 
-            # 等待下载按钮出现（使用 wait_for_selector 替代固定等待）
-            download_button_selectors = [
-                'button[aria-label*="下载"]',
-                'button[aria-label*="Download"]',
-                'button[aria-label*="保存"]',
-                'button[aria-label*="Save"]',
-            ]
-
+            # 等待下载按钮出现
             download_button = None
-            for selector in download_button_selectors:
+            for selector in DOWNLOAD_BUTTON:
                 try:
-                    # 等待按钮出现并可见，最多等待 1 秒
                     download_button = await self.page.wait_for_selector(
                         selector, state="visible", timeout=1000
                     )
@@ -1425,16 +1385,9 @@ class GeminiImageEditor(GeminiBrowser):
 
             await asyncio.sleep(2)
 
-            # 查找下载按钮（可能有多种aria-label）
-            download_button_selectors = [
-                'button[aria-label*="下载"]',
-                'button[aria-label*="Download"]',
-                'button[aria-label*="保存"]',
-                'button[aria-label*="Save"]',
-            ]
-
+            # 查找下载按钮
             download_button = None
-            for selector in download_button_selectors:
+            for selector in DOWNLOAD_BUTTON:
                 btns = await self.page.query_selector_all(selector)
                 for btn in btns:
                     if await btn.is_visible():
@@ -1579,175 +1532,3 @@ class GeminiImageEditor(GeminiBrowser):
 
                 traceback.print_exc()
             return False, None
-
-    async def edit_image(
-        self,
-        input_image: str,
-        prompt: str,
-        output_dir: str = "output",
-        wait_time: int = 30,
-        upload_method: str = "paste",
-        upload_timeout: int = 60,
-        output_format: str = "webp",
-        webp_lossless: bool = True,
-    ) -> Optional[List[str]]:
-        """
-        完整的图片编辑流程
-
-        Args:
-            input_image: 输入图片路径
-            prompt: 编辑指令
-            output_dir: 输出目录
-            wait_time: 等待生成的时间（秒）
-            upload_method: 上传方式 - "paste"（粘贴，推荐）、"button"（按钮）、"manual"（手动）
-            upload_timeout: 手动上传模式的超时时间（秒）
-            output_format: 输出格式 - "webp"（推荐，文件小）、"png"（原始格式）
-            webp_lossless: WebP 无损压缩，默认 True（推荐）；False 为有损压缩 quality=80
-
-        Returns:
-            保存的图片路径列表，失败返回None
-        """
-        print("=" * 60)
-        print("开始图片编辑流程")
-        print("=" * 60)
-        print(f"输入图片: {input_image}")
-        print(f"编辑指令: {prompt}")
-        print(f"输出目录: {output_dir}")
-        print(f"上传方式: {upload_method}")
-
-        try:
-            # 1. 确保在新对话页面
-            await self.navigate_to_new_chat()
-
-            # 2. 激活图片生成功能
-            if not await self.click_image_generation_button():
-                return None
-
-            # 3. 上传图片
-            if upload_method == "paste":
-                if not await self.upload_image_by_paste(input_image):
-                    return None
-            elif upload_method == "button":
-                if not await self.upload_image(input_image, manual=False):
-                    return None
-            elif upload_method == "manual":
-                if not await self.upload_image(
-                    input_image, manual=True, timeout=upload_timeout
-                ):
-                    return None
-            else:
-                print(f"❌ 不支持的上传方式: {upload_method}")
-                return None
-
-            # 4. 输入prompt
-            if not await self.input_prompt(prompt):
-                return None
-
-            # 5. 提交生成
-            if not await self.submit_generation():
-                return None
-
-            # 6. 等待生成完成
-            if not await self.wait_for_generation(wait_time):
-                print("❌ 等待生成超时")
-                return None
-
-            # 7. 获取生成的图片数量（不获取URL，避免URL不稳定）
-            # 统计图片数量
-            container_selectors = [
-                "model-response",
-                "message-content model-response",
-                "response-container",
-            ]
-
-            generated_count = 0
-            for selector in container_selectors:
-                try:
-                    containers = await self.page.query_selector_all(selector)
-                    if containers:
-                        container = containers[-1]
-                        images = await container.query_selector_all("img")
-
-                        for img in images:
-                            src = await img.get_attribute("src")
-                            if (
-                                src
-                                and "googleusercontent" in src
-                                and "/a/ACg8oc" not in src
-                            ):
-                                generated_count += 1
-
-                        if generated_count > 0:
-                            break
-                except Exception:
-                    continue
-
-            if generated_count == 0:
-                print("❌ 未找到生成的图片")
-                return None
-
-            print(f"\n准备下载 {generated_count} 张图片...")
-
-            # 8. 按索引下载所有生成的图片（不依赖URL）
-            output_paths = []
-            output_path = Path(output_dir)
-            output_path.mkdir(parents=True, exist_ok=True)
-
-            for i in range(generated_count):
-                save_path = output_path / f"generated_{i+1}.{output_format}"
-                success, file_hash = await self.download_generated_image_by_index(
-                    i,
-                    str(save_path),
-                    lossless=webp_lossless,
-                    output_format=output_format,
-                )
-                if success:
-                    output_paths.append(str(save_path))
-
-            print("\n" + "=" * 60)
-            print(f"✓ 图片编辑完成！共生成 {len(output_paths)} 张图片")
-            print("=" * 60)
-
-            for path in output_paths:
-                print(f"  {path}")
-
-            return output_paths
-
-        except Exception as e:
-            print(f"\n❌ 图片编辑流程失败: {e}")
-            import traceback
-
-            traceback.print_exc()
-            return None
-
-
-async def main():
-    """示例：使用图片编辑器"""
-    editor = GeminiImageEditor(account_id=0, headless=False)
-
-    try:
-        # 启动浏览器
-        await editor.launch()
-
-        # 编辑图片
-        test_image = "test/lamp.webp"  # 替换为你的测试图片
-        test_prompt = "把这个灯变成蓝色"
-
-        result = await editor.edit_image(
-            input_image=test_image,
-            prompt=test_prompt,
-            output_dir="output/test1",
-            wait_time=30,
-        )
-
-        if result:
-            print(f"\n成功！生成了 {len(result)} 张图片")
-        else:
-            print("\n失败！")
-
-    finally:
-        await editor.close()
-
-
-if __name__ == "__main__":
-    asyncio.run(main())

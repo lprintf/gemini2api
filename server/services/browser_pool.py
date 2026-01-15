@@ -14,6 +14,7 @@ import asyncio
 import base64
 import hashlib
 import json
+import random
 import time
 from collections import deque
 from datetime import datetime
@@ -22,6 +23,7 @@ from io import BytesIO
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from core.browser import AVATAR_PATTERN
 from core.enhanced_editor import EnhancedGeminiImageEditor
 from core.watermark_remover import WatermarkRemover
 from server.core.database import get_db
@@ -257,7 +259,7 @@ class TabInstance:
             image_urls = []
             for img in images:
                 src = await img.get_attribute("src")
-                if src and "googleusercontent" in src and "/a/ACg8oc" not in src:
+                if src and "googleusercontent" in src and AVATAR_PATTERN not in src:
                     image_urls.append(src)
 
             if not image_urls:
@@ -1274,30 +1276,86 @@ class BrowserPool:
         await browser.stop()
 
     async def get_available_browser(
-        self, strategy: str = "least_loaded"
+        self, strategy: str = "least_loaded", preferred_model: Optional[str] = None
     ) -> Optional[BrowserInstance]:
-        """获取可用的浏览器（负载均衡）"""
+        """
+        获取可用的浏览器（负载均衡）
+
+        Args:
+            strategy: 负载均衡策略
+            preferred_model: 首选模型（用于标签页选择）
+
+        策略 (least_loaded):
+        1. 首先按空闲标签页数量排序（多的优先）
+        2. 空闲标签页相同时，按 rate limit 剩余量排序（多的优先）
+        3. rate limit 也相同时，50% 概率随机分配
+        4. 另外 50% 智能分配：
+           - 优先分配给失败任务数少的浏览器
+           - 失败任务数相同时，优先分配给处理任务少的标签页
+        """
         # 只选择有空闲标签页的浏览器
         available_browsers = [
             browser
             for browser in self.browsers.values()
             if browser.status == BrowserStatus.IDLE
-            and browser.get_available_tab() is not None
+            and browser.get_available_tab(preferred_model) is not None
         ]
 
         if not available_browsers:
             return None
 
         if strategy == "least_loaded":
-            # 选择忙碌标签页最少的浏览器（即空闲标签页最多）
-            return min(available_browsers, key=lambda b: b.get_busy_tabs_count())
+            # 按空闲标签页数量分组
+            def get_idle_tabs_count(b: BrowserInstance) -> int:
+                return len(b.tabs) - b.get_busy_tabs_count()
+
+            # 找出空闲标签页最多的数量
+            max_idle_tabs = max(get_idle_tabs_count(b) for b in available_browsers)
+
+            # 筛选出空闲标签页数量最多的浏览器
+            best_browsers = [
+                b for b in available_browsers if get_idle_tabs_count(b) == max_idle_tabs
+            ]
+
+            if len(best_browsers) == 1:
+                return best_browsers[0]
+
+            # 空闲标签页相同时，先按 rate limit 剩余量筛选
+            def get_rate_limit_remaining(b: BrowserInstance) -> int:
+                _, info = b.check_rate_limit()
+                return info["remaining"]
+
+            max_remaining = max(get_rate_limit_remaining(b) for b in best_browsers)
+            best_browsers = [
+                b for b in best_browsers if get_rate_limit_remaining(b) == max_remaining
+            ]
+
+            if len(best_browsers) == 1:
+                return best_browsers[0]
+
+            # rate limit 也相同时，50% 概率随机分配
+            if random.random() < 0.5:
+                return random.choice(best_browsers)
+
+            # 50% 智能分配：优先失败任务少的浏览器
+            def get_tab_score(b: BrowserInstance) -> tuple:
+                """
+                返回 (失败任务数, 目标标签页的处理任务数)
+                用于排序：数值越小越优先
+                """
+                tab = b.get_available_tab(preferred_model)
+                tab_total_tasks = tab.total_tasks if tab else float("inf")
+                return (b.failed_tasks, tab_total_tasks)
+
+            # 按评分排序，选择最优的
+            best_browsers.sort(key=get_tab_score)
+            return best_browsers[0]
+
         elif strategy == "round_robin":
             # 简单轮询（选择第一个）
             return available_browsers[0]
         elif strategy == "random":
             # 随机选择
-            import random
-
             return random.choice(available_browsers)
         else:
             return available_browsers[0]
