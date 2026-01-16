@@ -13,7 +13,6 @@ services:
       - ./core:/app/core:ro
       - ./server:/app/server:ro
       - ${DATA_DIR:-./data}:/app/data
-      - ./config:/app/config:ro
       - ./tests:/app/tests:ro
     environment:
       - TZ=${TZ:-Asia/Shanghai}

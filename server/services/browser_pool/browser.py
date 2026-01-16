@@ -23,7 +23,7 @@ class BrowserInstance:
         proxy: Optional[str] = None,
         headless: bool = True,
         user_data_dir: Optional[str] = None,
-        rate_limit: int = 10,  # 每分钟请求限制
+        rate_limit: int = 9,  # 每分钟请求限制
         rate_window: int = 60,  # 时间窗口（秒）
         max_tabs: int = 6,  # 最大标签页数量
     ):
@@ -199,7 +199,7 @@ class BrowserInstance:
             )
             preheat_start = time.time()
 
-            async def preheat_tab(tab: TabInstance):
+            async def preheat_tab(tab: TabInstance): # TODO: 这里是不是和 tab.py 里重复了？
                 """预热单个标签页（使用其首选模型）"""
                 try:
                     tab_start = time.time()
@@ -216,6 +216,8 @@ class BrowserInstance:
                         print(
                             f"[Browser {self.browser_id}] Tab {tab.tab_id} ({tab.preferred_model}) preheat failed ({elapsed:.3f}s)"
                         )
+                        # TODO:如果预热失败，重新初始化标签页后再试一次
+
                 except Exception as e:
                     print(
                         f"[Browser {self.browser_id}] Tab {tab.tab_id} ({tab.preferred_model}) preheat error: {e}"
@@ -378,12 +380,20 @@ class BrowserInstance:
     async def execute_fast_task(
         self,
         task_id: str,
-        input_image: str,
+        input_images: List[str],
         prompt: str,
         model: str = "Fast",
         output_dir: str = "data/outputs",
     ) -> Optional[Dict[str, Any]]:
-        """执行快速预览任务（使用空闲的标签页）"""
+        """执行快速预览任务（使用空闲的标签页）
+
+        Args:
+            task_id: 任务ID
+            input_images: 输入图片路径列表（支持多图）
+            prompt: 编辑指令
+            model: 模型类型 (Fast/Pro)
+            output_dir: 输出目录
+        """
         # 检查速率限制
         allowed, info = self.check_rate_limit()
         if not allowed:
@@ -409,7 +419,7 @@ class BrowserInstance:
         # 在标签页中执行快速任务
         try:
             result = await tab.execute_fast_task(
-                task_id, input_image, prompt, model, output_dir
+                task_id, input_images, prompt, model, output_dir
             )
             if result:
                 self.total_tasks += 1

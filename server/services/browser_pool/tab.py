@@ -1,18 +1,13 @@
 """标签页实例"""
 
 import asyncio
-import base64
-import hashlib
 import json
 import time
 from datetime import datetime
-from io import BytesIO
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from core.browser import AVATAR_PATTERN
 from core.editor import GeminiEditor
-from core.watermark_remover import WatermarkRemover
 from server.core.database import get_db
 
 from .exceptions import BrowserStatus
@@ -42,22 +37,16 @@ class TabInstance:
         self.status = BrowserStatus.STARTING
 
         try:
-            if self.editor and self.editor.page:
-                # 刷新页面
-                await self.editor.page.goto(
-                    "https://gemini.google.com/app",
-                    wait_until="load",
-                    timeout=60000,
-                )
-                # 预热环境
-                await self.editor.prepare_environment(
-                    model=self.preferred_model,
-                    temporary_chat=False,
-                )
-                self.consecutive_failures = 0
-                self.status = BrowserStatus.IDLE
-                print(f"[Tab {self.browser_id}-{self.tab_id}] Reinitialized successfully")
-                return True
+            if self.editor:
+                success = await self.editor.reinitialize(model=self.preferred_model)
+                if success:
+                    self.consecutive_failures = 0
+                    self.status = BrowserStatus.IDLE
+                    print(f"[Tab {self.browser_id}-{self.tab_id}] Reinitialized successfully")
+                    return True
+                else:
+                    self.status = BrowserStatus.ERROR
+                    return False
         except Exception as e:
             print(f"[Tab {self.browser_id}-{self.tab_id}] Reinitialize failed: {e}")
             self.status = BrowserStatus.ERROR
@@ -160,32 +149,41 @@ class TabInstance:
     async def execute_fast_task(
         self,
         task_id: str,
-        input_image: str,
+        input_images: List[str],
         prompt: str,
         model: str = "Fast",
         output_dir: str = "data/outputs",
+        remove_watermark: bool = True,
     ) -> Optional[Dict[str, Any]]:
         """
         执行快速预览任务，预览图返回后立即启动后台高清下载
 
         流程：
-        1. 准备环境 → 提交生成 → 等待生成
-        2. 快速下载预览图（page.request.get）
+        1. 准备环境 → 上传图片 → 提交生成 → 等待生成
+        2. 快速下载预览图（复用 editor.download_all_previews）
         3. 立即返回预览图信息给调用者
         4. 后台启动高清下载任务
         5. 高清下载完成后自动释放标签页
 
         输出目录结构：
-        - 预览图：outputs/q/{date}/{hash}.{fmt}
+        - 预览图：outputs/q/{date}/{hash}.webp
         - 高清图：outputs/hd/{date}/{hash}.webp
         - 元数据：outputs/meta/{date}/{hash}.json
+
+        Args:
+            task_id: 任务ID
+            input_images: 输入图片路径列表（支持单图和多图）
+            prompt: 编辑指令
+            model: 模型类型 (Fast/Pro)
+            output_dir: 输出目录
+            remove_watermark: 是否去水印（默认 True）
 
         Returns:
             Dict with preview images info:
             {
                 "task_id": "task-xxx",
                 "images": [
-                    {"hash": "abc123", "id": "20260107/abc123", "url": "..."}
+                    {"hash": "abc123", "id": "20260107/abc123", ...}
                 ],
             }
         """
@@ -195,7 +193,11 @@ class TabInstance:
             )
 
         print(f"[Tab {self.browser_id}-{self.tab_id}] Executing fast task {task_id}")
-        print(f"  Input: {input_image}")
+        print(f"  Input images: {len(input_images)} file(s)")
+        for i, img in enumerate(input_images[:3]):  # 只打印前3个
+            print(f"    [{i}] {img}")
+        if len(input_images) > 3:
+            print(f"    ... and {len(input_images) - 3} more")
         print(f"  Prompt: {prompt[:50]}...")
         print(f"  Model: {model}")
 
@@ -208,23 +210,26 @@ class TabInstance:
         base_output_dir = Path(output_dir)
 
         try:
-            # 1. 准备页面环境并执行生成
+            # 1. 准备页面环境（统一单图和多图逻辑）
             stage_start = time.time()
-            success = await self.editor.prepare_for_generation(
-                input_image=input_image,
-                prompt=prompt,
-                model=model,
-                temporary_chat=False,
-            )
 
-            if not success:
-                raise RuntimeError("Failed to prepare for generation")
+            if not await self.editor.prepare_environment(model=model, temporary_chat=False):
+                raise RuntimeError("Failed to prepare environment")
+
+            # 批量上传图片（单图也走这个逻辑）
+            if not await self.editor.upload_images_by_paste(input_images):
+                raise RuntimeError("Failed to upload images")
+
+            # 输入提示词
+            if not await self.editor.input_prompt(prompt):
+                raise RuntimeError("Failed to input prompt")
+
             timings["prepare"] = time.time() - stage_start
             print(f"  ⏱ [准备阶段] {timings['prepare']:.3f}s")
 
             # 2. 提交生成请求
             stage_start = time.time()
-            if not await self.editor.submit_generation():
+            if not await self.editor.submit():
                 raise RuntimeError("Failed to submit generation")
             timings["submit"] = time.time() - stage_start
             print(f"  ⏱ [提交请求] {timings['submit']:.3f}s")
@@ -243,79 +248,28 @@ class TabInstance:
             timings["generation"] = time.time() - stage_start
             print(f"  ⏱ [生成等待] {timings['generation']:.3f}s")
 
-            # 4. 快速下载预览图（使用 page.request.get）
+            # 4. 下载预览图（复用 editor 的方法）
             stage_start = time.time()
-            page = self.editor.page
-            containers = await page.query_selector_all("model-response")
-            if not containers:
-                raise RuntimeError("No response containers found")
-
-            last_container = containers[-1]
-            images = await last_container.query_selector_all("img")
-
-            # 过滤出生成的图片
-            image_urls = []
-            for img in images:
-                src = await img.get_attribute("src")
-                if src and "googleusercontent" in src and AVATAR_PATTERN not in src:
-                    image_urls.append(src)
-
-            if not image_urls:
-                raise RuntimeError("No generated images found")
-
-            # 5. 下载预览图并计算 hash，保存到 outputs/q/{date}/{hash}.{fmt}
-            date_str = datetime.now().strftime("%Y%m%d")
-            preview_dir = base_output_dir / "q" / date_str
-            preview_dir.mkdir(parents=True, exist_ok=True)
-
-            images_info = []
-            download_start = time.time()
-            for i, url in enumerate(image_urls):
-                response = await page.request.get(url)
-                if not response.ok:
-                    print(
-                        f"[Tab {self.browser_id}-{self.tab_id}] Failed to download preview {i}: HTTP {response.status}"
-                    )
-                    continue
-
-                image_bytes = await response.body()
-
-                # 计算 hash
-                sha256_hash = hashlib.sha256(image_bytes).digest()
-                file_hash = base64.urlsafe_b64encode(sha256_hash).decode().rstrip("=")
-
-                # 检测格式并保存到 q/{date}/{hash}.{fmt}
-                fmt = self._detect_image_format(image_bytes)
-                preview_path = preview_dir / f"{file_hash}.{fmt}"
-                with open(preview_path, "wb") as f:
-                    f.write(image_bytes)
-
-                # id 格式：{date}/{hash}，用于 API 返回和 HD 请求
-                image_id = f"{date_str}/{file_hash}"
-
-                images_info.append(
-                    {
-                        "index": i,
-                        "hash": file_hash,
-                        "id": image_id,  # 统一标识符
-                        "date": date_str,
-                        "format": fmt,
-                        "url": url,
-                        "size": len(image_bytes),
-                    }
-                )
-
-                print(
-                    f"[Tab {self.browser_id}-{self.tab_id}] Preview {i} saved: {file_hash[:16]}... ({len(image_bytes)/1024:.1f}KB)"
-                )
-
-            timings["download"] = time.time() - download_start
-            print(f"  ⏱ [预览下载] {timings['download']:.3f}s ({len(images_info)} 张)")
+            preview_dir = base_output_dir / "q"
+            images_info = await self.editor.download_all_previews(
+                output_dir=preview_dir,
+                remove_watermark=remove_watermark,
+                quality=80,
+            )
 
             if not images_info:
                 raise RuntimeError("Failed to download any preview images")
 
-            # 6. 为每张图保存独立的元数据到 outputs/meta/{date}/{hash}.json
+            timings["download"] = time.time() - stage_start
+            print(f"  ⏱ [预览下载] {timings['download']:.3f}s ({len(images_info)} 张)")
+
+            for img_info in images_info:
+                print(
+                    f"[Tab {self.browser_id}-{self.tab_id}] Preview {img_info['index']} saved: {img_info['hash'][:16]}... ({img_info['size']/1024:.1f}KB)"
+                )
+
+            # 5. 为每张图保存独立的元数据到 outputs/meta/{date}/{hash}.json
+            date_str = images_info[0]["date"] if images_info else datetime.now().strftime("%Y%m%d")
             meta_dir = base_output_dir / "meta" / date_str
             meta_dir.mkdir(parents=True, exist_ok=True)
 
@@ -346,9 +300,9 @@ class TabInstance:
 
             self.total_tasks += 1
 
-            # 7. 设置状态为 DOWNLOADING_HD，启动后台高清下载任务
+            # 6. 设置状态为 DOWNLOADING_HD，启动后台高清下载任务
             self.status = BrowserStatus.DOWNLOADING_HD
-            self.hd_metadata = {"images": images_info, "date": date_str}
+            self.hd_metadata = {"images": images_info, "date": date_str, "remove_watermark": remove_watermark}
             self._start_background_hd_download(base_output_dir, model)
 
             return {
@@ -405,6 +359,7 @@ class TabInstance:
 
             images = self.hd_metadata["images"]
             date_str = self.hd_metadata["date"]
+            remove_watermark = self.hd_metadata.get("remove_watermark", True)
 
             print(
                 f"[Tab {self.browser_id}-{self.tab_id}] Starting background HD download for {len(images)} images..."
@@ -429,12 +384,15 @@ class TabInstance:
                         f"[Tab {self.browser_id}-{self.tab_id}] Downloading HD for {file_hash[:16]}..."
                     )
 
-                    # 使用 hover 下载按钮获取高清图
-                    hd_bytes = await self.editor._download_via_hover_button(
-                        target_url
+                    # 使用 editor 的方法下载 HD 图片（复用去水印和保存逻辑）
+                    hd_path = hd_dir / f"{file_hash}.webp"
+                    success, hd_info = await self.editor.download_hd_by_url(
+                        url=target_url,
+                        save_path=str(hd_path),
+                        remove_watermark=remove_watermark,
                     )
 
-                    if not hd_bytes:
+                    if not success:
                         print(
                             f"[Tab {self.browser_id}-{self.tab_id}] HD download failed for {file_hash[:16]}"
                         )
@@ -443,45 +401,17 @@ class TabInstance:
                         )
                         continue
 
-                    # 去水印处理
-                    try:
-                        hd_bytes = WatermarkRemover.remove_watermark_from_bytes(
-                            hd_bytes, verbose=False
-                        )
-                        print(
-                            f"[Tab {self.browser_id}-{self.tab_id}] HD watermark removed for {file_hash[:16]}"
-                        )
-                    except Exception as wm_err:
-                        print(
-                            f"[Tab {self.browser_id}-{self.tab_id}] HD watermark removal failed for {file_hash[:16]}: {wm_err}"
-                        )
-
-                    # 转换为 WebP
-                    from PIL import Image
-
-                    pil_img = Image.open(BytesIO(hd_bytes))
-                    width, height = pil_img.size
-
-                    webp_buffer = BytesIO()
-                    pil_img.save(webp_buffer, "WEBP", lossless=True)
-                    webp_data = webp_buffer.getvalue()
-
-                    # 保存高清图到 hd/{date}/{hash}.webp
-                    hd_path = hd_dir / f"{file_hash}.webp"
-                    with open(hd_path, "wb") as f:
-                        f.write(webp_data)
-
                     # 更新元数据
                     self._update_meta_hd_status(
                         meta_dir / f"{file_hash}.json",
                         "completed",
-                        hd_size=len(webp_data),
-                        hd_dimensions=f"{width}x{height}",
+                        hd_size=hd_info["size"],
+                        hd_dimensions=hd_info["dimensions"],
                     )
                     success_count += 1
 
                     print(
-                        f"[Tab {self.browser_id}-{self.tab_id}] HD saved: {file_hash[:16]}... ({len(webp_data)/1024:.1f}KB, {width}x{height})"
+                        f"[Tab {self.browser_id}-{self.tab_id}] HD saved: {file_hash[:16]}... ({hd_info['size']/1024:.1f}KB, {hd_info['dimensions']})"
                     )
 
                 except Exception as e:
@@ -532,16 +462,3 @@ class TabInstance:
                 json.dump(meta, f, indent=2)
         except Exception as e:
             print(f"[Tab {self.browser_id}-{self.tab_id}] Failed to update meta: {e}")
-
-    def _detect_image_format(self, data: bytes) -> str:
-        """根据文件头检测图片格式"""
-        if data[:8] == b"\x89PNG\r\n\x1a\n":
-            return "png"
-        elif data[:2] == b"\xff\xd8":
-            return "jpg"
-        elif data[:4] == b"RIFF" and data[8:12] == b"WEBP":
-            return "webp"
-        elif data[:6] in (b"GIF87a", b"GIF89a"):
-            return "gif"
-        else:
-            return "bin"

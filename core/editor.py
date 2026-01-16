@@ -12,14 +12,12 @@ Gemini 图片编辑器 - 统一的浏览器自动化图片编辑工具
 import asyncio
 import base64
 import hashlib
-import json
 import re
 import time
 from datetime import datetime
 from io import BytesIO
 from pathlib import Path
 from typing import List, Literal, Optional
-from urllib.parse import urlparse, urlunparse
 
 from PIL import Image
 from playwright.async_api import BrowserContext, Page, async_playwright
@@ -32,17 +30,12 @@ from .browser import (
     IMAGE_GEN_DESELECT,
     IMAGE_GEN_OPTION,
     INPUT_BOX,
-    MAIN_MENU_BUTTON,
     MODEL_MENU_BUTTON,
     MODEL_OPTION_FAST,
     MODEL_OPTION_PRO,
     RESPONSE_CONTAINER,
     SUBMIT_BUTTON,
-    TEMP_CHAT_BUTTON,
-    TEMP_CHAT_CARD,
-    TEMP_CHAT_TITLE,
     TOOLS_BUTTON,
-    UPLOAD_MENU_BUTTON,
     get_launch_args,
     get_model_keywords,
     is_generated_image,
@@ -199,7 +192,7 @@ class GeminiEditor:
 
             target_selectors = MODEL_OPTION_FAST if model == "Fast" else MODEL_OPTION_PRO
 
-            for attempt in range(3):
+            for _ in range(3):
                 await menu_button.click(no_wait_after=True)
                 for selector in target_selectors:
                     try:
@@ -216,17 +209,30 @@ class GeminiEditor:
             print(f"模型选择失败: {e}")
             return False
 
+    async def _is_image_generation_activated(self, wait: bool = False, timeout: int = 3000) -> bool:
+        """检查图片生成功能是否已激活（内部方法）"""
+        try:
+            if wait:
+                deselect = await self.page.wait_for_selector(IMAGE_GEN_DESELECT, timeout=timeout, state="visible")
+            else:
+                deselect = await self.page.query_selector(IMAGE_GEN_DESELECT)
+
+            if deselect:
+                label = await deselect.get_attribute("aria-label")
+                if label and ("图片" in label or "image" in label.lower()):
+                    return True
+            return False
+        except Exception:
+            return False
+
     async def activate_image_generation(self) -> bool:
         """激活图片生成功能"""
         print("激活图片生成功能...")
         try:
             # 检查是否已激活
-            deselect = await self.page.query_selector(IMAGE_GEN_DESELECT)
-            if deselect:
-                label = await deselect.get_attribute("aria-label")
-                if label and ("图片" in label or "image" in label.lower()):
-                    print("图片生成已激活")
-                    return True
+            if await self._is_image_generation_activated(wait=False):
+                print("图片生成已激活")
+                return True
 
             # 点击 Tools 菜单
             tools_btn = None
@@ -259,34 +265,25 @@ class GeminiEditor:
             print(f"激活图片生成失败: {e}")
             return False
 
-    async def verify_image_generation_activated(self) -> bool:
-        """验证图片生成功能是否已激活"""
-        try:
-            deselect = await self.page.wait_for_selector(IMAGE_GEN_DESELECT, timeout=3000, state="visible")
-            if deselect:
-                label = await deselect.get_attribute("aria-label")
-                if label and ("图片" in label or "image" in label.lower()):
-                    return True
-            return False
-        except Exception:
-            return False
-
     async def prepare_environment(self, model: Literal["Pro", "Fast"] = "Fast", temporary_chat: bool = False) -> bool:
-        """准备页面环境（新对话 + 激活图片生成 + 选择模型）"""
+        """准备页面环境（新对话 + 激活图片生成 + 选择模型）
+
+        Args:
+            model: 模型类型
+            temporary_chat: 是否使用临时会话（暂未实现）
+        """
+        _ = temporary_chat  # 暂未实现
         try:
             if not await self.start_new_chat():
                 print("开启新对话失败")
 
-            if not await self.activate_image_generation():
-                print("激活图片生成失败，继续...")
-                # return False
+            await self.activate_image_generation()
             
-
             await self.ensure_model_selection(model)
 
-            if not await self.verify_image_generation_activated():
-                print("图片生成验证失败，继续...")
-                # return False
+            if not await self.activate_image_generation(): # 再次确认图片生成已激活
+                print("激活图片生成失败")
+                return False
 
             print("页面环境准备完成")
             return True
@@ -329,13 +326,48 @@ class GeminiEditor:
 
         return False
 
-    async def submit_generation(self) -> bool:
-        """submit 的别名"""
-        return await self.submit()
-
     # =========================================================================
     # 图片上传
     # =========================================================================
+
+    async def upload_images_by_paste(self, image_paths: List[str]) -> bool:
+        """批量上传多张图片"""
+        print(f"批量上传 {len(image_paths)} 张图片...")
+        for i, path in enumerate(image_paths):
+            print(f"正在上传第 {i + 1}/{len(image_paths)} 张: {path}")
+            if not await self.upload_image_by_paste(path):
+                print(f"第 {i + 1} 张图片上传失败: {path}")
+                return False
+            # 等待上传完成再传下一张（增加等待时间确保上传完成）
+            await self.page.wait_for_timeout(1000)
+
+            # 验证图片是否已添加到输入框
+            uploaded_count = await self._get_uploaded_image_count()
+            print(f"当前已上传图片数: {uploaded_count}")
+            if uploaded_count < i + 1:
+                print(f"警告: 预期 {i + 1} 张，实际 {uploaded_count} 张")
+
+        print(f"批量上传完成: {len(image_paths)} 张")
+        return True
+
+    async def _get_uploaded_image_count(self) -> int:
+        """获取输入框中已上传的图片数量"""
+        try:
+            # 查找输入区域中的图片预览
+            count = await self.page.evaluate("""
+                () => {
+                    // 查找输入区域的图片
+                    const inputArea = document.querySelector('rich-textarea, .input-area, [contenteditable="true"]');
+                    if (!inputArea) return 0;
+
+                    // 查找所有图片预览元素
+                    const images = document.querySelectorAll('img[src*="blob:"], img[src*="data:"], .image-preview, [data-image]');
+                    return images.length;
+                }
+            """)
+            return count or 0
+        except Exception:
+            return 0
 
     async def upload_image_by_paste(self, image_path: str) -> bool:
         """通过粘贴方式上传图片"""
@@ -509,9 +541,21 @@ class GeminiEditor:
         save_path: str,
         output_format: str = "webp",
         lossless: bool = True,
+        quality: int = 80,
         remove_watermark: bool = True,
+        skip_hd: bool = False,
     ) -> tuple[bool, Optional[str]]:
-        """按索引下载生成的图片"""
+        """按索引下载生成的图片
+
+        Args:
+            index: 图片索引
+            save_path: 保存路径
+            output_format: 输出格式 (webp/jpg/png)
+            lossless: WebP 无损压缩
+            quality: 有损压缩质量 (1-100)
+            remove_watermark: 是否去水印
+            skip_hd: 跳过 HD 下载，直接从预览图获取（快速模式）
+        """
         # 找到目标图片
         target_img = None
         for selector in RESPONSE_CONTAINER:
@@ -531,12 +575,15 @@ class GeminiEditor:
             print(f"未找到索引 {index} 的图片")
             return False, None
 
-        # 尝试通过 hover 下载按钮获取原图
-        print(f"下载图片 {index + 1}...")
-        image_bytes = await self._download_via_hover(target_img)
+        print(f"下载图片 {index + 1}{'（快速模式）' if skip_hd else ''}...")
+        image_bytes = None
+
+        if not skip_hd:
+            # 尝试通过 hover 下载按钮获取原图
+            image_bytes = await self._download_via_hover(target_img)
 
         if not image_bytes:
-            # 回退到 request API
+            # 直接从预览 URL 下载
             url = await target_img.get_attribute("src")
             response = await self.page.request.get(url)
             if response.ok:
@@ -546,7 +593,120 @@ class GeminiEditor:
                 return False, None
 
         # 保存图片
-        return await self._save_image(image_bytes, save_path, output_format, lossless, remove_watermark)
+        return await self._save_image(image_bytes, save_path, output_format, lossless, quality, remove_watermark)
+
+    async def download_image_fast(
+        self,
+        index: int,
+        save_path: str,
+        quality: int = 80,
+        remove_watermark: bool = True,
+    ) -> tuple[bool, Optional[str]]:
+        """快速下载图片（跳过 HD，直接压缩去水印返回 WebP）
+
+        用于快速接口，直接从预览图下载并压缩为 WebP 80 质量。
+
+        Args:
+            index: 图片索引
+            save_path: 保存路径
+            quality: WebP 压缩质量 (默认 80)
+            remove_watermark: 是否去水印 (默认 True)
+
+        Returns:
+            (success, file_hash)
+        """
+        return await self.download_image_by_index(
+            index=index,
+            save_path=save_path,
+            output_format="webp",
+            lossless=False,
+            quality=quality,
+            remove_watermark=remove_watermark,
+            skip_hd=True,
+        )
+
+    async def download_all_previews(
+        self,
+        output_dir: Path,
+        remove_watermark: bool = True,
+        quality: int = 80,
+    ) -> List[dict]:
+        """下载所有生成的预览图
+
+        Args:
+            output_dir: 输出目录（会自动创建 {date} 子目录）
+            remove_watermark: 是否去水印
+            quality: WebP 压缩质量
+
+        Returns:
+            图片信息列表，每个元素包含:
+            - index: 图片索引
+            - hash: 文件哈希
+            - id: 图片ID ({date}/{hash})
+            - date: 日期字符串
+            - format: 文件格式
+            - path: 保存路径
+            - size: 文件大小
+            - url: 原始预览图 URL（用于后台 HD 下载）
+        """
+        # 先获取所有生成图片的 URL
+        image_urls = await self._get_generated_image_urls()
+        if not image_urls:
+            return []
+
+        date_str = datetime.now().strftime("%Y%m%d")
+        preview_dir = output_dir / date_str
+        preview_dir.mkdir(parents=True, exist_ok=True)
+
+        images_info = []
+        for i, url in enumerate(image_urls):
+            temp_path = preview_dir / f"temp_{i}.webp"
+            success, file_hash = await self.download_image_by_index(
+                index=i,
+                save_path=str(temp_path),
+                output_format="webp",
+                lossless=False,
+                quality=quality,
+                remove_watermark=remove_watermark,
+                skip_hd=True,
+            )
+
+            if success and file_hash:
+                final_path = preview_dir / f"{file_hash}.webp"
+                if temp_path.exists():
+                    temp_path.rename(final_path)
+
+                images_info.append({
+                    "index": i,
+                    "hash": file_hash,
+                    "id": f"{date_str}/{file_hash}",
+                    "date": date_str,
+                    "format": "webp",
+                    "path": str(final_path),
+                    "size": final_path.stat().st_size if final_path.exists() else 0,
+                    "url": url,  # 保留原始 URL 用于后台 HD 下载
+                })
+
+        return images_info
+
+    async def _get_generated_image_urls(self) -> List[str]:
+        """获取所有生成图片的 URL"""
+        urls = []
+        for selector in RESPONSE_CONTAINER:
+            try:
+                containers = await self.page.query_selector_all(selector)
+                if containers:
+                    container = containers[-1]
+                    images = await container.query_selector_all("img")
+                    for img in images:
+                        src = await img.get_attribute("src")
+                        if is_generated_image(src):
+                            urls.append(src)
+                    if urls:
+                        return urls
+            except Exception:
+                continue
+        return urls
 
     async def _download_via_hover(self, img_element) -> Optional[bytes]:
         """通过 hover 触发下载按钮获取原图"""
@@ -612,6 +772,7 @@ class GeminiEditor:
         save_path: str,
         output_format: str = "webp",
         lossless: bool = True,
+        quality: int = 80,
         remove_watermark: bool = True,
     ) -> tuple[bool, Optional[str]]:
         """保存图片并返回文件哈希"""
@@ -625,7 +786,15 @@ class GeminiEditor:
             output = BytesIO()
             if output_format == "webp":
                 save_path = str(Path(save_path).with_suffix(".webp"))
-                img.save(output, "WEBP", lossless=lossless)
+                if lossless:
+                    img.save(output, "WEBP", lossless=True)
+                else:
+                    img.save(output, "WEBP", quality=quality)
+            elif output_format.lower() in ("jpg", "jpeg"):
+                save_path = str(Path(save_path).with_suffix(".jpg"))
+                if img.mode == "RGBA":
+                    img = img.convert("RGB")
+                img.save(output, "JPEG", quality=quality)
             else:
                 img.save(output, output_format.upper())
 
@@ -645,6 +814,92 @@ class GeminiEditor:
         except Exception as e:
             print(f"保存失败: {e}")
             return False, None
+
+    async def download_hd_by_url(
+        self,
+        url: str,
+        save_path: str,
+        remove_watermark: bool = True,
+    ) -> tuple[bool, Optional[dict]]:
+        """通过 URL 下载高清图片
+
+        Args:
+            url: 预览图 URL（用于定位图片元素）
+            save_path: 保存路径
+            remove_watermark: 是否去水印
+
+        Returns:
+            (success, info) - info 包含 size 和 dimensions
+        """
+        try:
+            # 通过 URL 找到图片并 hover 下载
+            hd_bytes = await self._download_via_hover_button(url)
+            if not hd_bytes:
+                return False, None
+
+            # 使用 _save_image 处理（去水印、转换格式、保存）
+            success, file_hash = await self._save_image(
+                image_bytes=hd_bytes,
+                save_path=save_path,
+                output_format="webp",
+                lossless=True,
+                remove_watermark=remove_watermark,
+            )
+
+            if success:
+                # 获取图片尺寸
+                img = Image.open(BytesIO(hd_bytes))
+                width, height = img.size
+                file_size = Path(save_path).with_suffix(".webp").stat().st_size
+
+                return True, {
+                    "hash": file_hash,
+                    "size": file_size,
+                    "dimensions": f"{width}x{height}",
+                }
+
+            return False, None
+
+        except Exception as e:
+            print(f"HD 下载失败: {e}")
+            return False, None
+
+    # =========================================================================
+    # 重新初始化
+    # =========================================================================
+
+    async def reinitialize(self, model: Literal["Pro", "Fast"] = "Fast") -> bool:
+        """重新初始化页面环境（刷新页面并预热）
+
+        用于任务失败后恢复标签页状态。
+
+        Args:
+            model: 预热使用的模型
+
+        Returns:
+            是否初始化成功
+        """
+        print("重新初始化页面...")
+        try:
+            if not self.page:
+                print("页面不存在，无法重新初始化")
+                return False
+
+            # 刷新页面
+            await self.page.goto("https://gemini.google.com/app", wait_until="load", timeout=60000)
+
+            # 预热环境
+            success = await self.prepare_environment(model=model, temporary_chat=False)
+
+            if success:
+                print("重新初始化完成")
+            else:
+                print("重新初始化失败")
+
+            return success
+        except Exception as e:
+            print(f"重新初始化出错: {e}")
+            return False
 
     # =========================================================================
     # 高级编辑流程

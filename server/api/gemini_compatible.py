@@ -112,16 +112,15 @@ class GenerateContentResponse(BaseModel):
 
 # ============ API 端点 ============
 
-def extract_image_and_prompt(request: GenerateContentRequest) -> tuple[Optional[bytes], Optional[str], str]:
+def extract_images_and_prompt(request: GenerateContentRequest) -> tuple[List[tuple[bytes, str]], Optional[str]]:
     """
-    从请求中提取图片数据和文本提示
+    从请求中提取所有图片数据和文本提示
 
     Returns:
-        (image_bytes, prompt, mime_type)
+        (list of (image_bytes, mime_type), prompt)
     """
-    image_bytes = None
+    images: List[tuple[bytes, str]] = []
     prompt = None
-    mime_type = "image/png"
 
     for content in request.contents:
         for part in content.parts:
@@ -134,8 +133,9 @@ def extract_image_and_prompt(request: GenerateContentRequest) -> tuple[Optional[
             if inline_data:
                 mime_type = inline_data.mime_type
                 image_bytes = base64.b64decode(inline_data.data)
+                images.append((image_bytes, mime_type))
 
-    return image_bytes, prompt, mime_type
+    return images, prompt
 
 
 def get_file_extension(mime_type: str) -> str:
@@ -160,7 +160,7 @@ async def generate_content(
     """
     Generate content using Gemini models.
 
-    Compatible with Google Gemini API.
+    Compatible with Google Gemini API. Supports multiple images in a single request.
 
     Supported models:
     - gemini-2.0-flash-exp (uses Fast mode)
@@ -173,8 +173,8 @@ async def generate_content(
     if browser_pool is None:
         raise HTTPException(status_code=500, detail="Browser pool not initialized")
 
-    # 提取图片和提示词
-    image_bytes, prompt, mime_type = extract_image_and_prompt(request)
+    # 提取所有图片和提示词
+    images_data, prompt = extract_images_and_prompt(request)
 
     if not prompt:
         raise HTTPException(status_code=400, detail="No text prompt provided in request")
@@ -196,16 +196,18 @@ async def generate_content(
     # 创建任务 ID
     task_id = f"gemini-{uuid.uuid4().hex[:12]}"
 
-    # 如果有图片，保存到临时文件
-    input_path = None
-    if image_bytes:
+    # 保存所有图片到临时文件
+    input_paths: List[str] = []
+    if images_data:
         input_dir = Path(f"data/uploads/{task_id}")
         input_dir.mkdir(parents=True, exist_ok=True)
 
-        ext = get_file_extension(mime_type)
-        input_path = input_dir / f"input{ext}"
-        with open(input_path, "wb") as f:
-            f.write(image_bytes)
+        for i, (image_bytes, mime_type) in enumerate(images_data):
+            ext = get_file_extension(mime_type)
+            input_path = input_dir / f"input_{i}{ext}"
+            with open(input_path, "wb") as f:
+                f.write(image_bytes)
+            input_paths.append(str(input_path))
 
     # 确定模型模式
     gemini_model = "Fast"  # 默认使用 Fast
@@ -213,15 +215,15 @@ async def generate_content(
         gemini_model = "Pro"
 
     try:
-        # 执行任务
-        result_paths = await browser.execute_task(
+        # 执行快速预览任务（支持多图）
+        result = await browser.execute_fast_task(
             task_id=task_id,
-            input_image=str(input_path) if input_path else "",
+            input_images=input_paths,
             prompt=prompt,
             model=gemini_model,
         )
 
-        if not result_paths:
+        if not result or not result.get("images"):
             raise HTTPException(
                 status_code=500,
                 detail={
@@ -237,18 +239,20 @@ async def generate_content(
         response_parts = []
 
         # 添加生成的图片
-        for path in result_paths:
-            with open(path, "rb") as f:
+        for img_info in result["images"]:
+            # 读取预览图
+            preview_path = Path(f"data/outputs/q/{img_info['date']}/{img_info['hash']}.{img_info['format']}")
+            with open(preview_path, "rb") as f:
                 image_data = base64.b64encode(f.read()).decode()
 
             # 确定输出 MIME 类型
-            output_ext = Path(path).suffix.lower()
+            fmt = img_info.get("format", "webp")
             output_mime = {
-                ".png": "image/png",
-                ".jpg": "image/jpeg",
-                ".jpeg": "image/jpeg",
-                ".webp": "image/webp",
-            }.get(output_ext, "image/png")
+                "png": "image/png",
+                "jpg": "image/jpeg",
+                "jpeg": "image/jpeg",
+                "webp": "image/webp",
+            }.get(fmt, "image/webp")
 
             response_parts.append(ResponsePart(
                 inlineData=ResponseInlineData(
@@ -259,7 +263,7 @@ async def generate_content(
 
         # 可选：添加文本描述
         response_parts.append(ResponsePart(
-            text=f"Generated {len(result_paths)} image(s) based on your prompt."
+            text=f"Generated {len(result['images'])} image(s) based on your prompt."
         ))
 
         return GenerateContentResponse(

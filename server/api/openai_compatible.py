@@ -10,7 +10,7 @@ import hashlib
 from datetime import datetime
 from fastapi import APIRouter, File, Form, UploadFile, HTTPException, Header, Depends, Request
 from fastapi.responses import JSONResponse
-from typing import Optional, Literal
+from typing import Optional, Literal, List
 from pydantic import BaseModel
 from pathlib import Path
 import base64
@@ -93,8 +93,8 @@ async def check_rate_limit(request: Request, api_key: Optional[str] = Depends(ve
 @router.post("/images/edits", response_model=ImageEditResponse)
 async def create_image_edit(
     request: Request,
-    image: Optional[UploadFile] = File(None, description="The image to edit (optional if image_path provided)"),
-    image_path: Optional[str] = Form(None, description="Path to image: uploads/{date}/{hash}.{fmt} or outputs/hd/{date}/{hash}.{fmt}"),
+    images: Optional[List[UploadFile]] = File(None, description="Images to edit (file uploads)"),
+    image_paths: Optional[str] = Form(None, description="Comma-separated paths to images: uploads/{date}/{hash}.{fmt} or outputs/hd/{date}/{hash}.{fmt}"),
     prompt: str = Form(..., description="A text description of the desired image edits"),
     model: str = Form("gemini-flash", description="Model to use: gemini-pro or gemini-flash"),
     n: int = Form(1, description="Number of images to generate"),
@@ -107,11 +107,13 @@ async def create_image_edit(
 
     Compatible with OpenAI Images API.
 
-    Two ways to provide the image:
-    1. Upload directly via `image` field (file upload)
-    2. Use `image_path` field with path:
-       - `uploads/{date}/{hash}.{fmt}` - from POST /v1/images/uploads
-       - `outputs/hd/{date}/{hash}.{fmt}` - previously generated HD image
+    Ways to provide images:
+    1. File uploads: `images` field (supports single or multiple files)
+    2. Paths: `image_paths` field (comma-separated)
+
+    Path formats:
+    - `uploads/{date}/{hash}.{fmt}` - from POST /v1/images/uploads
+    - `outputs/hd/{date}/{hash}.{fmt}` - previously generated HD image
 
     Returns preview images immediately with URL format: `{date}/{hash}`.
     - Preview: `/outputs/q/{date}/{hash}.{fmt}`
@@ -122,49 +124,53 @@ async def create_image_edit(
     if browser_pool is None:
         raise HTTPException(status_code=500, detail="Browser pool not initialized")
 
-    # 验证输入：必须提供 image 或 image_path
-    if image is None and image_path is None:
-        raise HTTPException(status_code=400, detail="Either 'image' or 'image_path' must be provided")
+    # 收集所有输入图片路径
+    input_paths: List[Path] = []
+    task_id = f"task-{uuid.uuid4().hex[:12]}"
+
+    # 1. 处理 image_paths（逗号分隔的路径）
+    if image_paths:
+        for p in image_paths.split(","):
+            p = p.strip()
+            if not p:
+                continue
+            if p.startswith("uploads/") or p.startswith("outputs/"):
+                path = Path(f"data/{p}")
+            else:
+                raise HTTPException(status_code=400, detail=f"Invalid path format: {p}")
+            if not path.exists():
+                raise HTTPException(status_code=404, detail=f"Image not found: {p}")
+            input_paths.append(path)
+
+    # 2. 处理上传文件 images
+    if images and not input_paths:
+        input_dir = Path(f"data/uploads/{task_id}")
+        input_dir.mkdir(parents=True, exist_ok=True)
+        for i, img_file in enumerate(images):
+            if img_file.filename:
+                file_path = input_dir / f"{i}_{img_file.filename}"
+                content = await img_file.read()
+                with open(file_path, "wb") as f:
+                    f.write(content)
+                input_paths.append(file_path)
+
+    # 验证至少有一个输入
+    if not input_paths:
+        raise HTTPException(status_code=400, detail="At least one image must be provided via 'images' or 'image_paths'")
 
     # 获取可用浏览器
     browser = await browser_pool.get_available_browser()
     if browser is None:
         raise HTTPException(status_code=503, detail="No available browsers")
 
-    task_id = f"task-{uuid.uuid4().hex[:12]}"
-
-    # 确定输入图片路径
-    if image_path:
-        # 支持两种路径格式：
-        # - uploads/{date}/{hash}.{fmt}
-        # - outputs/hd/{date}/{hash}.{fmt}
-        if image_path.startswith("uploads/"):
-            input_path = Path(f"data/{image_path}")
-        elif image_path.startswith("outputs/"):
-            input_path = Path(f"data/{image_path}")
-        else:
-            raise HTTPException(status_code=400, detail="image_path must start with 'uploads/' or 'outputs/'")
-
-        if not input_path.exists():
-            raise HTTPException(status_code=404, detail=f"Image not found: {image_path}")
-    else:
-        # 保存上传的图片
-        input_dir = Path(f"data/uploads/{task_id}")
-        input_dir.mkdir(parents=True, exist_ok=True)
-
-        input_path = input_dir / image.filename
-        with open(input_path, "wb") as f:
-            content = await image.read()
-            f.write(content)
-
     # 转换模型名称
     gemini_model = "Pro" if "pro" in model.lower() else "Fast"
 
     try:
-        # 执行快速预览任务
+        # 执行快速预览任务（支持多图）
         result = await browser.execute_fast_task(
             task_id=task_id,
-            input_image=str(input_path),
+            input_images=[str(p) for p in input_paths],
             prompt=prompt,
             model=gemini_model,
         )
@@ -179,8 +185,6 @@ async def create_image_edit(
         for img_info in result["images"]:
             if response_format == "url":
                 # 返回 {date}/{hash} 格式，客户端可拼接完整路径
-                # 预览图: /outputs/q/{date}/{hash}.{fmt}
-                # 高清图: /outputs/hd/{date}/{hash}.webp
                 data.append(ImageData(url=img_info['id']))
             else:  # b64_json
                 # 读取预览图并编码为 base64
@@ -372,3 +376,87 @@ async def upload_image(
     # 返回相对路径: {date}/{hash}.{fmt}
     image_path = f"{date_str}/{file_hash}.{ext}"
     return UploadResponse(image_path=image_path)
+
+
+class TestUploadResponse(BaseModel):
+    """测试上传响应"""
+    success: bool
+    message: str
+    uploaded_count: int
+    actual_count: int  # 实际在页面上检测到的图片数
+
+
+@router.post("/images/test-upload", response_model=TestUploadResponse)
+async def test_playwright_upload(
+    images: List[UploadFile] = File(..., description="要测试上传的图片列表"),
+):
+    """
+    测试 Playwright 多图上传功能
+
+    该接口用于验证 editor.upload_images_by_paste 是否正常工作。
+    会获取一个浏览器标签页，准备环境，然后上传图片（但不提交生成）。
+    """
+    if browser_pool is None:
+        raise HTTPException(status_code=500, detail="Browser pool not initialized")
+
+    if not images:
+        raise HTTPException(status_code=400, detail="No images provided")
+
+    # 保存上传的图片到临时目录
+    task_id = f"test-{uuid.uuid4().hex[:12]}"
+    input_dir = Path(f"data/uploads/{task_id}")
+    input_dir.mkdir(parents=True, exist_ok=True)
+
+    input_paths = []
+    for i, img_file in enumerate(images):
+        if img_file.filename:
+            file_path = input_dir / f"{i}_{img_file.filename}"
+            content = await img_file.read()
+            with open(file_path, "wb") as f:
+                f.write(content)
+            input_paths.append(str(file_path))
+
+    if not input_paths:
+        raise HTTPException(status_code=400, detail="No valid images")
+
+    # 获取可用浏览器
+    browser = await browser_pool.get_available_browser()
+    if browser is None:
+        raise HTTPException(status_code=503, detail="No available browsers")
+
+    # 获取空闲标签页
+    tab = browser.get_available_tab()
+    if tab is None:
+        raise HTTPException(status_code=503, detail="No available tabs")
+
+    try:
+        # 准备环境
+        if not await tab.editor.prepare_environment(model="Fast"):
+            raise HTTPException(status_code=500, detail="Failed to prepare environment")
+
+        # 测试上传图片
+        success = await tab.editor.upload_images_by_paste(input_paths)
+
+        # 获取实际上传的图片数量
+        actual_count = await tab.editor._get_uploaded_image_count()
+
+        if success and actual_count >= len(input_paths):
+            return TestUploadResponse(
+                success=True,
+                message=f"Successfully uploaded {len(input_paths)} image(s) via Playwright",
+                uploaded_count=len(input_paths),
+                actual_count=actual_count,
+            )
+        else:
+            return TestUploadResponse(
+                success=False,
+                message=f"Upload reported success but actual count mismatch: expected {len(input_paths)}, got {actual_count}",
+                uploaded_count=len(input_paths),
+                actual_count=actual_count,
+            )
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Upload test failed: {e}")
+    finally:
+        # 重新初始化标签页（清理状态）
+        tab.status = BrowserStatus.IDLE
