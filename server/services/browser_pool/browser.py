@@ -23,7 +23,7 @@ class BrowserInstance:
         proxy: Optional[str] = None,
         headless: bool = True,
         user_data_dir: Optional[str] = None,
-        rate_limit: int = 9,  # 每分钟请求限制
+        rate_limit: int = 6,  # 每分钟请求限制
         rate_window: int = 60,  # 时间窗口（秒）
         max_tabs: int = 6,  # 最大标签页数量
     ):
@@ -84,16 +84,23 @@ class BrowserInstance:
         self._request_times.append(current_time)
 
     async def start(self):
-        """启动浏览器并创建多个标签页"""
+        """启动浏览器并创建多个标签页
+
+        流程：
+        1. 启动浏览器，创建第一个标签页
+        2. 预热第一个标签页（必须成功）
+        3. 如果成功，继续创建和预热其他标签页
+        4. 如果失败，停止并设置为 ERROR 状态，等待用户手动处理
+        """
         print(f"[Browser {self.browser_id}] Starting with {self.max_tabs} tabs...")
         self.status = BrowserStatus.STARTING
 
         try:
-            # 创建主编辑器（高并发场景禁用日志）
+            # 创建主编辑器
             self.base_editor = GeminiEditor(
                 account_id=0,
                 proxy=self.proxy,
-                enable_logging=False,  # 禁用事件监听，节省CPU
+                enable_logging=False,
                 user_data_dir=self.user_data_dir,
             )
 
@@ -101,12 +108,10 @@ class BrowserInstance:
             await self.base_editor.launch()
             print(f"[Browser {self.browser_id}] Base browser launched")
 
-            # 创建多个标签页
+            # 创建标签页列表
             self.tabs = []
 
             # 计算标签页分配策略：一半 Pro，一半 Fast
-            # Pro 标签：使用 index 大的（后半部分）
-            # Fast 标签：使用 index 小的（前半部分）
             pro_count = self.max_tabs // 2
             fast_count = self.max_tabs - pro_count
 
@@ -118,21 +123,76 @@ class BrowserInstance:
             self.tabs.append(tab0)
             print(f"[Browser {self.browser_id}] Tab 0 created (preferred: Fast)")
 
-            # Tab 1+: 并行创建其他标签页
+            # 预热第一个标签页（必须成功才能继续）
+            print(f"[Browser {self.browser_id}] Preheating Tab 0...")
+            tab0.status = BrowserStatus.PREHEATING
+            tab0_start = time.time()
+
+            try:
+                tab0_success = await tab0.editor.prepare_environment(
+                    model=tab0.preferred_model,
+                    temporary_chat=False,
+                )
+                tab0_elapsed = time.time() - tab0_start
+
+                if not tab0_success:
+                    print(
+                        f"[Browser {self.browser_id}] Tab 0 preheat FAILED ({tab0_elapsed:.3f}s). "
+                        f"Please check login status and restart manually."
+                    )
+                    self.status = BrowserStatus.ERROR
+                    tab0.status = BrowserStatus.ERROR
+
+                    try:
+                        db = get_db()
+                        await db.add_log(
+                            "ERROR",
+                            f"Browser {self.browser_id} Tab 0 preheat failed. Manual intervention required.",
+                            self.browser_id,
+                        )
+                    except Exception:
+                        pass
+                    return  # 不抛出异常，让浏览器保持打开状态供用户检查
+
+                tab0.status = BrowserStatus.IDLE
+                print(
+                    f"[Browser {self.browser_id}] Tab 0 preheated successfully ({tab0_elapsed:.3f}s)"
+                )
+
+            except Exception as e:
+                tab0_elapsed = time.time() - tab0_start
+                print(
+                    f"[Browser {self.browser_id}] Tab 0 preheat ERROR ({tab0_elapsed:.3f}s): {e}. "
+                    f"Please check and restart manually."
+                )
+                self.status = BrowserStatus.ERROR
+                tab0.status = BrowserStatus.ERROR
+
+                try:
+                    db = get_db()
+                    await db.add_log(
+                        "ERROR",
+                        f"Browser {self.browser_id} Tab 0 preheat error: {e}",
+                        self.browser_id,
+                    )
+                except Exception:
+                    pass
+                return
+
+            # 第一个标签页成功，继续创建其他标签页
             if self.max_tabs > 1:
+                print(f"[Browser {self.browser_id}] Creating {self.max_tabs - 1} more tabs...")
 
                 async def create_tab(tab_id: int, preferred_model: str) -> TabInstance:
-                    """并行创建单个标签页"""
+                    """创建单个标签页"""
                     tab = TabInstance(
                         tab_id=tab_id,
                         browser_id=self.browser_id,
                         preferred_model=preferred_model,
                     )
 
-                    # 在同一个 context 中创建新的 page
                     new_page = await self.base_editor.context.new_page()
 
-                    # 导航到 Gemini 页面（预热）
                     try:
                         await new_page.goto(
                             "https://gemini.google.com/app",
@@ -147,14 +207,12 @@ class BrowserInstance:
                             f"[Browser {self.browser_id}] Tab {tab_id} navigation warning: {e}"
                         )
 
-                    # 创建新的编辑器实例，复用 context 但使用新的 page
                     new_editor = GeminiEditor(
                         account_id=0,
                         proxy=self.proxy,
-                        enable_logging=False,  # 只在主编辑器启用日志
+                        enable_logging=False,
                         user_data_dir=self.user_data_dir,
                     )
-                    # 手动设置已启动的状态
                     new_editor.playwright = self.base_editor.playwright
                     new_editor.context = self.base_editor.context
                     new_editor.page = new_page
@@ -165,9 +223,7 @@ class BrowserInstance:
                     )
                     return tab
 
-                # 并行创建 Tab 1 到 Tab (max_tabs-1)
-                # Tab 1 到 Tab (fast_count-1): Fast 模型
-                # Tab fast_count 到 Tab (max_tabs-1): Pro 模型
+                # 并行创建其他标签页
                 create_tasks = []
                 for i in range(1, self.max_tabs):
                     preferred_model = "Fast" if i < fast_count else "Pro"
@@ -176,71 +232,65 @@ class BrowserInstance:
                 other_tabs = await asyncio.gather(*create_tasks)
                 self.tabs.extend(other_tabs)
 
+                # 并行预热其他标签页
+                print(f"[Browser {self.browser_id}] Preheating {len(other_tabs)} more tabs...")
+                preheat_start = time.time()
+
+                async def preheat_tab(tab: TabInstance):
+                    """预热单个标签页"""
+                    tab.status = BrowserStatus.PREHEATING
+                    try:
+                        tab_start = time.time()
+                        success = await tab.editor.prepare_environment(
+                            model=tab.preferred_model,
+                            temporary_chat=False,
+                        )
+                        elapsed = time.time() - tab_start
+                        if success:
+                            tab.status = BrowserStatus.IDLE
+                            print(
+                                f"[Browser {self.browser_id}] Tab {tab.tab_id} ({tab.preferred_model}) preheated ({elapsed:.3f}s)"
+                            )
+                        else:
+                            print(
+                                f"[Browser {self.browser_id}] Tab {tab.tab_id} ({tab.preferred_model}) preheat failed ({elapsed:.3f}s), reinitializing..."
+                            )
+                            await tab.reinitialize()
+                    except Exception as e:
+                        print(
+                            f"[Browser {self.browser_id}] Tab {tab.tab_id} ({tab.preferred_model}) preheat error: {e}, reinitializing..."
+                        )
+                        await tab.reinitialize()
+
+                await asyncio.gather(
+                    *[preheat_tab(tab) for tab in other_tabs], return_exceptions=True
+                )
+
+                preheat_elapsed = time.time() - preheat_start
+                print(
+                    f"[Browser {self.browser_id}] Other tabs preheated in {preheat_elapsed:.3f}s"
+                )
+
             self.status = BrowserStatus.IDLE
             self.last_active_at = datetime.now()
             print(
                 f"[Browser {self.browser_id}] Started successfully with {len(self.tabs)} tabs"
             )
 
-            # 记录日志到数据库
             try:
                 db = get_db()
                 await db.add_log(
                     "INFO",
-                    f"Browser {self.browser_id} started with {self.max_tabs} tabs",
+                    f"Browser {self.browser_id} started with {len(self.tabs)} tabs",
                     self.browser_id,
                 )
             except Exception:
                 pass
 
-            # 预热所有标签页（并行执行）
-            print(
-                f"[Browser {self.browser_id}] Preheating all {len(self.tabs)} tabs..."
-            )
-            preheat_start = time.time()
-
-            async def preheat_tab(tab: TabInstance):
-                """预热单个标签页（使用其首选模型）"""
-                tab.status = BrowserStatus.PREHEATING
-                try:
-                    tab_start = time.time()
-                    success = await tab.editor.prepare_environment(
-                        model=tab.preferred_model,  # 使用标签页的首选模型
-                        temporary_chat=False,
-                    )
-                    elapsed = time.time() - tab_start
-                    if success:
-                        tab.status = BrowserStatus.IDLE
-                        print(
-                            f"[Browser {self.browser_id}] Tab {tab.tab_id} ({tab.preferred_model}) preheated successfully ({elapsed:.3f}s)"
-                        )
-                    else:
-                        print(
-                            f"[Browser {self.browser_id}] Tab {tab.tab_id} ({tab.preferred_model}) preheat failed ({elapsed:.3f}s), reinitializing..."
-                        )
-                        await tab.reinitialize()
-
-                except Exception as e:
-                    print(
-                        f"[Browser {self.browser_id}] Tab {tab.tab_id} ({tab.preferred_model}) preheat error: {e}, reinitializing..."
-                    )
-                    await tab.reinitialize()
-
-            # 并行预热所有标签页
-            await asyncio.gather(
-                *[preheat_tab(tab) for tab in self.tabs], return_exceptions=True
-            )
-
-            preheat_elapsed = time.time() - preheat_start
-            print(
-                f"[Browser {self.browser_id}] All tabs preheated in {preheat_elapsed:.3f}s"
-            )
-
         except Exception as e:
             self.status = BrowserStatus.ERROR
             print(f"[Browser {self.browser_id}] Failed to start: {e}")
 
-            # 记录错误日志
             try:
                 db = get_db()
                 await db.add_log(

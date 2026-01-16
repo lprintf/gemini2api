@@ -20,7 +20,7 @@ class BrowserPool:
         self,
         min_browsers: int = 1,
         max_browsers: int = 20,
-        browser_rate_limit: int = 9,  # 每个浏览器的速率限制
+        browser_rate_limit: int = 6,  # 每个浏览器的速率限制
         browser_rate_window: int = 60,  # 速率限制时间窗口
     ):
         self.browsers: Dict[str, BrowserInstance] = {}
@@ -32,7 +32,7 @@ class BrowserPool:
         self._next_id = 0  # 自增 ID 计数器
 
     async def load_from_db(self):
-        """从数据库加载浏览器配置（并行启动）"""
+        """从数据库加载浏览器配置（后台并行启动，不阻塞服务器）"""
         try:
             db = get_db()
 
@@ -61,49 +61,55 @@ class BrowserPool:
                 )
                 self.browsers[config.browser_id] = browser
 
-            # 并行启动所有浏览器
-            async def start_browser_safe(browser: BrowserInstance) -> tuple[str, bool, str]:
-                """安全启动单个浏览器，返回 (browser_id, success, error_msg)"""
-                try:
-                    await browser.start()
-                    return (browser.browser_id, True, "")
-                except Exception as e:
-                    return (browser.browser_id, False, str(e))
-
-            print(f"[BrowserPool] Starting {len(self.browsers)} browsers in parallel...")
-            start_time = time.time()
-
-            results = await asyncio.gather(
-                *[start_browser_safe(b) for b in self.browsers.values()]
-            )
-
-            # 处理启动结果
-            success_count = 0
-            for browser_id, success, error_msg in results:
-                if success:
-                    success_count += 1
-                    print(f"[BrowserPool] Browser {browser_id} started successfully")
-                else:
-                    print(f"[BrowserPool] Failed to start browser {browser_id}: {error_msg}")
-                    await db.add_log(
-                        "ERROR",
-                        f"Failed to load browser {browser_id}: {error_msg}",
-                        browser_id,
-                    )
-
-            elapsed = time.time() - start_time
-            print(
-                f"[BrowserPool] Parallel startup completed: {success_count}/{len(configs)} "
-                f"browsers in {elapsed:.2f}s"
-            )
-
-            await db.add_log(
-                "INFO",
-                f"Browser pool loaded {success_count}/{len(configs)} browsers in {elapsed:.2f}s"
-            )
+            # 后台并行启动所有浏览器（不阻塞服务器启动）
+            asyncio.create_task(self._start_browsers_background())
 
         except Exception as e:
             print(f"[BrowserPool] Failed to load from database: {e}")
+
+    async def _start_browsers_background(self):
+        """后台并行启动所有浏览器"""
+        db = get_db()
+
+        async def start_browser_safe(browser: BrowserInstance) -> tuple[str, bool, str]:
+            """安全启动单个浏览器，返回 (browser_id, success, error_msg)"""
+            try:
+                await browser.start()
+                return (browser.browser_id, True, "")
+            except Exception as e:
+                return (browser.browser_id, False, str(e))
+
+        print(f"[BrowserPool] Starting {len(self.browsers)} browsers in background...")
+        start_time = time.time()
+
+        results = await asyncio.gather(
+            *[start_browser_safe(b) for b in self.browsers.values()]
+        )
+
+        # 处理启动结果
+        success_count = 0
+        for browser_id, success, error_msg in results:
+            if success:
+                success_count += 1
+                print(f"[BrowserPool] Browser {browser_id} started successfully")
+            else:
+                print(f"[BrowserPool] Failed to start browser {browser_id}: {error_msg}")
+                await db.add_log(
+                    "ERROR",
+                    f"Failed to load browser {browser_id}: {error_msg}",
+                    browser_id,
+                )
+
+        elapsed = time.time() - start_time
+        print(
+            f"[BrowserPool] Background startup completed: {success_count}/{len(self.browsers)} "
+            f"browsers in {elapsed:.2f}s"
+        )
+
+        await db.add_log(
+            "INFO",
+            f"Browser pool loaded {success_count}/{len(self.browsers)} browsers in {elapsed:.2f}s"
+        )
 
     async def create_browser(
         self,
