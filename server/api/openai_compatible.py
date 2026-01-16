@@ -100,6 +100,7 @@ async def create_image_edit(
     n: int = Form(1, description="Number of images to generate"),
     size: str = Form("1024x1024", description="Image size (ignored, uses original size)"),
     response_format: Literal["url", "b64_json"] = Form("url", description="Response format"),
+    download_mode: Literal["preview", "hd", "both"] = Form("both", description="Download mode: preview (fast), hd (sync HD only), both (preview + background HD)"),
     api_key: str = Depends(check_rate_limit),
 ):
     """
@@ -115,11 +116,14 @@ async def create_image_edit(
     - `uploads/{date}/{hash}.{fmt}` - from POST /v1/images/uploads
     - `outputs/hd/{date}/{hash}.{fmt}` - previously generated HD image
 
-    Returns preview images immediately with URL format: `{date}/{hash}`.
-    - Preview: `/outputs/q/{date}/{hash}.{fmt}`
-    - HD: `/outputs/hd/{date}/{hash}.webp`
+    Download modes:
+    - `preview`: Only download preview images (fastest response)
+    - `hd`: Only download HD images (sync, slower but highest quality)
+    - `both`: Download preview + background HD (default)
 
-    Use GET /v1/images/hd/{date}/{hash} to check HD status.
+    Returns images with URL format: `{date}/{hash}`.
+    - Preview: `/outputs/q/{date}/{hash}.webp`
+    - HD: `/outputs/hd/{date}/{hash}.webp`
     """
     if browser_pool is None:
         raise HTTPException(status_code=500, detail="Browser pool not initialized")
@@ -173,6 +177,7 @@ async def create_image_edit(
             input_images=[str(p) for p in input_paths],
             prompt=prompt,
             model=gemini_model,
+            download_mode=download_mode,
         )
 
         if not result or not result.get("images"):

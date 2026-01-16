@@ -199,8 +199,9 @@ class BrowserInstance:
             )
             preheat_start = time.time()
 
-            async def preheat_tab(tab: TabInstance): # TODO: 这里是不是和 tab.py 里重复了？
+            async def preheat_tab(tab: TabInstance):
                 """预热单个标签页（使用其首选模型）"""
+                tab.status = BrowserStatus.PREHEATING
                 try:
                     tab_start = time.time()
                     success = await tab.editor.prepare_environment(
@@ -209,19 +210,21 @@ class BrowserInstance:
                     )
                     elapsed = time.time() - tab_start
                     if success:
+                        tab.status = BrowserStatus.IDLE
                         print(
                             f"[Browser {self.browser_id}] Tab {tab.tab_id} ({tab.preferred_model}) preheated successfully ({elapsed:.3f}s)"
                         )
                     else:
                         print(
-                            f"[Browser {self.browser_id}] Tab {tab.tab_id} ({tab.preferred_model}) preheat failed ({elapsed:.3f}s)"
+                            f"[Browser {self.browser_id}] Tab {tab.tab_id} ({tab.preferred_model}) preheat failed ({elapsed:.3f}s), reinitializing..."
                         )
-                        # TODO:如果预热失败，重新初始化标签页后再试一次
+                        await tab.reinitialize()
 
                 except Exception as e:
                     print(
-                        f"[Browser {self.browser_id}] Tab {tab.tab_id} ({tab.preferred_model}) preheat error: {e}"
+                        f"[Browser {self.browser_id}] Tab {tab.tab_id} ({tab.preferred_model}) preheat error: {e}, reinitializing..."
                     )
+                    await tab.reinitialize()
 
             # 并行预热所有标签页
             await asyncio.gather(
@@ -384,6 +387,8 @@ class BrowserInstance:
         prompt: str,
         model: str = "Fast",
         output_dir: str = "data/outputs",
+        remove_watermark: bool = True,
+        download_mode: str = "both",
     ) -> Optional[Dict[str, Any]]:
         """执行快速预览任务（使用空闲的标签页）
 
@@ -393,6 +398,8 @@ class BrowserInstance:
             prompt: 编辑指令
             model: 模型类型 (Fast/Pro)
             output_dir: 输出目录
+            remove_watermark: 是否去水印（默认 True）
+            download_mode: 下载模式 (preview/hd/both)
         """
         # 检查速率限制
         allowed, info = self.check_rate_limit()
@@ -419,7 +426,13 @@ class BrowserInstance:
         # 在标签页中执行快速任务
         try:
             result = await tab.execute_fast_task(
-                task_id, input_images, prompt, model, output_dir
+                task_id=task_id,
+                input_images=input_images,
+                prompt=prompt,
+                model=model,
+                output_dir=output_dir,
+                remove_watermark=remove_watermark,
+                download_mode=download_mode,
             )
             if result:
                 self.total_tasks += 1

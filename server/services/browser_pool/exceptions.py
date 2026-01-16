@@ -10,6 +10,7 @@ class BrowserStatus(str, Enum):
     IDLE = "idle"  # 空闲，可接受任务
     BUSY = "busy"  # 忙碌，正在处理任务
     DOWNLOADING_HD = "downloading_hd"  # 后台下载高清图中
+    PREHEATING = "preheating"  # 预热中（准备环境）
     STARTING = "starting"  # 启动中
     STOPPING = "stopping"  # 停止中
     ERROR = "error"  # 错误状态

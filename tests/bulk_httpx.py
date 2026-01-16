@@ -156,8 +156,9 @@ async def send_request(
                 "n": str(config.n),
                 "size": config.size,
                 "response_format": config.response_format,
+                "skip_hd": True,
             },
-            files={"image": (image_path.name, image_bytes, "image/png")},
+            files={"images": (image_path.name, image_bytes, "image/png")},
             headers={"accept": "application/json"},
         )
 
