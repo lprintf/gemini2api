@@ -179,6 +179,16 @@
             color: #004085;
         }
 
+        .status-preheating {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .status-downloading_hd {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+
         .status-completed {
             background: #d4edda;
             color: #155724;
@@ -475,6 +485,7 @@
     <div class="nav">
         <button class="nav-btn active" data-tab="dashboard">Dashboard</button>
         <button class="nav-btn" data-tab="browsers">Browsers</button>
+        <button class="nav-btn" data-tab="tabs">Tabs</button>
         <button class="nav-btn" data-tab="tasks">Tasks</button>
         <button class="nav-btn" data-tab="config">Config</button>
         <button class="nav-btn" data-tab="logs">Logs</button>
@@ -544,6 +555,70 @@
                     <div class="empty-state-icon">:(</div>
                     <div>No browsers configured</div>
                     <button class="btn btn-primary btn-lg" style="margin-top: 1rem;" onclick="showCreateBrowserModal()">Add First Browser</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tabs Tab -->
+        <div id="tabs" class="tab-content">
+            <div class="stats-grid" style="margin-bottom: 1.5rem;">
+                <div class="stat-card">
+                    <div class="stat-value" id="totalTabs">0</div>
+                    <div class="stat-label">Total Tabs</div>
+                </div>
+                <div class="stat-card success">
+                    <div class="stat-value" id="idleTabs">0</div>
+                    <div class="stat-label">Idle</div>
+                </div>
+                <div class="stat-card info">
+                    <div class="stat-value" id="busyTabs">0</div>
+                    <div class="stat-label">Busy</div>
+                </div>
+                <div class="stat-card warning">
+                    <div class="stat-value" id="errorTabs">0</div>
+                    <div class="stat-label">Error/Other</div>
+                </div>
+            </div>
+            <div class="card">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                    <div class="card-title" style="margin-bottom: 0;">Tab Management</div>
+                    <div>
+                        <button class="btn btn-warning" onclick="reinitializeErrorTabs()">Reinit Error Tabs</button>
+                        <button class="btn btn-primary" onclick="loadTabs()">Refresh</button>
+                    </div>
+                </div>
+                <div class="filter-bar">
+                    <select id="tabStatusFilter" onchange="loadTabs()">
+                        <option value="">All Status</option>
+                        <option value="idle">Idle</option>
+                        <option value="busy">Busy</option>
+                        <option value="preheating">Preheating</option>
+                        <option value="downloading_hd">Downloading HD</option>
+                        <option value="starting">Starting</option>
+                        <option value="error">Error</option>
+                    </select>
+                    <select id="tabBrowserFilter" onchange="loadTabs()">
+                        <option value="">All Browsers</option>
+                    </select>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Browser</th>
+                            <th>Tab</th>
+                            <th>Model</th>
+                            <th>Status</th>
+                            <th>Tasks</th>
+                            <th>Failures</th>
+                            <th>Last Active</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabList"></tbody>
+                </table>
+                <div id="tabEmpty" class="empty-state" style="display: none;">
+                    <div class="empty-state-icon">:(</div>
+                    <div>No tabs found</div>
                 </div>
             </div>
         </div>
@@ -800,6 +875,7 @@
             switch(currentTab) {
                 case 'dashboard': loadDashboard(); break;
                 case 'browsers': loadBrowsers(); break;
+                case 'tabs': loadTabs(); break;
                 case 'tasks': loadTasks(); break;
                 case 'config': loadConfig(); break;
                 case 'logs': loadLogs(); break;
@@ -1023,6 +1099,106 @@
             } catch (e) {
                 showToast('Failed to update browser: ' + e.message, 'error');
             }
+        }
+
+        // Tabs
+        let tabsData = [];
+
+        async function loadTabs() {
+            try {
+                const data = await api('/tabs');
+                tabsData = data.tabs;
+
+                // 更新统计卡片
+                document.getElementById('totalTabs').textContent = data.total;
+                document.getElementById('idleTabs').textContent = data.status_count.idle || 0;
+                document.getElementById('busyTabs').textContent = (data.status_count.busy || 0) + (data.status_count.downloading_hd || 0);
+                const errorCount = (data.status_count.error || 0) + (data.status_count.starting || 0) + (data.status_count.preheating || 0);
+                document.getElementById('errorTabs').textContent = errorCount;
+
+                // 更新浏览器筛选器
+                const browsers = [...new Set(tabsData.map(t => t.browser_id))];
+                const browserOptions = browsers.map(id => `<option value="${id}">${id}</option>`).join('');
+                document.getElementById('tabBrowserFilter').innerHTML = '<option value="">All Browsers</option>' + browserOptions;
+
+                // 应用筛选
+                const statusFilter = document.getElementById('tabStatusFilter').value;
+                const browserFilter = document.getElementById('tabBrowserFilter').value;
+
+                let filteredTabs = tabsData;
+                if (statusFilter) {
+                    filteredTabs = filteredTabs.filter(t => t.status === statusFilter);
+                }
+                if (browserFilter) {
+                    filteredTabs = filteredTabs.filter(t => t.browser_id === browserFilter);
+                }
+
+                if (filteredTabs.length === 0) {
+                    document.getElementById('tabList').innerHTML = '';
+                    document.getElementById('tabEmpty').style.display = 'block';
+                    return;
+                }
+
+                document.getElementById('tabEmpty').style.display = 'none';
+
+                const html = filteredTabs.map(t => `
+                    <tr>
+                        <td><strong>${t.browser_id}</strong></td>
+                        <td>Tab ${t.tab_id}</td>
+                        <td><span class="status-badge ${t.preferred_model === 'Pro' ? 'status-processing' : 'status-completed'}">${t.preferred_model}</span></td>
+                        <td><span class="status-badge status-${t.status}">${t.status}</span></td>
+                        <td>${t.total_tasks}</td>
+                        <td>${t.failed_tasks} (${t.consecutive_failures} consecutive)</td>
+                        <td>${formatTime(t.last_active_at)}</td>
+                        <td>
+                            <button class="btn btn-warning" onclick="reinitializeTab('${t.browser_id}', ${t.tab_id})" ${t.status === 'busy' ? 'disabled' : ''}>Reinit</button>
+                            <a class="btn btn-secondary" href="/remote?browser=${t.browser_id}&tab=${t.tab_id}" target="_blank">Remote</a>
+                        </td>
+                    </tr>
+                `).join('');
+
+                document.getElementById('tabList').innerHTML = html;
+            } catch (e) {
+                showToast('Failed to load tabs: ' + e.message, 'error');
+            }
+        }
+
+        async function reinitializeTab(browserId, tabId) {
+            try {
+                showToast(`Reinitializing ${browserId} Tab ${tabId}...`);
+                const result = await api(`/browsers/${browserId}/tabs/${tabId}/reinitialize`, 'POST');
+                if (result.success) {
+                    showToast(`Tab ${browserId}-${tabId} reinitialized`, 'success');
+                } else {
+                    showToast(`Tab ${browserId}-${tabId} reinitialize failed`, 'error');
+                }
+                loadTabs();
+            } catch (e) {
+                showToast('Failed to reinitialize tab: ' + e.message, 'error');
+            }
+        }
+
+        async function reinitializeErrorTabs() {
+            const errorTabs = tabsData.filter(t => t.status === 'error');
+            if (errorTabs.length === 0) {
+                showToast('No error tabs to reinitialize', 'success');
+                return;
+            }
+
+            if (!confirm(`Reinitialize ${errorTabs.length} error tab(s)?`)) return;
+
+            showToast(`Reinitializing ${errorTabs.length} error tabs...`);
+            let successCount = 0;
+            for (const tab of errorTabs) {
+                try {
+                    const result = await api(`/browsers/${tab.browser_id}/tabs/${tab.tab_id}/reinitialize`, 'POST');
+                    if (result.success) successCount++;
+                } catch (e) {
+                    console.error(`Failed to reinit ${tab.browser_id}-${tab.tab_id}:`, e);
+                }
+            }
+            showToast(`Reinitialized ${successCount}/${errorTabs.length} tabs`, successCount === errorTabs.length ? 'success' : 'error');
+            loadTabs();
         }
 
         // Tasks

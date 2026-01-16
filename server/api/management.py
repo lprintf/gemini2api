@@ -704,3 +704,79 @@ async def navigate_tab(browser_id: str, tab_id: int, request: NavigateRequest):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Navigation failed: {str(e)}")
+
+
+@router.post("/browsers/{browser_id}/tabs/{tab_id}/reinitialize")
+async def reinitialize_tab(browser_id: str, tab_id: int):
+    """重新初始化标签页"""
+    if browser_pool is None:
+        raise HTTPException(status_code=500, detail="Browser pool not initialized")
+
+    browser = browser_pool.get_browser(browser_id)
+    if browser is None:
+        raise HTTPException(status_code=404, detail=f"Browser {browser_id} not found")
+
+    # 查找指定的标签页
+    tab = None
+    for t in browser.tabs:
+        if t.tab_id == tab_id:
+            tab = t
+            break
+
+    if tab is None:
+        raise HTTPException(status_code=404, detail=f"Tab {tab_id} not found in browser {browser_id}")
+
+    try:
+        success = await tab.reinitialize()
+        return {
+            "success": success,
+            "browser_id": browser_id,
+            "tab_id": tab_id,
+            "status": tab.status.value,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Reinitialize failed: {str(e)}")
+
+
+@router.get("/tabs")
+async def list_all_tabs():
+    """获取所有浏览器的所有标签页"""
+    if browser_pool is None:
+        raise HTTPException(status_code=500, detail="Browser pool not initialized")
+
+    all_tabs = []
+    for browser in browser_pool.browsers.values():
+        for tab in browser.tabs:
+            tab_info = {
+                "browser_id": tab.browser_id,
+                "tab_id": tab.tab_id,
+                "preferred_model": tab.preferred_model,
+                "status": tab.status.value,
+                "total_tasks": tab.total_tasks,
+                "failed_tasks": tab.failed_tasks,
+                "consecutive_failures": tab.consecutive_failures,
+                "current_task_id": tab.current_task_id,
+                "last_active_at": tab.last_active_at.isoformat() if tab.last_active_at else None,
+            }
+            # 尝试获取页面标题和 URL
+            if tab.editor and tab.editor.page:
+                try:
+                    tab_info["url"] = tab.editor.page.url
+                except Exception:
+                    tab_info["url"] = None
+            all_tabs.append(tab_info)
+
+    # 按 browser_id, tab_id 排序
+    all_tabs.sort(key=lambda x: (x["browser_id"], x["tab_id"]))
+
+    # 统计各状态数量
+    status_count = {}
+    for tab in all_tabs:
+        status = tab["status"]
+        status_count[status] = status_count.get(status, 0) + 1
+
+    return {
+        "total": len(all_tabs),
+        "status_count": status_count,
+        "tabs": all_tabs,
+    }
