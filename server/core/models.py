@@ -18,7 +18,7 @@ class BrowserConfig(BaseModel):
     headless: bool = True
     user_data_dir: str
     rate_limit: int = 2
-    rate_window: int = 30
+    rate_window: int = 50
     is_enabled: bool = True
     auto_start: bool = True
     created_at: Optional[datetime] = None

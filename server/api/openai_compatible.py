@@ -4,19 +4,32 @@ OpenAI 兼容 API
 提供与 OpenAI Images API 兼容的接口
 """
 
-import uuid
-import time
-import hashlib
-from datetime import datetime
-from fastapi import APIRouter, File, Form, UploadFile, HTTPException, Header, Depends, Request
-from fastapi.responses import JSONResponse
-from typing import Optional, Literal, List
-from pydantic import BaseModel
-from pathlib import Path
 import base64
+import hashlib
+import time
+import uuid
+from datetime import datetime
+from pathlib import Path
+from typing import List, Literal, Optional
 
-from server.services.browser_pool import BrowserPool, BrowserStatus, RateLimitExceeded, NoAvailableTabs
-
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    Header,
+    HTTPException,
+    Request,
+    UploadFile,
+)
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+from server.services.browser_pool import (
+    BrowserPool,
+    BrowserStatus,
+    NoAvailableTabs,
+    RateLimitExceeded,
+)
 
 router = APIRouter(prefix="/v1", tags=["OpenAI Compatible API"])
 
@@ -30,6 +43,7 @@ UPLOAD_DIR = Path("data/uploads")
 
 class ImageEditRequest(BaseModel):
     """图片编辑请求（JSON 格式，用于文档）"""
+
     prompt: str
     model: Optional[str] = "gemini-flash"
     n: Optional[int] = 1
@@ -39,18 +53,21 @@ class ImageEditRequest(BaseModel):
 
 class ImageData(BaseModel):
     """图片数据"""
+
     url: Optional[str] = None
     b64_json: Optional[str] = None
 
 
 class ImageEditResponse(BaseModel):
     """图片编辑响应"""
+
     created: int
     data: list[ImageData]
 
 
 class TaskResponse(BaseModel):
     """任务响应"""
+
     id: str
     status: str
     created_at: int
@@ -61,6 +78,7 @@ class TaskResponse(BaseModel):
 
 class HDImageResponse(BaseModel):
     """高清图响应"""
+
     url: str
     size: int
     dimensions: str
@@ -79,7 +97,9 @@ async def verify_api_key(authorization: Optional[str] = Header(None)):
 
 
 # 依赖项：速率限制（针对浏览器实例）
-async def check_rate_limit(request: Request, api_key: Optional[str] = Depends(verify_api_key)):
+async def check_rate_limit(
+    request: Request, api_key: Optional[str] = Depends(verify_api_key)
+):
     """
     检查浏览器实例的速率限制
 
@@ -93,14 +113,33 @@ async def check_rate_limit(request: Request, api_key: Optional[str] = Depends(ve
 @router.post("/images/edits", response_model=ImageEditResponse)
 async def create_image_edit(
     request: Request,
-    images: Optional[List[UploadFile]] = File(None, description="Images to edit (file uploads)"),
-    image_paths: Optional[str] = Form(None, description="Comma-separated paths to images: uploads/{date}/{hash}.{fmt} or outputs/hd/{date}/{hash}.{fmt}"),
-    prompt: str = Form(..., description="A text description of the desired image edits"),
-    model: str = Form("gemini-flash", description="Model to use: gemini-pro or gemini-flash"),
+    images: Optional[List[UploadFile]] = File(
+        None, description="Images to edit (file uploads)"
+    ),
+    image_paths: Optional[str] = Form(
+        None,
+        description="Comma-separated paths to images: uploads/{date}/{hash}.{fmt} or outputs/hd/{date}/{hash}.{fmt}",
+    ),
+    prompt: str = Form(
+        ..., description="A text description of the desired image edits"
+    ),
+    prompt_prefix: Optional[str] = Form(
+        "Image Edit: ", description="Optional prefix to add to the prompt"
+    ),
+    model: str = Form(
+        "gemini-flash", description="Model to use: gemini-pro or gemini-flash"
+    ),
     n: int = Form(1, description="Number of images to generate"),
-    size: str = Form("1024x1024", description="Image size (ignored, uses original size)"),
-    response_format: Literal["url", "b64_json"] = Form("url", description="Response format"),
-    download_mode: Literal["preview", "hd", "both"] = Form("both", description="Download mode: preview (fast), hd (sync HD only), both (preview + background HD)"),
+    size: str = Form(
+        "1024x1024", description="Image size (ignored, uses original size)"
+    ),
+    response_format: Literal["url", "b64_json"] = Form(
+        "url", description="Response format"
+    ),
+    download_mode: Literal["preview", "hd", "both"] = Form(
+        "both",
+        description="Download mode: preview (fast), hd (sync HD only), both (preview + background HD)",
+    ),
     api_key: str = Depends(check_rate_limit),
 ):
     """
@@ -160,7 +199,10 @@ async def create_image_edit(
 
     # 验证至少有一个输入
     if not input_paths:
-        raise HTTPException(status_code=400, detail="At least one image must be provided via 'images' or 'image_paths'")
+        raise HTTPException(
+            status_code=400,
+            detail="At least one image must be provided via 'images' or 'image_paths'",
+        )
 
     # 获取可用浏览器
     browser = await browser_pool.get_available_browser()
@@ -169,6 +211,10 @@ async def create_image_edit(
 
     # 转换模型名称
     gemini_model = "Pro" if "pro" in model.lower() else "Fast"
+
+    # 添加可选的提示前缀
+    if prompt_prefix:
+        prompt = f"{prompt_prefix}{prompt}"
 
     try:
         # 执行快速预览任务（支持多图）
@@ -190,10 +236,12 @@ async def create_image_edit(
         for img_info in result["images"]:
             if response_format == "url":
                 # 返回 {date}/{hash} 格式，客户端可拼接完整路径
-                data.append(ImageData(url=img_info['id']))
+                data.append(ImageData(url=img_info["id"]))
             else:  # b64_json
                 # 读取预览图并编码为 base64
-                preview_path = Path(f"data/outputs/q/{img_info['date']}/{img_info['hash']}.{img_info['format']}")
+                preview_path = Path(
+                    f"data/outputs/q/{img_info['date']}/{img_info['hash']}.{img_info['format']}"
+                )
                 with open(preview_path, "rb") as f:
                     image_data = base64.b64encode(f.read()).decode()
                 data.append(ImageData(b64_json=image_data))
@@ -214,7 +262,7 @@ async def create_image_edit(
                     "retry_after": e.retry_after,
                 }
             },
-            headers={"Retry-After": str(e.retry_after)}
+            headers={"Retry-After": str(e.retry_after)},
         )
     except NoAvailableTabs as e:
         return JSONResponse(
@@ -227,14 +275,19 @@ async def create_image_edit(
                     "param": None,
                 }
             },
-            headers={"Retry-After": "5"}  # 建议5秒后重试
+            headers={"Retry-After": "5"},  # 建议5秒后重试
         )
     except KeyError as e:
         import traceback
+
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"KeyError: {e} - available keys: {list(result.get('images', [{}])[0].keys()) if result else 'no result'}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"KeyError: {e} - available keys: {list(result.get('images', [{}])[0].keys()) if result else 'no result'}",
+        )
     except Exception as e:
         import traceback
+
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -277,7 +330,9 @@ async def get_hd_image(
     # 读取图片元数据
     metadata_path = Path(f"data/outputs/meta/{date}/{file_hash}.json")
     if not metadata_path.exists():
-        raise HTTPException(status_code=404, detail=f"Image {date}/{file_hash} not found")
+        raise HTTPException(
+            status_code=404, detail=f"Image {date}/{file_hash} not found"
+        )
 
     try:
         with open(metadata_path, "r") as f:
@@ -292,7 +347,7 @@ async def get_hd_image(
         # HD 下载尚未开始或正在进行
         raise HTTPException(
             status_code=202,
-            detail="HD image is being downloaded in background. Please retry in a few seconds."
+            detail="HD image is being downloaded in background. Please retry in a few seconds.",
         )
     elif hd_status == "failed":
         raise HTTPException(status_code=500, detail="HD image download failed")
@@ -306,8 +361,7 @@ async def get_hd_image(
     else:
         # 未知状态，可能还在下载中
         raise HTTPException(
-            status_code=202,
-            detail=f"HD image status: {hd_status}. Please retry."
+            status_code=202, detail=f"HD image status: {hd_status}. Please retry."
         )
 
 
@@ -338,6 +392,7 @@ async def list_models(authorization: Optional[str] = Header(None)):
 
 class UploadResponse(BaseModel):
     """上传响应"""
+
     image_path: str  # 格式: {date}/{hash}.{fmt}
 
 
@@ -385,6 +440,7 @@ async def upload_image(
 
 class TestUploadResponse(BaseModel):
     """测试上传响应"""
+
     success: bool
     message: str
     uploaded_count: int
