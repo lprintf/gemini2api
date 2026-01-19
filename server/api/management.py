@@ -141,8 +141,21 @@ async def update_browser(browser_id: str, request: UpdateBrowserRequest):
     if browser_pool is None:
         raise HTTPException(status_code=500, detail="Browser pool not initialized")
 
-    # 过滤 None 值
-    updates = {k: v for k, v in request.model_dump().items() if v is not None}
+    print(f"[API] Received update request for browser {browser_id}")
+    print(f"[API] Raw request data: {request.model_dump()}")
+    print(f"[API] Actually set fields: {request.model_dump(exclude_unset=True)}")
+
+    # 只处理前端实际发送的字段
+    updates = {}
+    for k, v in request.model_dump(exclude_unset=True).items():
+        # 对于 proxy 字段，None 或空字符串都表示删除代理
+        if k == "proxy":
+            updates[k] = None if (v is None or v == "") else v
+            print(f"[API] Proxy field: '{v}' -> {updates[k]}")
+        else:
+            updates[k] = v
+
+    print(f"[API] Processed updates: {updates}")
 
     if not updates:
         raise HTTPException(status_code=400, detail="No updates provided")
