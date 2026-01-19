@@ -17,7 +17,8 @@ import time
 from datetime import datetime
 from io import BytesIO
 from pathlib import Path
-from typing import List, Literal, Optional
+from typing import Dict, List, Literal, Optional
+from urllib.parse import urlparse
 
 from PIL import Image
 from playwright.async_api import BrowserContext, Page, async_playwright
@@ -76,6 +77,45 @@ class GeminiEditor:
     # 浏览器生命周期
     # =========================================================================
 
+    def _parse_proxy(self, proxy_url: str) -> Optional[Dict[str, str]]:
+        """
+        解析代理 URL，支持带用户名密码的格式
+
+        支持格式:
+        - http://proxy.com:8080
+        - http://user:pass@proxy.com:8080
+        - socks5://user:pass@proxy.com:1080
+
+        Args:
+            proxy_url: 代理 URL
+
+        Returns:
+            Playwright proxy 配置字典，如果解析失败返回 None
+        """
+        if not proxy_url:
+            return None
+
+        try:
+            parsed = urlparse(proxy_url)
+
+            # 构建基础 server 地址
+            server = f"{parsed.scheme}://{parsed.hostname}"
+            if parsed.port:
+                server += f":{parsed.port}"
+
+            proxy_config = {"server": server}
+
+            # 如果有用户名和密码，添加到配置中
+            if parsed.username:
+                proxy_config["username"] = parsed.username
+            if parsed.password:
+                proxy_config["password"] = parsed.password
+
+            return proxy_config
+        except Exception as e:
+            print(f"代理 URL 解析失败: {e}")
+            return None
+
     async def launch(self, timeout: int = 60000) -> Page:
         """启动浏览器并访问 Gemini"""
         if not self.user_data_dir.exists():
@@ -88,10 +128,18 @@ class GeminiEditor:
         print(f"数据目录: {self.user_data_dir}")
 
         self.playwright = await async_playwright().start()
-        launch_args = get_launch_args(proxy=self.proxy)
+        launch_args = get_launch_args()
 
+        # 解析代理配置
+        proxy_config = None
         if self.proxy:
-            print(f"使用代理: {self.proxy}")
+            proxy_config = self._parse_proxy(self.proxy)
+            if proxy_config:
+                print(f"使用代理: {proxy_config['server']}")
+                if "username" in proxy_config:
+                    print(f"代理认证: {proxy_config['username']}:***")
+            else:
+                print(f"警告: 代理配置解析失败，将不使用代理")
 
         self.context = await self.playwright.chromium.launch_persistent_context(
             str(self.user_data_dir),
@@ -99,6 +147,7 @@ class GeminiEditor:
             viewport=DEFAULT_VIEWPORT,
             args=launch_args,
             permissions=DEFAULT_PERMISSIONS,
+            proxy=proxy_config,  # 使用 Playwright 的 proxy 参数
         )
 
         self.page = self.context.pages[0] if self.context.pages else await self.context.new_page()

@@ -55,22 +55,14 @@ BASE_ARGS = [
 ]
 
 
-def get_launch_args(proxy: str = None) -> list[str]:
+def get_launch_args() -> list[str]:
     """
     获取浏览器启动参数
-
-    Args:
-        proxy: 代理服务器地址
 
     Returns:
         启动参数列表
     """
-    args = BASE_ARGS.copy()
-
-    if proxy:
-        args.append(f"--proxy-server={proxy}")
-
-    return args
+    return BASE_ARGS.copy()
 
 
 # =============================================================================
