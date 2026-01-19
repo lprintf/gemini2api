@@ -3,20 +3,22 @@ Pydantic models for database entities
 """
 
 from datetime import datetime
-from typing import Optional, List
+from typing import List, Optional
+
 from pydantic import BaseModel, Field
 
 
 class BrowserConfig(BaseModel):
     """浏览器配置模型"""
+
     id: Optional[int] = None
     browser_id: str
     account_name: str
     proxy: Optional[str] = None
     headless: bool = True
     user_data_dir: str
-    rate_limit: int = 6
-    rate_window: int = 60
+    rate_limit: int = 2
+    rate_window: int = 30
     is_enabled: bool = True
     auto_start: bool = True
     created_at: Optional[datetime] = None
@@ -28,6 +30,7 @@ class BrowserConfig(BaseModel):
 
 class BrowserConfigCreate(BaseModel):
     """创建浏览器的请求模型"""
+
     browser_id: Optional[int] = None  # 可选，自动分配
     account_name: Optional[str] = None  # 可选，默认等于 browser_id
     proxy: Optional[str] = None
@@ -37,6 +40,7 @@ class BrowserConfigCreate(BaseModel):
 
 class BrowserConfigUpdate(BaseModel):
     """更新浏览器的请求模型"""
+
     account_name: Optional[str] = None
     proxy: Optional[str] = None
     headless: Optional[bool] = None
@@ -48,6 +52,7 @@ class BrowserConfigUpdate(BaseModel):
 
 class TaskRecord(BaseModel):
     """任务记录模型"""
+
     id: Optional[int] = None
     task_id: str
     browser_id: Optional[str] = None
@@ -67,6 +72,7 @@ class TaskRecord(BaseModel):
 
 class GlobalConfig(BaseModel):
     """全局配置模型"""
+
     # Server
     server_host: str = "0.0.0.0"
     server_port: int = 8000
@@ -94,6 +100,7 @@ class GlobalConfig(BaseModel):
 
 class GlobalConfigUpdate(BaseModel):
     """更新全局配置的请求模型"""
+
     server_host: Optional[str] = None
     server_port: Optional[int] = None
     min_browsers: Optional[int] = None
@@ -110,6 +117,7 @@ class GlobalConfigUpdate(BaseModel):
 
 class EventLog(BaseModel):
     """事件日志模型"""
+
     id: Optional[int] = None
     browser_id: Optional[str] = None
     level: str  # DEBUG/INFO/WARNING/ERROR
@@ -122,6 +130,7 @@ class EventLog(BaseModel):
 
 class TaskStats(BaseModel):
     """任务统计模型"""
+
     total_tasks: int = 0
     completed_tasks: int = 0
     failed_tasks: int = 0
@@ -135,6 +144,7 @@ class TaskStats(BaseModel):
 
 class BrowserStatus(BaseModel):
     """浏览器状态响应模型"""
+
     browser_id: str
     account_name: str
     proxy: Optional[str] = None

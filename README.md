@@ -108,25 +108,25 @@ Content-Type: application/json
 
 ### 管理 API
 
-| 端点 | 说明 |
-|------|------|
-| `GET /api/admin/browsers` | 获取所有浏览器状态 |
-| `POST /api/admin/browsers` | 创建浏览器实例 |
-| `DELETE /api/admin/browsers/{id}` | 删除浏览器实例 |
-| `POST /api/admin/browsers/{id}/start` | 启动浏览器 |
-| `POST /api/admin/browsers/{id}/stop` | 停止浏览器 |
-| `GET /api/admin/dashboard` | 仪表盘数据 |
+| 端点                                  | 说明               |
+| ------------------------------------- | ------------------ |
+| `GET /api/admin/browsers`             | 获取所有浏览器状态 |
+| `POST /api/admin/browsers`            | 创建浏览器实例     |
+| `DELETE /api/admin/browsers/{id}`     | 删除浏览器实例     |
+| `POST /api/admin/browsers/{id}/start` | 启动浏览器         |
+| `POST /api/admin/browsers/{id}/stop`  | 停止浏览器         |
+| `GET /api/admin/dashboard`            | 仪表盘数据         |
 
 ## 配置说明
 
 ### 环境变量
 
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `ADMIN_USERNAME` | admin | 管理员用户名 |
-| `ADMIN_PASSWORD` | changeme | 管理员密码 |
-| `TZ` | Asia/Shanghai | 时区 |
-| `DATA_DIR` | ./data | 数据目录 |
+| 变量             | 默认值        | 说明         |
+| ---------------- | ------------- | ------------ |
+| `ADMIN_USERNAME` | admin         | 管理员用户名 |
+| `ADMIN_PASSWORD` | changeme      | 管理员密码   |
+| `TZ`             | Asia/Shanghai | 时区         |
+| `DATA_DIR`       | ./data        | 数据目录     |
 
 ### 浏览器池配置
 
@@ -134,7 +134,7 @@ Content-Type: application/json
 
 - **max_browsers** - 最大浏览器数量
 - **max_tabs** - 每浏览器最大标签页数（默认 6）
-- **rate_limit** - 每分钟请求限制（默认 9）
+- **rate_limit** - 每滑动窗口请求限制（默认 2 per 30s）
 - **proxy** - 代理服务器（可选）
 
 ## 架构设计
