@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -25,7 +26,7 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
         }
 
         .header h1 {
@@ -79,7 +80,7 @@
             border-radius: 12px;
             padding: 1.5rem;
             margin-bottom: 1.5rem;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
         }
 
         .card-title {
@@ -131,7 +132,8 @@
             border-collapse: collapse;
         }
 
-        th, td {
+        th,
+        td {
             padding: 0.75rem;
             text-align: left;
             border-bottom: 1px solid #e0e0e0;
@@ -174,7 +176,8 @@
             color: #383d41;
         }
 
-        .status-starting, .status-stopping {
+        .status-starting,
+        .status-stopping {
             background: #cce5ff;
             color: #004085;
         }
@@ -307,7 +310,7 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0,0,0,0.5);
+            background: rgba(0, 0, 0, 0.5);
             z-index: 1000;
             align-items: center;
             justify-content: center;
@@ -407,7 +410,8 @@
             flex-wrap: wrap;
         }
 
-        .filter-bar select, .filter-bar input {
+        .filter-bar select,
+        .filter-bar input {
             padding: 0.5rem;
             border: 1px solid #ddd;
             border-radius: 6px;
@@ -460,8 +464,15 @@
         }
 
         @keyframes fadeIn {
-            from { opacity: 0; transform: translateX(-50%) translateY(20px); }
-            to { opacity: 1; transform: translateX(-50%) translateY(0); }
+            from {
+                opacity: 0;
+                transform: translateX(-50%) translateY(20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateX(-50%) translateY(0);
+            }
         }
 
         .checkbox-group {
@@ -476,6 +487,7 @@
         }
     </style>
 </head>
+
 <body>
     <div class="header">
         <h1>Gemini2API Admin</h1>
@@ -489,7 +501,9 @@
         <button class="nav-btn" data-tab="tasks">Tasks</button>
         <button class="nav-btn" data-tab="config">Config</button>
         <button class="nav-btn" data-tab="logs">Logs</button>
-        <a href="/remote" class="nav-btn" style="text-decoration: none; background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); color: white;">Remote Control</a>
+        <a href="/remote" class="nav-btn"
+            style="text-decoration: none; background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); color: white;">Remote
+            Control</a>
     </div>
 
     <div class="container">
@@ -554,7 +568,8 @@
                 <div id="browserEmpty" class="empty-state" style="display: none;">
                     <div class="empty-state-icon">:(</div>
                     <div>No browsers configured</div>
-                    <button class="btn btn-primary btn-lg" style="margin-top: 1rem;" onclick="showCreateBrowserModal()">Add First Browser</button>
+                    <button class="btn btn-primary btn-lg" style="margin-top: 1rem;"
+                        onclick="showCreateBrowserModal()">Add First Browser</button>
                 </div>
             </div>
         </div>
@@ -720,7 +735,8 @@
                         </div>
                         <div class="form-group">
                             <label>Admin Password</label>
-                            <input type="password" class="form-control" id="cfgAdminPassword" placeholder="Leave blank to keep current">
+                            <input type="password" class="form-control" id="cfgAdminPassword"
+                                placeholder="Leave blank to keep current">
                         </div>
                     </div>
                     <div class="form-group">
@@ -779,7 +795,7 @@
                 </div>
                 <div class="form-group">
                     <label>Max Tabs (concurrent tasks per browser)</label>
-                    <input type="number" class="form-control" id="newMaxTabs" min="1" max="10" value="6">
+                    <input type="number" class="form-control" id="newMaxTabs" min="1" max="10" value="4">
                 </div>
                 <div class="form-group">
                     <div class="checkbox-group">
@@ -794,7 +810,8 @@
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" onclick="hideModal('createBrowserModal')">Cancel</button>
+                    <button type="button" class="btn btn-secondary"
+                        onclick="hideModal('createBrowserModal')">Cancel</button>
                     <button type="submit" class="btn btn-primary">Create</button>
                 </div>
             </form>
@@ -836,7 +853,8 @@
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" onclick="hideModal('editBrowserModal')">Cancel</button>
+                    <button type="button" class="btn btn-secondary"
+                        onclick="hideModal('editBrowserModal')">Cancel</button>
                     <button type="submit" class="btn btn-primary">Save</button>
                 </div>
             </form>
@@ -872,7 +890,7 @@
         }
 
         function refreshCurrentTab() {
-            switch(currentTab) {
+            switch (currentTab) {
                 case 'dashboard': loadDashboard(); break;
                 case 'browsers': loadBrowsers(); break;
                 case 'tabs': loadTabs(); break;
@@ -959,9 +977,9 @@
                         <td>${b.rate_limit.remaining}/${b.rate_limit.limit} per ${b.rate_limit.window_seconds}s</td>
                         <td>
                             ${b.status === 'stopped'
-                                ? `<button class="btn btn-success" onclick="startBrowser('${b.browser_id}')">Start</button>`
-                                : `<button class="btn btn-warning" onclick="stopBrowser('${b.browser_id}')">Stop</button>`
-                            }
+                        ? `<button class="btn btn-success" onclick="startBrowser('${b.browser_id}')">Start</button>`
+                        : `<button class="btn btn-warning" onclick="stopBrowser('${b.browser_id}')">Stop</button>`
+                    }
                             <button class="btn btn-primary" onclick="showEditBrowserModal('${b.browser_id}')">Edit</button>
                             <button class="btn btn-secondary" onclick="checkLogin('${b.browser_id}')">Check Login</button>
                             <button class="btn btn-danger" onclick="deleteBrowser('${b.browser_id}')">Delete</button>
@@ -1387,4 +1405,5 @@
         setInterval(refreshCurrentTab, 30000);
     </script>
 </body>
+
 </html>
