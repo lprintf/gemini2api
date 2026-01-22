@@ -849,7 +849,7 @@ class GeminiEditor:
             if not download_btn:
                 return None
 
-            for attempt in range(4):
+            for attempt in range(5):
                 try:
                     async with self.page.expect_download(timeout=5000) as download_info:
                         await download_btn.click(no_wait_after=True)
@@ -1081,7 +1081,7 @@ class GeminiEditor:
                 return None
 
             # 5. 等待生成
-            await self.wait_for_generation(timeout=90)
+            await self.wait_for_generation(timeout=120)
 
             # 6. 获取图片数量
             count = await self.get_generated_image_count()

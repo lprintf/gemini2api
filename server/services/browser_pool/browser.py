@@ -25,7 +25,7 @@ class BrowserInstance:
         user_data_dir: Optional[str] = None,
         rate_limit: int = 3,  # 每分钟请求限制
         rate_window: int = 60,  # 时间窗口（秒）
-        max_tabs: int = 4,  # 最大标签页数量
+        max_tabs: int = 3,  # 最大标签页数量
     ):
         self.browser_id = browser_id
         self.account_name = account_name

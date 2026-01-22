@@ -33,7 +33,7 @@ class CreateBrowserRequest(BaseModel):
     proxy: Optional[str] = None
     headless: bool = True
     auto_start: bool = True
-    max_tabs: int = 4  # 最大标签页数量
+    max_tabs: int = 3  # 最大标签页数量
 
 
 class UpdateBrowserRequest(BaseModel):

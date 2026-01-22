@@ -121,7 +121,7 @@ class BrowserPool:
         headless: bool = True,
         auto_start: bool = True,
         is_enabled: bool = True,
-        max_tabs: int = 4,  # 最大标签页数量
+        max_tabs: int = 3,  # 最大标签页数量
     ) -> str:
         """创建新浏览器实例"""
         async with self._lock:

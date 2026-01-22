@@ -345,7 +345,7 @@ def parse_args() -> Config:
     )
     parser.add_argument(
         "--url",
-        default="https://g2api.littleprintf.dpdns.org/v1/images/edits",
+        default="http://localhost:8000/v1/images/edits",
         help="API 地址",
     )
     parser.add_argument(
