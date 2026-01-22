@@ -81,7 +81,7 @@ class GlobalConfig(BaseModel):
     max_browsers: int = 10
     default_headless: bool = True
     # Rate Limit
-    default_rate_limit: int = 6
+    default_rate_limit: int = 3
     rate_window_seconds: int = 60
     # Load Balancer
     lb_strategy: str = "least_loaded"  # round_robin/least_loaded/random
@@ -153,7 +153,7 @@ class BrowserStatus(BaseModel):
     user_data_dir: str
     is_enabled: bool = True
     auto_start: bool = True
-    rate_limit: int = 6
+    rate_limit: int = 3
     rate_window: int = 60
     created_at: Optional[datetime] = None
     last_active_at: Optional[datetime] = None

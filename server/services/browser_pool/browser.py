@@ -23,9 +23,9 @@ class BrowserInstance:
         proxy: Optional[str] = None,
         headless: bool = True,
         user_data_dir: Optional[str] = None,
-        rate_limit: int = 6,  # 每分钟请求限制
+        rate_limit: int = 3,  # 每分钟请求限制
         rate_window: int = 60,  # 时间窗口（秒）
-        max_tabs: int = 6,  # 最大标签页数量
+        max_tabs: int = 4,  # 最大标签页数量
     ):
         self.browser_id = browser_id
         self.account_name = account_name
@@ -40,9 +40,7 @@ class BrowserInstance:
         self._request_times: deque = deque()  # 请求时间戳队列
 
         self.status = BrowserStatus.STOPPED
-        self.base_editor: Optional[GeminiEditor] = (
-            None  # 主编辑器（用于创建标签页）
-        )
+        self.base_editor: Optional[GeminiEditor] = None  # 主编辑器（用于创建标签页）
         self.tabs: List[TabInstance] = []  # 标签页列表
         self.created_at = datetime.now()
         self.last_active_at: Optional[datetime] = None
@@ -181,7 +179,9 @@ class BrowserInstance:
 
             # 第一个标签页成功，继续创建其他标签页
             if self.max_tabs > 1:
-                print(f"[Browser {self.browser_id}] Creating {self.max_tabs - 1} more tabs...")
+                print(
+                    f"[Browser {self.browser_id}] Creating {self.max_tabs - 1} more tabs..."
+                )
 
                 async def create_tab(tab_id: int, preferred_model: str) -> TabInstance:
                     """创建单个标签页"""
@@ -233,7 +233,9 @@ class BrowserInstance:
                 self.tabs.extend(other_tabs)
 
                 # 并行预热其他标签页
-                print(f"[Browser {self.browser_id}] Preheating {len(other_tabs)} more tabs...")
+                print(
+                    f"[Browser {self.browser_id}] Preheating {len(other_tabs)} more tabs..."
+                )
                 preheat_start = time.time()
 
                 async def preheat_tab(tab: TabInstance):

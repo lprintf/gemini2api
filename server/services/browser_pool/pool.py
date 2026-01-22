@@ -20,7 +20,7 @@ class BrowserPool:
         self,
         min_browsers: int = 1,
         max_browsers: int = 20,
-        browser_rate_limit: int = 6,  # 每个浏览器的速率限制
+        browser_rate_limit: int = 3,  # 每个浏览器的速率限制
         browser_rate_window: int = 60,  # 速率限制时间窗口
     ):
         self.browsers: Dict[str, BrowserInstance] = {}
@@ -93,7 +93,9 @@ class BrowserPool:
                 success_count += 1
                 print(f"[BrowserPool] Browser {browser_id} started successfully")
             else:
-                print(f"[BrowserPool] Failed to start browser {browser_id}: {error_msg}")
+                print(
+                    f"[BrowserPool] Failed to start browser {browser_id}: {error_msg}"
+                )
                 await db.add_log(
                     "ERROR",
                     f"Failed to load browser {browser_id}: {error_msg}",
@@ -108,7 +110,7 @@ class BrowserPool:
 
         await db.add_log(
             "INFO",
-            f"Browser pool loaded {success_count}/{len(self.browsers)} browsers in {elapsed:.2f}s"
+            f"Browser pool loaded {success_count}/{len(self.browsers)} browsers in {elapsed:.2f}s",
         )
 
     async def create_browser(
@@ -119,7 +121,7 @@ class BrowserPool:
         headless: bool = True,
         auto_start: bool = True,
         is_enabled: bool = True,
-        max_tabs: int = 6,  # 最大标签页数量
+        max_tabs: int = 4,  # 最大标签页数量
     ) -> str:
         """创建新浏览器实例"""
         async with self._lock:

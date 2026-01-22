@@ -4,21 +4,20 @@
 用于管理浏览器、配置、任务、日志等（需要身份认证）
 """
 
-from fastapi import APIRouter, HTTPException, Query, Depends
+from io import BytesIO
+from typing import List, Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 from pydantic import BaseModel
-from typing import Optional, List
-from io import BytesIO
-
-from server.services.browser_pool import BrowserPool
-from server.core.database import get_db
 from server.auth import verify_admin
-
+from server.core.database import get_db
+from server.services.browser_pool import BrowserPool
 
 router = APIRouter(
     prefix="/api/admin",
     tags=["Management"],
-    dependencies=[Depends(verify_admin)]  # 对整个路由器应用认证
+    dependencies=[Depends(verify_admin)],  # 对整个路由器应用认证
 )
 
 
@@ -28,16 +27,18 @@ browser_pool: Optional[BrowserPool] = None
 
 class CreateBrowserRequest(BaseModel):
     """创建浏览器请求"""
+
     browser_id: Optional[int] = None  # 可选的浏览器 ID，不提供则自动分配
     account_name: Optional[str] = None  # 可选的账号名称，默认等于 ID
     proxy: Optional[str] = None
     headless: bool = True
     auto_start: bool = True
-    max_tabs: int = 6  # 最大标签页数量
+    max_tabs: int = 4  # 最大标签页数量
 
 
 class UpdateBrowserRequest(BaseModel):
     """更新浏览器请求"""
+
     account_name: Optional[str] = None
     proxy: Optional[str] = None
     headless: Optional[bool] = None
@@ -49,6 +50,7 @@ class UpdateBrowserRequest(BaseModel):
 
 class BrowserResponse(BaseModel):
     """浏览器响应"""
+
     browser_id: str
     account_name: str
     proxy: Optional[str]
@@ -59,6 +61,7 @@ class BrowserResponse(BaseModel):
 
 class UpdateConfigRequest(BaseModel):
     """更新全局配置请求"""
+
     server_host: Optional[str] = None
     server_port: Optional[int] = None
     min_browsers: Optional[int] = None
@@ -74,6 +77,7 @@ class UpdateConfigRequest(BaseModel):
 
 
 # ==================== 浏览器管理 ====================
+
 
 @router.get("/browsers")
 async def list_browsers():
@@ -163,7 +167,9 @@ async def update_browser(browser_id: str, request: UpdateBrowserRequest):
     try:
         browser = await browser_pool.update_browser(browser_id, updates)
         if browser is None:
-            raise HTTPException(status_code=404, detail=f"Browser {browser_id} not found")
+            raise HTTPException(
+                status_code=404, detail=f"Browser {browser_id} not found"
+            )
 
         return browser.to_dict()
 
@@ -249,6 +255,7 @@ async def check_browser_login(browser_id: str):
 
 # ==================== 全局配置 ====================
 
+
 @router.get("/config")
 async def get_config():
     """获取全局配置"""
@@ -278,6 +285,7 @@ async def update_config(request: UpdateConfigRequest):
 
 
 # ==================== 任务管理 ====================
+
 
 @router.get("/tasks")
 async def list_tasks(
@@ -333,6 +341,7 @@ async def get_task(task_id: str):
 
 # ==================== 日志管理 ====================
 
+
 @router.get("/logs")
 async def get_logs(
     browser_id: Optional[str] = Query(None, description="按浏览器 ID 筛选"),
@@ -360,7 +369,9 @@ async def get_logs(
 
 
 @router.delete("/logs")
-async def clear_old_logs(days: int = Query(7, ge=1, le=90, description="清理多少天前的日志")):
+async def clear_old_logs(
+    days: int = Query(7, ge=1, le=90, description="清理多少天前的日志")
+):
     """清理旧日志"""
     try:
         db = get_db()
@@ -371,6 +382,7 @@ async def clear_old_logs(days: int = Query(7, ge=1, le=90, description="清理�
 
 
 # ==================== 统计信息 ====================
+
 
 @router.get("/stats")
 async def get_stats():
@@ -396,6 +408,7 @@ async def get_stats():
 
 
 # ==================== 仪表盘 ====================
+
 
 @router.get("/dashboard")
 async def get_dashboard():
@@ -433,8 +446,10 @@ async def get_dashboard():
 
 # ==================== 远程控制 ====================
 
+
 class MouseInputRequest(BaseModel):
     """鼠标输入请求"""
+
     action: str  # "move", "click", "scroll"
     x: float  # 相对于图片的 x 坐标 (0-1)
     y: float  # 相对于图片的 y 坐标 (0-1)
@@ -444,6 +459,7 @@ class MouseInputRequest(BaseModel):
 
 class KeyboardInputRequest(BaseModel):
     """键盘输入请求"""
+
     action: str  # "type", "press"
     text: Optional[str] = None  # 用于 type
     key: Optional[str] = None  # 用于 press
@@ -451,6 +467,7 @@ class KeyboardInputRequest(BaseModel):
 
 class NavigateRequest(BaseModel):
     """导航请求"""
+
     url: str
     wait_until: str = "load"  # "load", "domcontentloaded", "networkidle"
 
@@ -521,7 +538,9 @@ async def get_tab_screenshot(
             break
 
     if tab is None:
-        raise HTTPException(status_code=404, detail=f"Tab {tab_id} not found in browser {browser_id}")
+        raise HTTPException(
+            status_code=404, detail=f"Tab {tab_id} not found in browser {browser_id}"
+        )
 
     if tab.editor is None or tab.editor.page is None:
         raise HTTPException(status_code=400, detail=f"Tab {tab_id} is not ready")
@@ -535,6 +554,7 @@ async def get_tab_screenshot(
 
         # 转换为 PIL Image
         from PIL import Image, ImageDraw
+
         img = Image.open(BytesIO(screenshot_bytes))
 
         # 获取视口尺寸
@@ -547,7 +567,12 @@ async def get_tab_screenshot(
             draw = ImageDraw.Draw(img)
             # 画一个红色圆点（半径8像素）
             r = 8
-            draw.ellipse([click_x - r, click_y - r, click_x + r, click_y + r], fill='red', outline='white', width=2)
+            draw.ellipse(
+                [click_x - r, click_y - r, click_x + r, click_y + r],
+                fill="red",
+                outline="white",
+                width=2,
+            )
             # 画完后清除记录
             del _last_click[tab_key]
 
@@ -562,7 +587,7 @@ async def get_tab_screenshot(
                 "X-Viewport-Width": str(viewport_size["width"]),
                 "X-Viewport-Height": str(viewport_size["height"]),
                 "Cache-Control": "no-cache, no-store, must-revalidate",
-            }
+            },
         )
 
     except Exception as e:
@@ -587,7 +612,9 @@ async def send_mouse_input(browser_id: str, tab_id: int, request: MouseInputRequ
             break
 
     if tab is None:
-        raise HTTPException(status_code=404, detail=f"Tab {tab_id} not found in browser {browser_id}")
+        raise HTTPException(
+            status_code=404, detail=f"Tab {tab_id} not found in browser {browser_id}"
+        )
 
     if tab.editor is None or tab.editor.page is None:
         raise HTTPException(status_code=400, detail=f"Tab {tab_id} is not ready")
@@ -600,7 +627,9 @@ async def send_mouse_input(browser_id: str, tab_id: int, request: MouseInputRequ
         actual_x = int(request.x * viewport_size["width"])
         actual_y = int(request.y * viewport_size["height"])
 
-        print(f"[Remote] Mouse {request.action}: ({actual_x}, {actual_y}) button={request.button}")
+        print(
+            f"[Remote] Mouse {request.action}: ({actual_x}, {actual_y}) button={request.button}"
+        )
 
         if request.action == "move":
             await page.mouse.move(actual_x, actual_y)
@@ -615,7 +644,9 @@ async def send_mouse_input(browser_id: str, tab_id: int, request: MouseInputRequ
             await page.mouse.move(actual_x, actual_y)
             await page.mouse.wheel(0, int(request.scroll_delta))
         else:
-            raise HTTPException(status_code=400, detail=f"Unknown action: {request.action}")
+            raise HTTPException(
+                status_code=400, detail=f"Unknown action: {request.action}"
+            )
 
         return {
             "success": True,
@@ -631,7 +662,9 @@ async def send_mouse_input(browser_id: str, tab_id: int, request: MouseInputRequ
 
 
 @router.post("/browsers/{browser_id}/tabs/{tab_id}/keyboard")
-async def send_keyboard_input(browser_id: str, tab_id: int, request: KeyboardInputRequest):
+async def send_keyboard_input(
+    browser_id: str, tab_id: int, request: KeyboardInputRequest
+):
     """发送键盘输入到标签页"""
     if browser_pool is None:
         raise HTTPException(status_code=500, detail="Browser pool not initialized")
@@ -648,7 +681,9 @@ async def send_keyboard_input(browser_id: str, tab_id: int, request: KeyboardInp
             break
 
     if tab is None:
-        raise HTTPException(status_code=404, detail=f"Tab {tab_id} not found in browser {browser_id}")
+        raise HTTPException(
+            status_code=404, detail=f"Tab {tab_id} not found in browser {browser_id}"
+        )
 
     if tab.editor is None or tab.editor.page is None:
         raise HTTPException(status_code=400, detail=f"Tab {tab_id} is not ready")
@@ -661,7 +696,9 @@ async def send_keyboard_input(browser_id: str, tab_id: int, request: KeyboardInp
         elif request.action == "press" and request.key:
             await page.keyboard.press(request.key)
         else:
-            raise HTTPException(status_code=400, detail="Invalid keyboard action or missing parameters")
+            raise HTTPException(
+                status_code=400, detail="Invalid keyboard action or missing parameters"
+            )
 
         return {
             "success": True,
@@ -692,7 +729,9 @@ async def navigate_tab(browser_id: str, tab_id: int, request: NavigateRequest):
             break
 
     if tab is None:
-        raise HTTPException(status_code=404, detail=f"Tab {tab_id} not found in browser {browser_id}")
+        raise HTTPException(
+            status_code=404, detail=f"Tab {tab_id} not found in browser {browser_id}"
+        )
 
     if tab.editor is None or tab.editor.page is None:
         raise HTTPException(status_code=400, detail=f"Tab {tab_id} is not ready")
@@ -737,7 +776,9 @@ async def reinitialize_tab(browser_id: str, tab_id: int):
             break
 
     if tab is None:
-        raise HTTPException(status_code=404, detail=f"Tab {tab_id} not found in browser {browser_id}")
+        raise HTTPException(
+            status_code=404, detail=f"Tab {tab_id} not found in browser {browser_id}"
+        )
 
     try:
         success = await tab.reinitialize()
@@ -769,7 +810,9 @@ async def list_all_tabs():
                 "failed_tasks": tab.failed_tasks,
                 "consecutive_failures": tab.consecutive_failures,
                 "current_task_id": tab.current_task_id,
-                "last_active_at": tab.last_active_at.isoformat() if tab.last_active_at else None,
+                "last_active_at": (
+                    tab.last_active_at.isoformat() if tab.last_active_at else None
+                ),
             }
             # 尝试获取页面标题和 URL
             if tab.editor and tab.editor.page:
