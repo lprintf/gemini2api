@@ -133,7 +133,7 @@ Content-Type: application/json
 通过管理面板或 API 配置：
 
 - **max_browsers** - 最大浏览器数量
-- **max_tabs** - 每浏览器最大标签页数（默认 6）
+- **max_tabs** - 每浏览器最大标签页数（默认 4）
 - **rate_limit** - 每滑动窗口请求限制（默认 2 per 30s）
 - **proxy** - 代理服务器（可选）
 

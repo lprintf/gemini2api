@@ -10,19 +10,13 @@ Handles all database operations including:
 """
 
 import json
-import aiosqlite
-from datetime import datetime, date
+from datetime import date, datetime
 from pathlib import Path
-from typing import Optional, List, Dict, Any
+from typing import Any, Dict, List, Optional
 
-from .models import (
-    BrowserConfig,
-    TaskRecord,
-    GlobalConfig,
-    EventLog,
-    TaskStats,
-)
+import aiosqlite
 
+from .models import BrowserConfig, EventLog, GlobalConfig, TaskRecord, TaskStats
 
 # 数据库文件路径
 DB_PATH = Path(__file__).parent.parent.parent / "data" / "gemini.db"
@@ -59,7 +53,8 @@ class Database:
 
     async def init_tables(self):
         """初始化数据库表"""
-        await self.conn.executescript("""
+        await self.conn.executescript(
+            """
             -- 浏览器配置表
             CREATE TABLE IF NOT EXISTS browsers (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -68,7 +63,7 @@ class Database:
                 proxy TEXT,
                 headless INTEGER DEFAULT 1,
                 user_data_dir TEXT NOT NULL,
-                rate_limit INTEGER DEFAULT 6,
+                rate_limit INTEGER DEFAULT 3,
                 rate_window INTEGER DEFAULT 60,
                 is_enabled INTEGER DEFAULT 1,
                 auto_start INTEGER DEFAULT 1,
@@ -100,7 +95,7 @@ class Database:
                 min_browsers INTEGER DEFAULT 1,
                 max_browsers INTEGER DEFAULT 10,
                 default_headless INTEGER DEFAULT 1,
-                default_rate_limit INTEGER DEFAULT 6,
+                default_rate_limit INTEGER DEFAULT 3,
                 rate_window_seconds INTEGER DEFAULT 60,
                 lb_strategy TEXT DEFAULT 'least_loaded',
                 log_level TEXT DEFAULT 'INFO',
@@ -128,16 +123,15 @@ class Database:
             CREATE INDEX IF NOT EXISTS idx_log_browser ON event_logs(browser_id);
             CREATE INDEX IF NOT EXISTS idx_log_level ON event_logs(level);
             CREATE INDEX IF NOT EXISTS idx_log_time ON event_logs(created_at);
-        """)
+        """
+        )
         await self.conn.commit()
 
         # 确保全局配置表有一行默认数据
         async with self.conn.execute("SELECT COUNT(*) FROM global_config") as cursor:
             row = await cursor.fetchone()
             if row[0] == 0:
-                await self.conn.execute(
-                    "INSERT INTO global_config (id) VALUES (1)"
-                )
+                await self.conn.execute("INSERT INTO global_config (id) VALUES (1)")
                 await self.conn.commit()
 
     # ==================== Browser CRUD ====================
@@ -270,9 +264,7 @@ class Database:
 
     async def create_task(self, task: TaskRecord) -> TaskRecord:
         """创建任务记录"""
-        result_paths_json = (
-            json.dumps(task.result_paths) if task.result_paths else None
-        )
+        result_paths_json = json.dumps(task.result_paths) if task.result_paths else None
         await self.conn.execute(
             """
             INSERT INTO tasks

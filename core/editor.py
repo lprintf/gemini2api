@@ -64,7 +64,9 @@ class GeminiEditor:
         data_dir = Path("/app/data") if Path("/app/data").exists() else self.base_dir
 
         if user_data_dir:
-            self.user_data_dir = Path(user_data_dir) if isinstance(user_data_dir, str) else user_data_dir
+            self.user_data_dir = (
+                Path(user_data_dir) if isinstance(user_data_dir, str) else user_data_dir
+            )
         else:
             self.user_data_dir = data_dir / "browser_data" / str(account_id)
 
@@ -150,10 +152,16 @@ class GeminiEditor:
             proxy=proxy_config,  # 使用 Playwright 的 proxy 参数
         )
 
-        self.page = self.context.pages[0] if self.context.pages else await self.context.new_page()
+        self.page = (
+            self.context.pages[0]
+            if self.context.pages
+            else await self.context.new_page()
+        )
 
         print("正在访问 Gemini...")
-        await self.page.goto("https://gemini.google.com/app", wait_until="load", timeout=timeout)
+        await self.page.goto(
+            "https://gemini.google.com/app", wait_until="load", timeout=timeout
+        )
 
         title = await self.page.title()
         print(f"页面已加载: {title}")
@@ -201,51 +209,73 @@ class GeminiEditor:
             is_new_chat = bool(re.match(r"^https://[^/]+/app(?:[?#].*)?$", current_url))
 
             if is_new_chat:
-                input_box = await self.page.query_selector('div[contenteditable="true"]')
+                input_box = await self.page.query_selector(
+                    'div[contenteditable="true"]'
+                )
                 if input_box:
                     print("已在新对话页面，跳过刷新")
                     return True
 
             await self.page.keyboard.press("Control+Shift+O")
-            await self.page.wait_for_selector('div[contenteditable="true"]', timeout=5000)
+            await self.page.wait_for_selector(
+                'div[contenteditable="true"]', timeout=5000
+            )
 
             if "/app" in self.page.url:
                 print(f"新对话已开启: {self.page.url}")
                 return True
 
-            await self.page.goto("https://gemini.google.com/app", wait_until="domcontentloaded")
-            await self.page.wait_for_selector('div[contenteditable="true"]', timeout=5000)
+            await self.page.goto(
+                "https://gemini.google.com/app", wait_until="domcontentloaded"
+            )
+            await self.page.wait_for_selector(
+                'div[contenteditable="true"]', timeout=5000
+            )
             return True
 
         except Exception as e:
             print(f"开启新对话失败: {e}")
             return False
 
-    async def ensure_model_selection(self, model: Literal["Pro", "Fast"] = "Fast") -> bool:
+    async def ensure_model_selection(
+        self, model: Literal["Pro", "Fast"] = "Fast"
+    ) -> bool:
         """确保选择了指定的模型"""
         print(f"选择模型: {model}")
         try:
-            await self.page.wait_for_selector(MODEL_MENU_BUTTON, timeout=5000, state="attached")
+            await self.page.wait_for_selector(
+                MODEL_MENU_BUTTON, timeout=5000, state="attached"
+            )
             menu_button = self.page.locator(MODEL_MENU_BUTTON)
             button_text = await menu_button.inner_text()
 
             fast_keywords = get_model_keywords("Fast")
             pro_keywords = get_model_keywords("Pro")
 
-            is_fast = any(kw in button_text or kw.lower() in button_text.lower() for kw in fast_keywords)
-            is_pro = any(kw in button_text or kw.lower() in button_text.lower() for kw in pro_keywords)
+            is_fast = any(
+                kw in button_text or kw.lower() in button_text.lower()
+                for kw in fast_keywords
+            )
+            is_pro = any(
+                kw in button_text or kw.lower() in button_text.lower()
+                for kw in pro_keywords
+            )
 
             if (model == "Fast" and is_fast) or (model == "Pro" and is_pro):
                 print(f"已是 {model} 模型")
                 return True
 
-            target_selectors = MODEL_OPTION_FAST if model == "Fast" else MODEL_OPTION_PRO
+            target_selectors = (
+                MODEL_OPTION_FAST if model == "Fast" else MODEL_OPTION_PRO
+            )
 
             for _ in range(3):
                 await menu_button.click(no_wait_after=True)
                 for selector in target_selectors:
                     try:
-                        option = await self.page.wait_for_selector(selector, timeout=1000, state="visible")
+                        option = await self.page.wait_for_selector(
+                            selector, timeout=1000, state="visible"
+                        )
                         if option:
                             await option.click(no_wait_after=True)
                             await self.page.wait_for_timeout(300)
@@ -258,11 +288,15 @@ class GeminiEditor:
             print(f"模型选择失败: {e}")
             return False
 
-    async def _is_image_generation_activated(self, wait: bool = False, timeout: int = 3000) -> bool:
+    async def _is_image_generation_activated(
+        self, wait: bool = False, timeout: int = 3000
+    ) -> bool:
         """检查图片生成功能是否已激活（内部方法）"""
         try:
             if wait:
-                deselect = await self.page.wait_for_selector(IMAGE_GEN_DESELECT, timeout=timeout, state="visible")
+                deselect = await self.page.wait_for_selector(
+                    IMAGE_GEN_DESELECT, timeout=timeout, state="visible"
+                )
             else:
                 deselect = await self.page.query_selector(IMAGE_GEN_DESELECT)
 
@@ -287,7 +321,9 @@ class GeminiEditor:
             tools_btn = None
             for selector in TOOLS_BUTTON:
                 try:
-                    tools_btn = await self.page.wait_for_selector(selector, state="visible", timeout=5000)
+                    tools_btn = await self.page.wait_for_selector(
+                        selector, state="visible", timeout=5000
+                    )
                     if tools_btn:
                         break
                 except Exception:
@@ -302,7 +338,9 @@ class GeminiEditor:
             # 点击图片生成选项
             for selector in IMAGE_GEN_OPTION:
                 try:
-                    option = await self.page.wait_for_selector(selector, timeout=3000, state="visible")
+                    option = await self.page.wait_for_selector(
+                        selector, timeout=3000, state="visible"
+                    )
                     if option:
                         await option.evaluate("el => el.click()")
                         return True
@@ -314,7 +352,9 @@ class GeminiEditor:
             print(f"激活图片生成失败: {e}")
             return False
 
-    async def prepare_environment(self, model: Literal["Pro", "Fast"] = "Fast", temporary_chat: bool = False) -> bool:
+    async def prepare_environment(
+        self, model: Literal["Pro", "Fast"] = "Fast", temporary_chat: bool = False
+    ) -> bool:
         """准备页面环境（新对话 + 激活图片生成 + 选择模型）
 
         Args:
@@ -327,10 +367,10 @@ class GeminiEditor:
                 print("开启新对话失败")
 
             await self.activate_image_generation()
-            
+
             await self.ensure_model_selection(model)
 
-            if not await self.activate_image_generation(): # 再次确认图片生成已激活
+            if not await self.activate_image_generation():  # 再次确认图片生成已激活
                 print("激活图片生成失败")
                 return False
 
@@ -403,7 +443,8 @@ class GeminiEditor:
         """获取输入框中已上传的图片数量"""
         try:
             # 查找输入区域中的图片预览
-            count = await self.page.evaluate("""
+            count = await self.page.evaluate(
+                """
                 () => {
                     // 查找输入区域的图片
                     const inputArea = document.querySelector('rich-textarea, .input-area, [contenteditable="true"]');
@@ -413,7 +454,8 @@ class GeminiEditor:
                     const images = document.querySelectorAll('img[src*="blob:"], img[src*="data:"], .image-preview, [data-image]');
                     return images.length;
                 }
-            """)
+            """
+            )
             return count or 0
         except Exception:
             return 0
@@ -427,7 +469,9 @@ class GeminiEditor:
             return False
 
         try:
-            input_box = await self.page.wait_for_selector(INPUT_BOX, state="visible", timeout=10000)
+            input_box = await self.page.wait_for_selector(
+                INPUT_BOX, state="visible", timeout=10000
+            )
             if not input_box:
                 return False
 
@@ -439,8 +483,14 @@ class GeminiEditor:
             image_base64 = base64.b64encode(image_data).decode()
 
             suffix = image_file.suffix.lower()
-            mime_type = {"jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png"}.get(suffix, "image/webp")
-            file_ext = {".jpg": ".jpg", ".jpeg": ".jpg", ".png": ".png"}.get(suffix, ".webp")
+            mime_type = {
+                "jpg": "image/jpeg",
+                ".jpeg": "image/jpeg",
+                ".png": "image/png",
+            }.get(suffix, "image/webp")
+            file_ext = {".jpg": ".jpg", ".jpeg": ".jpg", ".png": ".png"}.get(
+                suffix, ".webp"
+            )
 
             result = await self.page.evaluate(
                 """
@@ -499,7 +549,9 @@ class GeminiEditor:
         """输入编辑指令"""
         print(f"输入: {prompt}")
         try:
-            input_box = await self.page.wait_for_selector(INPUT_BOX, state="visible", timeout=10000)
+            input_box = await self.page.wait_for_selector(
+                INPUT_BOX, state="visible", timeout=10000
+            )
             if input_box:
                 await input_box.fill(prompt)
                 return True
@@ -514,7 +566,9 @@ class GeminiEditor:
         try:
             for selector in SUBMIT_BUTTON:
                 try:
-                    btn = await self.page.wait_for_selector(selector, state="visible", timeout=3000)
+                    btn = await self.page.wait_for_selector(
+                        selector, state="visible", timeout=3000
+                    )
                     if btn:
                         await btn.click()
                         return True
@@ -613,7 +667,11 @@ class GeminiEditor:
                 if containers:
                     container = containers[-1]
                     images = await container.query_selector_all("img")
-                    generated = [img for img in images if is_generated_image(await img.get_attribute("src"))]
+                    generated = [
+                        img
+                        for img in images
+                        if is_generated_image(await img.get_attribute("src"))
+                    ]
                     if index < len(generated):
                         target_img = generated[index]
                         break
@@ -642,7 +700,9 @@ class GeminiEditor:
                 return False, None
 
         # 保存图片
-        return await self._save_image(image_bytes, save_path, output_format, lossless, quality, remove_watermark)
+        return await self._save_image(
+            image_bytes, save_path, output_format, lossless, quality, remove_watermark
+        )
 
     async def download_image_fast(
         self,
@@ -725,16 +785,18 @@ class GeminiEditor:
                 if temp_path.exists():
                     temp_path.rename(final_path)
 
-                images_info.append({
-                    "index": i,
-                    "hash": file_hash,
-                    "id": f"{date_str}/{file_hash}",
-                    "date": date_str,
-                    "format": "webp",
-                    "path": str(final_path),
-                    "size": final_path.stat().st_size if final_path.exists() else 0,
-                    "url": url,  # 保留原始 URL 用于后台 HD 下载
-                })
+                images_info.append(
+                    {
+                        "index": i,
+                        "hash": file_hash,
+                        "id": f"{date_str}/{file_hash}",
+                        "date": date_str,
+                        "format": "webp",
+                        "path": str(final_path),
+                        "size": final_path.stat().st_size if final_path.exists() else 0,
+                        "url": url,  # 保留原始 URL 用于后台 HD 下载
+                    }
+                )
 
         return images_info
 
@@ -776,7 +838,9 @@ class GeminiEditor:
             download_btn = None
             for selector in DOWNLOAD_BUTTON:
                 try:
-                    download_btn = await self.page.wait_for_selector(selector, state="visible", timeout=1000)
+                    download_btn = await self.page.wait_for_selector(
+                        selector, state="visible", timeout=1000
+                    )
                     if download_btn:
                         break
                 except Exception:
@@ -829,7 +893,9 @@ class GeminiEditor:
             img = Image.open(BytesIO(image_bytes))
 
             if remove_watermark:
-                img = WatermarkRemover.remove_watermark(img, watermark_size=None, verbose=False)
+                img = WatermarkRemover.remove_watermark(
+                    img, watermark_size=None, verbose=False
+                )
 
             # 转换格式
             output = BytesIO()
@@ -850,7 +916,11 @@ class GeminiEditor:
             data = output.getvalue()
 
             # 计算哈希
-            file_hash = base64.urlsafe_b64encode(hashlib.sha256(data).digest()).decode("ascii").rstrip("=")
+            file_hash = (
+                base64.urlsafe_b64encode(hashlib.sha256(data).digest())
+                .decode("ascii")
+                .rstrip("=")
+            )
 
             # 保存
             Path(save_path).parent.mkdir(parents=True, exist_ok=True)
@@ -935,7 +1005,9 @@ class GeminiEditor:
                 return False
 
             # 刷新页面
-            await self.page.goto("https://gemini.google.com/app", wait_until="load", timeout=60000)
+            await self.page.goto(
+                "https://gemini.google.com/app", wait_until="load", timeout=60000
+            )
 
             # 预热环境
             success = await self.prepare_environment(model=model, temporary_chat=False)
@@ -1009,7 +1081,7 @@ class GeminiEditor:
                 return None
 
             # 5. 等待生成
-            await self.wait_for_generation(timeout=120)
+            await self.wait_for_generation(timeout=90)
 
             # 6. 获取图片数量
             count = await self.get_generated_image_count()
@@ -1033,7 +1105,9 @@ class GeminiEditor:
                     result_paths.append(str(final_path))
 
             print("=" * 60)
-            print(f"完成！生成 {len(result_paths)} 张图片，耗时 {time.time() - total_start:.1f}s")
+            print(
+                f"完成！生成 {len(result_paths)} 张图片，耗时 {time.time() - total_start:.1f}s"
+            )
             print("=" * 60)
 
             # 预热下次环境
@@ -1044,6 +1118,7 @@ class GeminiEditor:
         except Exception as e:
             print(f"编辑流程出错: {e}")
             import traceback
+
             traceback.print_exc()
             return None
 
@@ -1052,4 +1127,3 @@ class GeminiEditor:
 GeminiBrowser = GeminiEditor
 GeminiImageEditor = GeminiEditor
 EnhancedGeminiImageEditor = GeminiEditor
-
