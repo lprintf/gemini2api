@@ -110,8 +110,8 @@ class BrowserInstance:
             self.tabs = []
 
             # 计算标签页分配策略：一半 Pro，一半 Fast
-            pro_count = self.max_tabs // 2
-            fast_count = self.max_tabs - pro_count
+            fast_count = self.max_tabs // 2
+            # pro_count = self.max_tabs - fast_count
 
             # Tab 0: 使用主编辑器（Fast 模型）
             tab0 = TabInstance(
