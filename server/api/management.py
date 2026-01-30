@@ -279,6 +279,19 @@ async def update_config(request: UpdateConfigRequest):
     try:
         db = get_db()
         config = await db.update_global_config(updates)
+
+        # 同步更新内存中的 browser_pool 限制
+        if browser_pool:
+            if "max_browsers" in updates:
+                browser_pool.max_browsers = updates["max_browsers"]
+                print(f"[Config] Updated browser_pool.max_browsers to {updates['max_browsers']}")
+            if "min_browsers" in updates:
+                browser_pool.min_browsers = updates["min_browsers"]
+            if "default_rate_limit" in updates:
+                browser_pool.browser_rate_limit = updates["default_rate_limit"]
+            if "rate_window_seconds" in updates:
+                browser_pool.browser_rate_window = updates["rate_window_seconds"]
+
         return config.model_dump()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
