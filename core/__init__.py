@@ -1,13 +1,13 @@
-# Core modules
+"""
+Gemini Core 模块
+"""
+
+from . import actions
+from .launcher import GeminiLauncher
 from .watermark_remover import WatermarkRemover
-from .editor import GeminiEditor, GeminiBrowser, GeminiImageEditor, EnhancedGeminiImageEditor
 
 __all__ = [
+    "actions",
+    "GeminiLauncher",
     "WatermarkRemover",
-    "GeminiEditor",
-    # 兼容性别名
-    "GeminiBrowser",
-    "GeminiImageEditor",
-    "EnhancedGeminiImageEditor",
 ]
-

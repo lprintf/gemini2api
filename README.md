@@ -55,7 +55,8 @@ docker compose up -d
 gemini2api/
 ├── core/                    # 核心模块
 │   ├── browser/             # 浏览器配置和选择器
-│   ├── editor.py            # GeminiEditor 主类
+│   ├── actions.py           # 原子操作 (功能核心)
+│   ├── launcher.py          # 浏览器启动器 (资源管理)
 │   └── watermark_remover.py # 水印移除
 ├── server/                  # API 服务
 │   ├── api/                 # API 路由
@@ -140,7 +141,7 @@ Content-Type: application/json
 ## 架构设计
 
 ```
-请求 → API 路由 → 浏览器池 → 浏览器实例 → 标签页 → GeminiEditor
+请求 → API 路由 → 浏览器池 → 浏览器实例 → 标签页 → 原子操作 (Actions)
                     ↓
               负载均衡策略
               (最少负载/轮询/随机)

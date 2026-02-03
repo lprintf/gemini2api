@@ -24,6 +24,7 @@ from fastapi import (
 )
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+from core import actions
 from server.services.browser_pool import (
     BrowserPool,
     BrowserStatus,
@@ -492,14 +493,14 @@ async def test_playwright_upload(
 
     try:
         # 准备环境
-        if not await tab.editor.prepare_environment(model="Fast"):
+        if not await actions.prepare_environment(tab.page, model="Fast"):
             raise HTTPException(status_code=500, detail="Failed to prepare environment")
 
         # 测试上传图片
-        success = await tab.editor.upload_images_by_paste(input_paths)
+        success = await actions.upload_images_by_paste(tab.page, input_paths)
 
         # 获取实际上传的图片数量
-        actual_count = await tab.editor._get_uploaded_image_count()
+        actual_count = await actions.get_uploaded_image_count(tab.page)
 
         if success and actual_count >= len(input_paths):
             return TestUploadResponse(

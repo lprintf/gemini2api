@@ -497,10 +497,10 @@ async def list_browser_tabs(browser_id: str):
             "current_task_id": tab.current_task_id,
         }
         # 尝试获取页面标题和 URL
-        if tab.editor and tab.editor.page:
+        if tab.page:
             try:
-                tab_info["url"] = tab.editor.page.url
-                tab_info["title"] = await tab.editor.page.title()
+                tab_info["url"] = tab.page.url
+                tab_info["title"] = await tab.page.title()
             except Exception:
                 tab_info["url"] = None
                 tab_info["title"] = None
@@ -540,12 +540,12 @@ async def get_tab_screenshot(
             status_code=404, detail=f"Tab {tab_id} not found in browser {browser_id}"
         )
 
-    if tab.editor is None or tab.editor.page is None:
+    if tab.page is None:
         raise HTTPException(status_code=400, detail=f"Tab {tab_id} is not ready")
 
     try:
         # 截图到字节流
-        screenshot_bytes = await tab.editor.page.screenshot(
+        screenshot_bytes = await tab.page.screenshot(
             type="png",  # Playwright 原生只支持 png/jpeg
             full_page=full_page,
         )
@@ -556,7 +556,7 @@ async def get_tab_screenshot(
         img = Image.open(BytesIO(screenshot_bytes))
 
         # 获取视口尺寸
-        viewport_size = tab.editor.page.viewport_size or {"width": 1280, "height": 900}
+        viewport_size = tab.page.viewport_size or {"width": 1280, "height": 900}
 
         # 如果有最近的点击位置，在图上画红点
         tab_key = f"{browser_id}-{tab_id}"
@@ -614,11 +614,11 @@ async def send_mouse_input(browser_id: str, tab_id: int, request: MouseInputRequ
             status_code=404, detail=f"Tab {tab_id} not found in browser {browser_id}"
         )
 
-    if tab.editor is None or tab.editor.page is None:
+    if tab.page is None:
         raise HTTPException(status_code=400, detail=f"Tab {tab_id} is not ready")
 
     try:
-        page = tab.editor.page
+        page = tab.page
         viewport_size = page.viewport_size or {"width": 1280, "height": 900}
 
         # 将相对坐标转换为实际像素坐标（整数）
@@ -683,11 +683,11 @@ async def send_keyboard_input(
             status_code=404, detail=f"Tab {tab_id} not found in browser {browser_id}"
         )
 
-    if tab.editor is None or tab.editor.page is None:
+    if tab.page is None:
         raise HTTPException(status_code=400, detail=f"Tab {tab_id} is not ready")
 
     try:
-        page = tab.editor.page
+        page = tab.page
 
         if request.action == "type" and request.text:
             await page.keyboard.type(request.text)
@@ -731,11 +731,11 @@ async def navigate_tab(browser_id: str, tab_id: int, request: NavigateRequest):
             status_code=404, detail=f"Tab {tab_id} not found in browser {browser_id}"
         )
 
-    if tab.editor is None or tab.editor.page is None:
+    if tab.page is None:
         raise HTTPException(status_code=400, detail=f"Tab {tab_id} is not ready")
 
     try:
-        page = tab.editor.page
+        page = tab.page
 
         # 导航到指定 URL
         await page.goto(request.url, wait_until=request.wait_until, timeout=30000)
@@ -813,9 +813,9 @@ async def list_all_tabs():
                 ),
             }
             # 尝试获取页面标题和 URL
-            if tab.editor and tab.editor.page:
+            if tab.page:
                 try:
-                    tab_info["url"] = tab.editor.page.url
+                    tab_info["url"] = tab.page.url
                 except Exception:
                     tab_info["url"] = None
             all_tabs.append(tab_info)
