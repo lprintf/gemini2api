@@ -444,9 +444,7 @@ class BrowserInstance:
         remove_watermark: bool = True,
         download_mode: str = "both",
     ) -> Optional[Dict[str, Any]]:
-        """执行快速预览任务（使用空闲的标签页）"""
-        if self.status == BrowserStatus.DISABLED:
-            raise RuntimeError(f"Browser {self.browser_id} is disabled")
+        """执行快速预览任务（使用空闲的标签页）
 
         Args:
             task_id: 任务ID
@@ -457,6 +455,8 @@ class BrowserInstance:
             remove_watermark: 是否去水印（默认 True）
             download_mode: 下载模式 (preview/hd/both)
         """
+        if self.status == BrowserStatus.DISABLED:
+            raise RuntimeError(f"Browser {self.browser_id} is disabled")
         # 检查速率限制
         allowed, info = self.check_rate_limit()
         if not allowed:
