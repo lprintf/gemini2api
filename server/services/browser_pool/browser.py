@@ -397,6 +397,8 @@ class BrowserInstance:
         self, task_id: str, input_image: str, prompt: str, model: str = "Fast"
     ) -> Optional[List[str]]:
         """执行图片编辑任务（使用空闲的标签页）"""
+        if self.status == BrowserStatus.DISABLED:
+            raise RuntimeError(f"Browser {self.browser_id} is disabled")
         # 检查速率限制
         allowed, info = self.check_rate_limit()
         if not allowed:
@@ -442,7 +444,9 @@ class BrowserInstance:
         remove_watermark: bool = True,
         download_mode: str = "both",
     ) -> Optional[Dict[str, Any]]:
-        """执行快速预览任务（使用空闲的标签页）
+        """执行快速预览任务（使用空闲的标签页）"""
+        if self.status == BrowserStatus.DISABLED:
+            raise RuntimeError(f"Browser {self.browser_id} is disabled")
 
         Args:
             task_id: 任务ID
@@ -496,46 +500,6 @@ class BrowserInstance:
             self.failed_tasks += 1
             raise
 
-    async def check_login(self) -> Dict:
-        """检查登录状态"""
-        if not self.base_editor:
-            return {
-                "logged_in": False,
-                "error": "Browser not ready",
-            }
-
-        try:
-            # 尝试访问 Gemini 页面检查登录状态
-            page = self.base_editor.page
-            await page.goto(
-                "https://gemini.google.com/", wait_until="networkidle", timeout=30000
-            )
-
-            # 检查是否有登录按钮或用户头像
-            # 登录状态下通常会显示用户头像或账号信息
-            logged_in = False
-
-            # 检查是否有 "Sign in" 按钮
-            sign_in_button = await page.query_selector('text="Sign in"')
-            if not sign_in_button:
-                # 检查是否有用户头像（已登录状态）
-                avatar = await page.query_selector(
-                    '[aria-label*="Account"], [data-ogsr-up], img[alt*="Account"]'
-                )
-                if avatar:
-                    logged_in = True
-
-            return {
-                "logged_in": logged_in,
-                "browser_id": self.browser_id,
-                "account_name": self.account_name,
-            }
-
-        except Exception as e:
-            return {
-                "logged_in": False,
-                "error": str(e),
-            }
 
     def to_dict(self) -> Dict:
         """转换为字典"""

@@ -236,21 +236,6 @@ async def stop_browser(browser_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/browsers/{browser_id}/check-login")
-async def check_browser_login(browser_id: str):
-    """检查浏览器登录状态"""
-    if browser_pool is None:
-        raise HTTPException(status_code=500, detail="Browser pool not initialized")
-
-    browser = browser_pool.get_browser(browser_id)
-    if browser is None:
-        raise HTTPException(status_code=404, detail=f"Browser {browser_id} not found")
-
-    try:
-        result = await browser.check_login()
-        return result
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ==================== 全局配置 ====================

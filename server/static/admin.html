@@ -176,6 +176,12 @@
             color: #383d41;
         }
 
+        .status-disabled {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px dashed #721c24;
+        }
+
         .status-starting,
         .status-stopping {
             background: #cce5ff;
@@ -977,12 +983,17 @@
                         <td>${b.rate_limit.remaining}/${b.rate_limit.limit} per ${b.rate_limit.window_seconds}s</td>
                         <td>
                             ${b.status === 'stopped'
-                        ? `<button class="btn btn-success" onclick="startBrowser('${b.browser_id}')">Start</button>`
-                        : `<button class="btn btn-warning" onclick="stopBrowser('${b.browser_id}')">Stop</button>`
+                        ? `<button class="btn btn-success" onclick="startBrowser('${b.browser_id}')">启动</button>`
+                        : `<button class="btn btn-warning" onclick="stopBrowser('${b.browser_id}')">停止</button>`
                     }
-                            <button class="btn btn-primary" onclick="showEditBrowserModal('${b.browser_id}')">Edit</button>
-                            <button class="btn btn-secondary" onclick="checkLogin('${b.browser_id}')">Check Login</button>
-                            <button class="btn btn-danger" onclick="deleteBrowser('${b.browser_id}')">Delete</button>
+                            ${b.status !== 'stopped'
+                        ? (b.status === 'disabled'
+                            ? `<button class="btn btn-success" onclick="toggleBrowserEnabled('${b.browser_id}', true)">上线</button>`
+                            : `<button class="btn btn-secondary" onclick="toggleBrowserEnabled('${b.browser_id}', false)">下线</button>`)
+                        : ''
+                    }
+                            <button class="btn btn-primary" onclick="showEditBrowserModal('${b.browser_id}')">编辑</button>
+                            <button class="btn btn-danger" onclick="deleteBrowser('${b.browser_id}')">删除</button>
                         </td>
                     </tr>
                 `).join('');
@@ -1022,16 +1033,14 @@
             }
         }
 
-        async function checkLogin(id) {
+
+        async function toggleBrowserEnabled(id, enabled) {
             try {
-                const result = await api(`/browsers/${id}/check-login`);
-                if (result.logged_in) {
-                    showToast(`Browser ${id}: Logged in`, 'success');
-                } else {
-                    showToast(`Browser ${id}: Not logged in. ${result.error || ''}`, 'error');
-                }
+                await api(`/browsers/${id}`, 'PUT', { is_enabled: enabled });
+                showToast(`浏览器 ${id} 已${enabled ? '上线' : '下线'}`, 'success');
+                loadBrowsers();
             } catch (e) {
-                showToast('Failed to check login: ' + e.message, 'error');
+                showToast('操作失败: ' + e.message, 'error');
             }
         }
 
