@@ -397,8 +397,8 @@ class BrowserInstance:
         self, task_id: str, input_image: str, prompt: str, model: str = "Fast"
     ) -> Optional[List[str]]:
         """执行图片编辑任务（使用空闲的标签页）"""
-        if self.status == BrowserStatus.DISABLED:
-            raise RuntimeError(f"Browser {self.browser_id} is disabled")
+        if self.status == BrowserStatus.OFFLINE:
+            raise RuntimeError(f"Browser {self.browser_id} is offline")
         # 检查速率限制
         allowed, info = self.check_rate_limit()
         if not allowed:
@@ -455,8 +455,8 @@ class BrowserInstance:
             remove_watermark: 是否去水印（默认 True）
             download_mode: 下载模式 (preview/hd/both)
         """
-        if self.status == BrowserStatus.DISABLED:
-            raise RuntimeError(f"Browser {self.browser_id} is disabled")
+        if self.status == BrowserStatus.OFFLINE:
+            raise RuntimeError(f"Browser {self.browser_id} is offline")
         # 检查速率限制
         allowed, info = self.check_rate_limit()
         if not allowed:

@@ -221,12 +221,12 @@ class BrowserPool:
             if "is_enabled" in updates:
                 is_enabled = updates["is_enabled"]
                 if not is_enabled:
-                    # 如果被禁用，且当前是空闲或错误状态，则设置为 DISABLED
+                    # 如果下线，且当前是空闲或错误状态，则设置为 OFFLINE
                     if browser.status in (BrowserStatus.IDLE, BrowserStatus.ERROR):
-                        browser.status = BrowserStatus.DISABLED
+                        browser.status = BrowserStatus.OFFLINE
                 else:
-                    # 如果被启用，且当前是 DISABLED 状态，则回退到 IDLE
-                    if browser.status == BrowserStatus.DISABLED:
+                    # 如果重新上线，且当前是 OFFLINE 状态，则回退到 IDLE
+                    if browser.status == BrowserStatus.OFFLINE:
                         browser.status = BrowserStatus.IDLE
 
             # 更新数据库
