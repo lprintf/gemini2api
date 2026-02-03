@@ -218,6 +218,16 @@ class BrowserPool:
                 browser.rate_limit = updates["rate_limit"]
             if "rate_window" in updates:
                 browser.rate_window = updates["rate_window"]
+            if "is_enabled" in updates:
+                is_enabled = updates["is_enabled"]
+                if not is_enabled:
+                    # 如果被禁用，且当前是空闲或错误状态，则设置为 DISABLED
+                    if browser.status in (BrowserStatus.IDLE, BrowserStatus.ERROR):
+                        browser.status = BrowserStatus.DISABLED
+                else:
+                    # 如果被启用，且当前是 DISABLED 状态，则回退到 IDLE
+                    if browser.status == BrowserStatus.DISABLED:
+                        browser.status = BrowserStatus.IDLE
 
             # 更新数据库
             try:
