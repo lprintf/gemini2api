@@ -10,6 +10,7 @@ from core import actions
 from core.launcher import GeminiLauncher
 from server.core.database import get_db
 
+from . import tasks
 from .exceptions import BrowserStatus, NoAvailableTabs, RateLimitExceeded
 from .tab import TabInstance
 
@@ -108,7 +109,7 @@ class BrowserInstance:
 
             # 3. 预热 Tab 0
             print(f"[Browser {self.browser_id}] Preheating Tab 0...")
-            tab0_success = await tab0.reinitialize()
+            tab0_success = await tasks.reinitialize_tab(tab0)
             if not tab0_success:
                 print(f"[Browser {self.browser_id}] Tab 0 preheat failed.")
                 self.status = BrowserStatus.ERROR
@@ -124,15 +125,15 @@ class BrowserInstance:
                     new_page = await self.launcher.context.new_page()
                     await new_page.goto("https://gemini.google.com/app", wait_until="load")
                     tab.page = new_page
-                    await tab.reinitialize()
+                    await tasks.reinitialize_tab(tab)
                     return tab
 
-                tasks = []
+                init_tasks = []
                 for i in range(1, self.max_tabs):
                     model = "Fast" if i < fast_count else "Pro"
-                    tasks.append(create_and_init_tab(i, model))
+                    init_tasks.append(create_and_init_tab(i, model))
                 
-                other_tabs = await asyncio.gather(*tasks, return_exceptions=True)
+                other_tabs = await asyncio.gather(*init_tasks, return_exceptions=True)
                 for t in other_tabs:
                     if isinstance(t, TabInstance):
                         self.tabs.append(t)
@@ -196,7 +197,7 @@ class BrowserInstance:
 
         self.record_request()
         try:
-            result = await tab.execute_task(task_id, input_image, prompt, model)
+            result = await tasks.execute_task(tab, task_id, input_image, prompt, model)
             if result: self.total_tasks += 1
             else: self.failed_tasks += 1
             return result
@@ -218,7 +219,7 @@ class BrowserInstance:
 
         self.record_request()
         try:
-            result = await tab.execute_fast_task(**kwargs)
+            result = await tasks.execute_fast_task(tab, **kwargs)
             if result: self.total_tasks += 1
             else: self.failed_tasks += 1
             return result

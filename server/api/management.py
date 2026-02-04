@@ -12,7 +12,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 from server.auth import verify_admin
 from server.core.database import get_db
-from server.services.browser_pool import BrowserPool
+from server.services.browser_pool import BrowserPool, tasks
 
 router = APIRouter(
     prefix="/api/admin",
@@ -295,17 +295,17 @@ async def list_tasks(
     """获取任务列表"""
     try:
         db = get_db()
-        tasks = await db.get_tasks(
+        task_list = await db.get_tasks(
             browser_id=browser_id,
             status=status,
             limit=limit,
             offset=offset,
         )
         return {
-            "total": len(tasks),
+            "total": len(task_list),
             "limit": limit,
             "offset": offset,
-            "tasks": [task.model_dump() for task in tasks],
+            "tasks": [task.model_dump() for task in task_list],
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -427,7 +427,7 @@ async def get_dashboard():
         recent_logs = await db.get_logs(limit=10)
 
         # 最近任务
-        recent_tasks = await db.get_tasks(limit=10)
+        recent_tasks_list = await db.get_tasks(limit=10)
 
         return {
             "browsers": {
@@ -436,7 +436,7 @@ async def get_dashboard():
             },
             "tasks": task_stats.model_dump(),
             "recent_logs": [log.model_dump() for log in recent_logs],
-            "recent_tasks": [task.model_dump() for task in recent_tasks],
+            "recent_tasks": [task.model_dump() for task in recent_tasks_list],
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -779,7 +779,7 @@ async def reinitialize_tab(browser_id: str, tab_id: int):
         )
 
     try:
-        success = await tab.reinitialize()
+        success = await tasks.reinitialize_tab(tab)
         return {
             "success": success,
             "browser_id": browser_id,
