@@ -53,24 +53,21 @@ docker compose up -d
 
 ```
 gemini2api/
-├── core/                    # 核心模块
-│   ├── browser/             # 浏览器配置和选择器
-│   ├── actions.py           # 原子操作 (功能核心)
-│   ├── launcher.py          # 浏览器启动器 (资源管理)
+├── engine/                  # 引擎层 (自动化核心)
+│   ├── tasks/               # 任务定义 (run_task 模式)
+│   ├── gemini/              # 浏览器配置和选择器
+│   ├── actions.py           # 原子操作
+│   ├── launcher.py          # 浏览器启动器
 │   └── watermark_remover.py # 水印移除
-├── server/                  # API 服务
+├── services/                # 业务逻辑层 (资源管理与编排)
+│   ├── browser_pool/        # 浏览器集群管理
+│   ├── task_coordinator.py  # 任务协调者
+│   └── ...
+├── server/                  # 交付层 (API 接口)
 │   ├── api/                 # API 路由
-│   │   ├── openai_compatible.py   # OpenAI 兼容 API
-│   │   ├── gemini_compatible.py   # Gemini 兼容 API
-│   │   └── management.py          # 管理 API
-│   ├── services/            # 服务层
-│   │   └── browser_pool/    # 浏览器池管理
-│   ├── core/                # 数据库和模型
+│   ├── db/                  # 数据库和模型
 │   └── static/              # 静态文件
 ├── data/                    # 数据目录
-│   ├── browser_data/        # 浏览器用户数据
-│   ├── outputs/             # 生成的图片
-│   └── gemini.db            # SQLite 数据库
 ├── Dockerfile
 ├── docker-compose.yml
 └── pyproject.toml

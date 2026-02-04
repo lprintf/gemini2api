@@ -10,7 +10,7 @@ import time
 import base64
 from fastapi import APIRouter, HTTPException, Header, Request
 from fastapi.responses import JSONResponse
-from typing import Optional, List, Literal
+from typing import Optional, List, Literal, Any
 from pydantic import BaseModel
 from pathlib import Path
 
@@ -22,6 +22,7 @@ router = APIRouter(prefix="/v1beta", tags=["Gemini Compatible API"])
 
 # 全局变量（由 app.py 初始化）
 browser_pool: Optional[BrowserPool] = None
+task_coordinator: Any = None
 
 
 # ============ 请求模型 ============
@@ -215,25 +216,27 @@ async def generate_content(
         gemini_model = "Pro"
 
     try:
-        # 执行快速预览任务（支持多图）
-        result = await browser.execute_fast_task(
-            task_id=task_id,
-            input_images=input_paths,
+        # 使用协调者执行任务，实现 API 与 引擎任务详情的解耦
+        result_data = await task_coordinator.generate_images(
             prompt=prompt,
+            input_images=input_paths,
             model=gemini_model,
+            task_id=task_id
         )
 
-        if not result or not result.get("images"):
+        if not result_data.get("success"):
             raise HTTPException(
                 status_code=500,
                 detail={
                     "error": {
                         "code": 500,
-                        "message": "Image generation failed",
+                        "message": f"Image generation failed: {result_data.get('error')}",
                         "status": "INTERNAL"
                     }
                 }
             )
+
+        result = result_data
 
         # 构造响应
         response_parts = []

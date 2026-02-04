@@ -6,11 +6,11 @@ from collections import deque
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from core import actions
-from core.launcher import GeminiLauncher
+from server.engine import actions
+from server.engine.launcher import GeminiLauncher
 from server.db.database import get_db
 
-from . import tasks
+from server.engine.tasks.system_tasks import ReinitializeTask
 from .exceptions import BrowserStatus, NoAvailableTabs, RateLimitExceeded
 from .tab import TabInstance
 
@@ -109,8 +109,9 @@ class BrowserInstance:
 
             # 3. 预热 Tab 0
             print(f"[Browser {self.browser_id}] Preheating Tab 0...")
-            tab0_success = await tasks.reinitialize_tab(tab0)
-            if not tab0_success:
+            reinit_task = ReinitializeTask(model="Fast")
+            result0 = await reinit_task.run(tab0.page)
+            if not result0.success:
                 print(f"[Browser {self.browser_id}] Tab 0 preheat failed.")
                 self.status = BrowserStatus.ERROR
                 return
@@ -125,7 +126,7 @@ class BrowserInstance:
                     new_page = await self.launcher.context.new_page()
                     await new_page.goto("https://gemini.google.com/app", wait_until="load")
                     tab.page = new_page
-                    await tasks.reinitialize_tab(tab)
+                    await ReinitializeTask(model=model).run(tab.page)
                     return tab
 
                 init_tasks = []
@@ -183,7 +184,8 @@ class BrowserInstance:
             return sorted(matching, key=lambda t: t.tab_id, reverse=(preferred_model=="Pro"))[0]
         return sorted(idle_tabs, key=lambda t: t.tab_id, reverse=(preferred_model=="Pro"))[0]
 
-    async def execute_task(self, task_id: str, input_image: str, prompt: str, model: str = "Fast"):
+    async def run_task(self, task: Any, preferred_model: Optional[str] = None) -> Any:
+        """执行通用引擎任务"""
         if self.status == BrowserStatus.OFFLINE:
             raise RuntimeError(f"Browser {self.browser_id} is offline")
         
@@ -191,41 +193,24 @@ class BrowserInstance:
         if not allowed:
             raise RateLimitExceeded(self.browser_id, info["limit"], info["window_seconds"], info["reset"])
 
-        tab = self.get_available_tab(model)
+        tab = self.get_available_tab(preferred_model)
         if not tab:
             raise NoAvailableTabs(self.browser_id, len(self.tabs))
 
         self.record_request()
+        tab.status = BrowserStatus.BUSY
         try:
-            result = await tasks.execute_task(tab, task_id, input_image, prompt, model)
-            if result: self.total_tasks += 1
-            else: self.failed_tasks += 1
+            result = await task.run(tab.page)
+            if result.success:
+                self.total_tasks += 1
+            else:
+                self.failed_tasks += 1
             return result
         except Exception:
             self.failed_tasks += 1
             raise
-
-    async def execute_fast_task(self, **kwargs):
-        if self.status == BrowserStatus.OFFLINE:
-            raise RuntimeError(f"Browser {self.browser_id} is offline")
-        
-        allowed, info = self.check_rate_limit()
-        if not allowed:
-            raise RateLimitExceeded(self.browser_id, info["limit"], info["window_seconds"], info["reset"])
-
-        tab = self.get_available_tab(kwargs.get("model", "Fast"))
-        if not tab:
-            raise NoAvailableTabs(self.browser_id, len(self.tabs))
-
-        self.record_request()
-        try:
-            result = await tasks.execute_fast_task(tab, **kwargs)
-            if result: self.total_tasks += 1
-            else: self.failed_tasks += 1
-            return result
-        except Exception:
-            self.failed_tasks += 1
-            raise
+        finally:
+            tab.status = BrowserStatus.IDLE
 
     def to_dict(self) -> Dict:
         _, rate_info = self.check_rate_limit()

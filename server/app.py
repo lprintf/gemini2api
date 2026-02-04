@@ -12,12 +12,14 @@ import uvicorn
 from server.db.database import init_db, close_db, get_db
 from server.config import init_config_from_db, init_config_sync, get_config
 from server.services.browser_pool import BrowserPool
+from server.services.task_coordinator import TaskCoordinator
 from server.api import openai_compatible, management, gemini_compatible
 from server.auth import verify_admin
 
 
 # 全局变量
 browser_pool: BrowserPool | None = None
+task_coordinator: TaskCoordinator | None = None
 
 
 @asynccontextmanager
@@ -52,10 +54,15 @@ async def lifespan(app: FastAPI):
     print("Loading browsers from database...")
     await browser_pool.load_from_db()
 
+    # 初始化任务协调者
+    task_coordinator = TaskCoordinator(browser_pool)
+
     # 将全局变量注入到 API 模块
     openai_compatible.browser_pool = browser_pool
+    openai_compatible.task_coordinator = task_coordinator
     management.browser_pool = browser_pool
     gemini_compatible.browser_pool = browser_pool
+    gemini_compatible.task_coordinator = task_coordinator
 
     await db.add_log("INFO", "Server started successfully")
     print("Server started successfully!")

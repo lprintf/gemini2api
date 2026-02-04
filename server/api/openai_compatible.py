@@ -10,7 +10,7 @@ import time
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import List, Literal, Optional
+from typing import List, Literal, Optional, Any
 
 from fastapi import (
     APIRouter,
@@ -24,7 +24,7 @@ from fastapi import (
 )
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from core import actions
+from server.engine import actions
 from server.services.browser_pool import (
     BrowserPool,
     BrowserStatus,
@@ -37,6 +37,7 @@ router = APIRouter(prefix="/v1", tags=["OpenAI Compatible API"])
 
 # 全局变量（稍后由 app.py 初始化）
 browser_pool: Optional[BrowserPool] = None
+task_coordinator: Any = None
 
 # 上传文件存储目录
 UPLOAD_DIR = Path("data/uploads")
@@ -218,17 +219,19 @@ async def create_image_edit(
         prompt = f"{prompt_prefix}{prompt}"
 
     try:
-        # 执行快速预览任务（支持多图）
-        result = await browser.execute_fast_task(
-            task_id=task_id,
-            input_images=[str(p) for p in input_paths],
+        # 使用协调者执行任务
+        result_data = await task_coordinator.generate_images(
             prompt=prompt,
+            input_images=[str(p) for p in input_paths],
             model=gemini_model,
             download_mode=download_mode,
+            task_id=task_id
         )
 
-        if not result or not result.get("images"):
-            raise HTTPException(status_code=500, detail="Image edit failed")
+        if not result_data.get("success"):
+            raise HTTPException(status_code=500, detail=f"Image edit failed: {result_data.get('error')}")
+        
+        result = result_data
 
         # 构造响应 - 返回 {date}/{hash} 格式的 URL
         created = int(time.time())

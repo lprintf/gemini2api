@@ -1,0 +1,19 @@
+from typing import Any, Dict, Optional
+from playwright.async_api import Page
+from pydantic import BaseModel
+
+class TaskResult(BaseModel):
+    """统一的任务执行结果"""
+    success: bool
+    data: Optional[Any] = None
+    error: Optional[str] = None
+    metadata: Dict[str, Any] = {}
+
+class BaseEngineTask:
+    """Gemini 引擎任务基类"""
+    def __init__(self, **kwargs):
+        self.payload = kwargs
+
+    async def run(self, page: Page) -> TaskResult:
+        """任务执行逻辑（由子类实现）"""
+        raise NotImplementedError

@@ -9,7 +9,6 @@ services:
     restart: unless-stopped
     shm_size: 32gb
     volumes:
-      - ./core:/app/core:ro
       - ./server:/app/server:ro
       - ${DATA_DIR:-./data}:/app/data
       - ./tests:/app/tests:ro
