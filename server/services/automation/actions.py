@@ -15,7 +15,7 @@ from typing import Any, Dict, List, Literal, Optional
 from PIL import Image
 from playwright.async_api import Page
 
-from .watermark import WatermarkRemover
+from .remove_watermark.main import WatermarkRemover
 
 # =========================================================================
 # 辅助工具 (以前在 selectors.py 中)
