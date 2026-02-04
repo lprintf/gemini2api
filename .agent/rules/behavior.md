@@ -3,8 +3,11 @@ trigger: always_on
 ---
 
 # Behavior
-## Responce
-- 简明回答。
+
+## Response
+- **Concise**: Keep responses short and to the point.
+- **Language**: Respond in the same language as the user (default: Chinese as per current patterns).
 
 ## Action
-- 明确意图后进行动作,否则继续询问更多信息。
+- **Intent-First**: Do not perform destructive or complex actions without clear user intent.
+- **Inquiry**: If intent is ambiguous, ask for clarification before proceeding.
