@@ -9,7 +9,7 @@ from urllib.parse import urlparse
 
 from playwright.async_api import BrowserContext, Page, async_playwright
 
-from .browser import DEFAULT_PERMISSIONS, DEFAULT_VIEWPORT, get_launch_args
+from .gemini import DEFAULT_PERMISSIONS, DEFAULT_VIEWPORT, get_launch_args
 
 
 class GeminiLauncher:

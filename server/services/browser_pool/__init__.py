@@ -10,7 +10,7 @@
 - 支持 SQLite 数据库持久化
 """
 
-from .browser import BrowserInstance
+from .gemini import BrowserInstance
 from .exceptions import BrowserStatus, NoAvailableTabs, RateLimitExceeded
 from .pool import BrowserPool
 from .tab import TabInstance

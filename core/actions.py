@@ -15,7 +15,7 @@ from typing import Any, Dict, List, Literal, Optional
 from PIL import Image
 from playwright.async_api import Page
 
-from .browser import (
+from .gemini import (
     AGREE_BUTTON,
     DOWNLOAD_BUTTON,
     IMAGE_GEN_DESELECT,
