@@ -4,12 +4,27 @@ Gemini 浏览器启动器 - 负责 Playwright 实例的管理
 
 import asyncio
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 from urllib.parse import urlparse
 
 from playwright.async_api import BrowserContext, Page, async_playwright
 
-from .gemini import DEFAULT_PERMISSIONS, DEFAULT_VIEWPORT, get_launch_args
+# =============================================================================
+# 默认配置
+# =============================================================================
+
+DEFAULT_VIEWPORT = {"width": 820, "height": 1180}  # 模拟手机浏览器尺寸
+DEFAULT_TIMEOUT = 60000  # 60 秒
+DEFAULT_PERMISSIONS = ["clipboard-read", "clipboard-write"]
+
+BASE_ARGS = [
+    "--no-sandbox",
+    "--headless=new",
+]
+
+def get_launch_args() -> List[str]:
+    """获取浏览器启动参数"""
+    return BASE_ARGS.copy()
 
 
 class GeminiLauncher:
@@ -25,7 +40,8 @@ class GeminiLauncher:
         self.proxy = proxy
 
         # 数据目录
-        self.base_dir = Path(__file__).parent.parent / "data"
+        # 这里的 Path(__file__).parent.parent.parent 指向 server/
+        self.base_dir = Path(__file__).parent.parent.parent.parent / "data"
         data_dir = Path("/app/data") if Path("/app/data").exists() else self.base_dir
 
         if user_data_dir:

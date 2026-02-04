@@ -21,7 +21,7 @@ class TaskCoordinator:
         task_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """执行图片生成/编辑完整流程"""
-        from server.engine.tasks.image_tasks import ImageGenerationTask
+        from server.services.automation.tasks.image_tasks import ImageGenerationTask
 
         if not task_id:
             task_id = f"task-{uuid.uuid4().hex[:12]}"

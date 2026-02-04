@@ -7,7 +7,7 @@ Gemini 水印去除工具
 参考: https://github.com/allenk/GeminiWatermarkTool
 
 使用示例:
-    from server.engine.watermark_remover import WatermarkRemover
+    from server.services.automation.watermark_remover import WatermarkRemover
     from PIL import Image
 
     img = Image.open("input.png")

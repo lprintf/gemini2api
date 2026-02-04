@@ -24,7 +24,7 @@ from fastapi import (
 )
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from server.engine import actions
+from server.services.automation import actions
 from server.services.browser_pool import (
     BrowserPool,
     BrowserStatus,

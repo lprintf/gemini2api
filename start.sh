@@ -156,7 +156,7 @@ do_login() {
     echo ""
 
     # 运行登录脚本
-    docker exec -it "$CONTAINER_NAME" uv run python -m engine.gemini login "$account_id"
+    docker exec -it "$CONTAINER_NAME" uv run python -m server.services.automation login "$account_id"
 }
 
 # 停止所有服务

@@ -6,11 +6,11 @@ from collections import deque
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from server.engine import actions
-from server.engine.launcher import GeminiLauncher
+from server.services.automation import actions
+from server.services.automation.launcher import GeminiLauncher
 from server.db.database import get_db
 
-from server.engine.tasks.system_tasks import ReinitializeTask
+from server.services.automation.tasks.system_tasks import ReinitializeTask
 from .exceptions import BrowserStatus, NoAvailableTabs, RateLimitExceeded
 from .tab import TabInstance
 
