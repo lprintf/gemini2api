@@ -9,7 +9,7 @@ from typing import Dict, Optional
 from server.db.database import get_db
 from server.db.models import BrowserConfig, TaskRecord
 
-from .gemini import BrowserInstance
+from .browser import BrowserInstance
 from .exceptions import BrowserStatus
 
 
