@@ -9,8 +9,8 @@ from pathlib import Path
 from typing import Optional
 from pydantic import BaseModel
 
-from .core.database import get_db
-from .core.models import GlobalConfig
+from .db.database import get_db
+from .db.models import GlobalConfig
 
 
 class ServerConfig(BaseModel):
