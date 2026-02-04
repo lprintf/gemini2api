@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from core import actions
-from server.core.database import get_db
+from server.db.database import get_db
 
 from .exceptions import BrowserStatus
 from .tab import TabInstance

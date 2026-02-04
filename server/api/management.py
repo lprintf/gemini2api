@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 from pydantic import BaseModel
 from server.auth import verify_admin
-from server.core.database import get_db
+from server.db.database import get_db
 from server.services.browser_pool import BrowserPool, tasks
 
 router = APIRouter(

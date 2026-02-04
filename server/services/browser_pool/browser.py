@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional
 
 from core import actions
 from core.launcher import GeminiLauncher
-from server.core.database import get_db
+from server.db.database import get_db
 
 from . import tasks
 from .exceptions import BrowserStatus, NoAvailableTabs, RateLimitExceeded

@@ -9,7 +9,7 @@ from fastapi.responses import HTMLResponse, FileResponse
 from contextlib import asynccontextmanager
 import uvicorn
 
-from server.core.database import init_db, close_db, get_db
+from server.db.database import init_db, close_db, get_db
 from server.config import init_config_from_db, init_config_sync, get_config
 from server.services.browser_pool import BrowserPool
 from server.api import openai_compatible, management, gemini_compatible
