@@ -108,6 +108,3 @@ class CommandParser:
             return val_clean
 
 
-# Test example
-# select_menu_item item_selectors=['[data-test-id="bard-mode-option-思考"]'] menu_selectors=['[data-test-id="bard-mode-menu-button"]', 'button[aria-label*="Model"]', 'button[aria-label*="模型"]']
-# select_menu_item item_selectors=["text=Create images", "text=生成图片"] menu_selectors=["button.toolbox-drawer-button",'button[aria-label="工具"]','button[aria-label="Tools"]']
