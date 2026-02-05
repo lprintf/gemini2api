@@ -225,6 +225,19 @@ async def upload_images_by_paste(page: Page, image_paths: List[str]):
         await upload_image(page, p)
     return True
 
+async def get_uploaded_image_count(page: Page) -> int:
+    """原子动作：获取当前输入框中已物理存在的图片预览数量"""
+    try:
+        count = await page.evaluate("""
+            () => {
+                const images = document.querySelectorAll('.image-preview, img[src*="blob:"], img[src*="data:"], [data-image]');
+                return images.length;
+            }
+        """)
+        return int(count or 0)
+    except:
+        return 0
+
 async def click(page: Page, selectors: List[str]):
     """通用点击动作 (支持多选择器回退，不含业务逻辑检查)"""
     for sel in selectors:
@@ -275,19 +288,34 @@ async def click_submit(page: Page, selectors: List[str] = _SELECTORS["submit_btn
     return False
 
 async def submit_image_prompt(page: Page, prompt: str, image_paths: List[str] = []) -> bool:
-    """复合动作：上传多图 + 填词 + 提交 (内置终极同步逻辑)"""
+    """复合动作：上传多图 + 填词 + 提交 (内置数量校验与终极同步)"""
     try:
-        # 1. 批量上传图片 (非阻塞启动)
+        target_count = len(image_paths)
+        
+        # 1. 批量发起上传
         if image_paths:
-            print(f"[Action] Batch uploading {len(image_paths)} images...")
+            print(f"[Action] Starting batch upload for {target_count} images...")
             for p in image_paths:
                 await upload_image(page, p)
         
-        # 2. 填写提示词 (此时图片正在后台上传)
+        # 2. 填写提示词
         if prompt:
             await input_prompt(page, prompt)
             
-        # 3. 最终提交 (内置了对所有图片上传完成的等待)
+        # 3. 核心等待：直到 UI 上的图片数量达到预期
+        if target_count > 0:
+            print(f"[Action] Waiting for image count to reach {target_count}...")
+            try:
+                await page.wait_for_function(f"""
+                    (count) => {{
+                        const images = document.querySelectorAll('.image-preview, img[src*="blob:"], img[src*="data:"], [data-image]');
+                        return images.length >= count;
+                    }}
+                """, arg=target_count, timeout=10000)
+            except:
+                print(f"[Action] Warning: Image count sync timeout (curr={await get_uploaded_image_count(page)}, expected={target_count})")
+            
+        # 4. 最终提交 (click_submit 会处理后续的 loading 消失等待)
         return await click_submit(page)
     except Exception as e:
         print(f"[Action] submit_image_prompt error: {e}")
