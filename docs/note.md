@@ -7,6 +7,9 @@
 图片上传：`upload_image server/services/tasks/remove_watermark/bg_48.png`
 自动同意弹窗：`handle_consent_popups`
 
+click_submit selectors=['button.toolbox-drawer-item-list-button:has-text("Create images")','button.toolbox-drawer-item-list-button:has-text("生成图片")',"text=Create images", "text=生成图片"]
+
+
 ## 测试
 
 ```

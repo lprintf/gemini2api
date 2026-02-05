@@ -53,7 +53,12 @@ _SELECTORS = {
         'button[aria-label="工具"]',
         'button[aria-label="Tools"]',
     ],
-    "image_gen_opt": ["text=Create images", "text=生成图片"],
+    "image_gen_opt": [
+        'button.toolbox-drawer-item-list-button:has-text("Create images")',
+        'button.toolbox-drawer-item-list-button:has-text("生成图片")',
+        "text=Create images", 
+        "text=生成图片",
+    ],
     "image_gen_deselect": ".toolbox-drawer-item-deselect-button",
     "response_container": ["model-response", "response-container"],
     "download_btns": [
@@ -81,7 +86,6 @@ async def start_new_chat(page: Page, selector: str = _SELECTORS["input_box"]) ->
         # 1. 优先尝试快捷键
         if "/app" in page.url:
             await page.keyboard.press("Control+Shift+O")
-            await asyncio.sleep(0.5)
         
         # 2. 如果 URL 不对，强行跳转
         if "/app" not in page.url:
@@ -131,8 +135,8 @@ async def select_menu_item(page: Page, item_selectors: List[str], menu_selectors
             except:
                 await opt.evaluate("el => el.click()")
             return True
-    except:
-        pass
+    except Exception as e:
+        print(f"[Action] select_menu_item error: {e}")
     return False
 
 async def ensure_image_gen_active(page: Page) -> bool:

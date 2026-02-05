@@ -59,11 +59,17 @@ class CommandParser:
         real_action = aliases.get(action_name, action_name)
         
         for token in tokens[1:]:
-            if "=" in token:
-                key, val = token.split("=", 1)
-                kwargs[key] = CommandParser._parse_val(val)
-            else:
-                args.append(CommandParser._parse_val(token))
+            # 只有当 '=' 前面是合法标识符且不含括号时，才视为 kwarg
+            # 这样可以避免 selectors=["a=b"] 被识别成 ["a=b"] 是 key
+            if "=" in token and not (token.startswith("[") or token.startswith("{")):
+                parts = token.split("=", 1)
+                key = parts[0].strip()
+                # 进一步检查 key 是否像一个参数名 (不含引号、空格、中括号)
+                if " " not in key and "[" not in key and "{" not in key and '"' not in key and "'" not in key:
+                    kwargs[key] = CommandParser._parse_val(parts[1])
+                    continue
+            
+            args.append(CommandParser._parse_val(token))
         
         result = {
             "action": real_action,
