@@ -30,14 +30,13 @@ class ImageGenerationTask(BaseEngineTask):
             if not success:
                 return TaskResult(success=False, error="Environment preparation failed")
 
-            # 3. 输入阶段
-            tab.activity = "Inputting prompt/images"
-            if input_images:
-                for img_path in input_images:
-                    await actions.upload_image(page, img_path)
-            
-            await actions.input_prompt(page, prompt)
-            await actions.click_submit(page)
+            # 3. 输入与提交阶段
+            tab.activity = "Uploading and submitting"
+            success = await actions.submit_image_prompt(
+                page, prompt, image_paths=input_images
+            )
+            if not success:
+                return TaskResult(success=False, error="Failed to submit image prompt")
 
             # 4. 生成阶段
             tab.activity = "Generating images..."
@@ -88,6 +87,8 @@ class ImageGenerationTask(BaseEngineTask):
             )
 
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             return TaskResult(success=False, error=str(e))
         finally:
             tab.activity = "Idle"

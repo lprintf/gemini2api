@@ -205,6 +205,26 @@ async def upload_image(page: Page, image_path: str, selector: str = _SELECTORS["
         }
     """, [img_b64, selector])
 
+    # 必须等待预览容器和 loading 状态出现
+    # 如果这一步等不到，说明图片粘贴失败或 Gemini 没反应，后续提交肯定会缺图
+    try:
+        # 1. 优先等预览框出现
+        await page.wait_for_selector(".image-preview", timeout=5000)
+        # 2. 确认已经进入 loading 状态 (或进度条已出)
+        # 这确保了 click_submit 运行时能看到“正在上传”的状态
+        await page.wait_for_selector(".image-preview.loading, .progress-spinner, mat-progress-bar", timeout=3000)
+        print("[Action] Image upload detected and loading started.")
+    except:
+        print("[Action] Warning: upload_image timed out waiting for loading state. Image might be missing.")
+    return True
+
+
+async def upload_images_by_paste(page: Page, image_paths: List[str]):
+    """批量粘贴上传图片"""
+    for p in image_paths:
+        await upload_image(page, p)
+    return True
+
 async def click(page: Page, selectors: List[str]):
     """通用点击动作 (支持多选择器回退，不含业务逻辑检查)"""
     for sel in selectors:
@@ -222,18 +242,23 @@ async def click(page: Page, selectors: List[str]):
 
 async def click_submit(page: Page, selectors: List[str] = _SELECTORS["submit_btns"]):
     """点击提交 (采用物理点击+JS点击双重保障，带图片上传保护)"""
-    # 1. 预检：如果有正在上传的图片，先等图片就绪
+    # 1. 预检：如果有任何正在加载的迹象，死等它完成
     try:
-        # 如果检测到预览框且有 loading 状态或进度条
-        if await page.query_selector('.image-preview.loading, .progress-spinner, mat-progress-bar'):
-            print("[Action] Image(s) still uploading, waiting for completion...")
+        # 只要存在 preview 或任何 loading 元素，就进入等待逻辑
+        # 即使现在不 loading，也要等一下确认它确实不是在 loading
+        check_selector = '.image-preview, .image-preview.loading, .progress-spinner, mat-progress-bar'
+        if await page.query_selector(check_selector):
+            print("[Action] Detected image elements, ensuring upload completion...")
             await page.wait_for_function("""
                 () => {
-                    const loading = document.querySelector('.image-preview.loading, .progress-spinner, mat-progress-bar');
-                    return !loading;
+                    const loaders = document.querySelector('.image-preview.loading, .progress-spinner, mat-progress-bar');
+                    return !loaders;
                 }
-            """, timeout=20000)
-    except: pass
+            """, timeout=30000) # 给足够的上传时间
+            # 上传完后给极短的缓冲让“发送”按钮变为可用状态
+            await asyncio.sleep(0.5)
+    except Exception as e:
+        print(f"[Action] click_submit sync wait finished or failed: {e}")
 
     # 2. 执行物理点击+JS点击双重保障
     for sel in selectors:
@@ -248,6 +273,25 @@ async def click_submit(page: Page, selectors: List[str] = _SELECTORS["submit_btn
                 return True
         except: continue
     return False
+
+async def submit_image_prompt(page: Page, prompt: str, image_paths: List[str] = []) -> bool:
+    """复合动作：上传多图 + 填词 + 提交 (内置终极同步逻辑)"""
+    try:
+        # 1. 批量上传图片 (非阻塞启动)
+        if image_paths:
+            print(f"[Action] Batch uploading {len(image_paths)} images...")
+            for p in image_paths:
+                await upload_image(page, p)
+        
+        # 2. 填写提示词 (此时图片正在后台上传)
+        if prompt:
+            await input_prompt(page, prompt)
+            
+        # 3. 最终提交 (内置了对所有图片上传完成的等待)
+        return await click_submit(page)
+    except Exception as e:
+        print(f"[Action] submit_image_prompt error: {e}")
+        return False
 
 async def wait_for_results(page: Page, timeout_s: int = 60):
     """等待结果生成完成"""
@@ -285,29 +329,36 @@ async def download_image(page: Page, img_url: str, save_path: str, remove_wm: bo
     
     # 1. 尝试 Hover 下载高清
     if img_element:
-        await img_element.hover()
-        download_btn = None
-        current_selectors = _SELECTORS["download_btns"]
-        for sel in current_selectors:
-            try:
-                download_btn = await page.wait_for_selector(sel, timeout=2000, state="visible")
-                if download_btn: break
-            except: continue
+        try:
+            # 确保元素可见且稳定后再 Hover
+            await img_element.scroll_into_view_if_needed()
+            await img_element.hover(timeout=2000)
             
-        if download_btn:
-            try:
+            download_btn = None
+            current_selectors = _SELECTORS["download_btns"]
+            for sel in current_selectors:
+                try:
+                    download_btn = await page.wait_for_selector(sel, timeout=2000, state="visible")
+                    if download_btn: break
+                except: continue
+                
+            if download_btn:
                 async with page.expect_download(timeout=10000) as download_info:
                     await download_btn.click()
                 download = await download_info.value
                 path = await download.path()
                 if path:
                     return await _process_and_save(path, save_path, remove_wm)
-            except: pass
+        except Exception as e:
+            print(f"[Action] HD download failed (hover/click error): {e}, falling back to direct request.")
 
-    # 2. 备选方案：直接请求预览图
-    response = await page.request.get(img_url)
-    if response.ok:
-        return await _process_and_save(BytesIO(await response.body()), save_path, remove_wm)
+    # 2. 备选方案：如果 Hover 失败或找不到按钮，直接请求 URL 获取预览图
+    try:
+        response = await page.request.get(img_url)
+        if response.ok:
+            return await _process_and_save(BytesIO(await response.body()), save_path, remove_wm)
+    except Exception as e:
+        print(f"[Action] Fallback download failed: {e}")
     
     return False, None
 

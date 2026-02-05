@@ -48,6 +48,7 @@ class CommandParser:
         aliases = {
             "click": "click",        # 映射到通用的 click 函数
             "submit": "click_submit", # 用于发送消息
+            "generate": "submit_image_prompt", # 图文复合提交
             "type": "input_prompt",
             "input": "input_prompt",
             "reset": "start_new_chat",
