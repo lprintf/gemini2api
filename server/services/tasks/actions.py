@@ -296,14 +296,17 @@ async def _process_and_save(src: Any, dest: str, remove_wm: bool):
     except:
         return False, None
 
-async def handle_consent_popups(page: Page, selectors: List[str] = _SELECTORS["agree_btns"]):
+async def handle_consent_popups(page: Page, selectors: List[str] = _SELECTORS["agree_btns"]) -> bool:
     """处理各种同意弹窗"""
+    found = False
     for sel in selectors:
         try:
             btn = await page.query_selector(sel)
             if btn and await btn.is_visible():
                 await btn.click()
+                found = True
         except: pass
+    return found
 
 async def reinitialize_page(page: Page, model: str = "Fast") -> bool:
     """初始化/重置页面环境"""
