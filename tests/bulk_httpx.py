@@ -54,6 +54,7 @@ class Config:
     timeout: float
     exts: list[str]
     out_jsonl: Path | None
+    download_mode: str
 
 
 @dataclass
@@ -156,7 +157,7 @@ async def send_request(
                 "n": str(config.n),
                 "size": config.size,
                 "response_format": config.response_format,
-                "skip_hd": True,
+                "download_mode": config.download_mode,
             },
             files={"images": (image_path.name, image_bytes, "image/png")},
             headers={"accept": "application/json"},
@@ -384,6 +385,12 @@ def parse_args() -> Config:
         default=Path(data_dir) / "out_files_httpx.jsonl",
         help="输出文件路径",
     )
+    parser.add_argument(
+        "--download-mode",
+        choices=["preview", "hd", "both"],
+        default="both",
+        help="图片下载模式 (preview, hd, both)",
+    )
 
     args = parser.parse_args()
 
@@ -403,6 +410,7 @@ def parse_args() -> Config:
         timeout=args.timeout,
         exts=[e.strip() for e in args.exts.split(",") if e.strip()],
         out_jsonl=args.out_jsonl,
+        download_mode=args.download_mode,
     )
 
 
