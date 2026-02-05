@@ -5,6 +5,7 @@ import time
 from collections import deque
 from datetime import datetime
 from typing import Any, Dict, List, Optional
+from playwright.async_api import Page
 
 from server.services.tasks import actions
 from .launcher import GeminiLauncher
@@ -88,7 +89,8 @@ class BrowserInstance:
                 tab = TabInstance(tab_id, self.browser_id, model)
                 tab.page = page
                 # 直接调用 Action 原子步进行环境准备
-                await actions.reinitialize_page(page, model=model)
+                success = await actions.reinitialize_page(page, model=model)
+                tab.status = BrowserStatus.IDLE if success else BrowserStatus.ERROR
                 return tab
 
             # 3. 预热 Tab 0
@@ -135,6 +137,7 @@ class BrowserInstance:
 
     def get_available_tab(self, preferred_model: Optional[str] = None) -> Optional[TabInstance]:
         """寻找可用标签页"""
+        # 只要是 IDLE 状态的都可以被 Scheduler 调度
         idles = [t for t in self.tabs if t.status == BrowserStatus.IDLE]
         if not idles: return None
         
@@ -145,36 +148,17 @@ class BrowserInstance:
             
         return idles[0]
 
-    async def run_task(self, task: Any, preferred_model: Optional[str] = None) -> Any:
-        """运行任务流水线"""
-        if self.status == BrowserStatus.OFFLINE:
-            raise RuntimeError("Browser offline")
-        
-        allowed, info = self.check_rate_limit()
-        if not allowed:
-            raise RateLimitExceeded(self.browser_id, info["limit"], info["window_seconds"], info["reset"])
-
-        tab = self.get_available_tab(preferred_model)
-        if not tab:
-            raise NoAvailableTabs(self.browser_id, len(self.tabs))
-
-        self.record_request()
-        tab.status = BrowserStatus.BUSY
-        try:
-            # 核心执行点：将 Page 租借给 Task 使用
-            result = await task.run(tab.page)
-            if result.success: self.total_tasks += 1
-            else: self.failed_tasks += 1
-            return result
-        finally:
-            tab.status = BrowserStatus.IDLE
-
     def to_dict(self) -> Dict:
+        _, rate_info = self.check_rate_limit()
         return {
             "browser_id": self.browser_id,
             "status": self.status.value,
             "total_tasks": self.total_tasks,
             "failed_tasks": self.failed_tasks,
             "total_tabs": len(self.tabs),
+            "idle_tabs": sum(1 for t in self.tabs if t.status == BrowserStatus.IDLE),
+            "rate_limit": rate_info,
             "account_name": self.account_name,
+            "proxy": self.proxy,
+            "max_tabs": self.max_tabs,
         }

@@ -9,11 +9,14 @@ class TaskResult(BaseModel):
     error: Optional[str] = None
     metadata: Dict[str, Any] = {}
 
+from ..objects.exceptions import BrowserStatus
+# 我们在运行时动态注入 tab 
+
 class BaseEngineTask:
     """Gemini 引擎任务基类"""
     def __init__(self, **kwargs):
         self.payload = kwargs
 
-    async def run(self, page: Page) -> TaskResult:
+    async def run(self, tab: Any) -> TaskResult:
         """任务执行逻辑（由子类实现）"""
         raise NotImplementedError

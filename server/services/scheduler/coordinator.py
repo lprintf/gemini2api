@@ -20,8 +20,9 @@ class TaskCoordinator:
         remove_watermark: bool = True,
         task_id: Optional[str] = None
     ) -> Dict[str, Any]:
-        """执行图片生成/编辑完整流程"""
+        """执行图片生成/编辑完整流程 (生命周期受控于此)"""
         from ..tasks.image import ImageGenerationTask
+        from ..objects.exceptions import BrowserStatus
 
         if not task_id:
             task_id = f"task-{uuid.uuid4().hex[:12]}"
@@ -33,7 +34,13 @@ class TaskCoordinator:
         if not browser:
             raise RuntimeError("No available browsers")
 
-        # 2. 封装引擎任务 (封装了自动化和基本的下载逻辑)
+        # 2. 从浏览器租借一个具体的 Tab (物理资源)
+        tab = browser.get_available_tab(preferred_model=model)
+        if not tab:
+            # 理论上 pool.get_available_browser 已经确保了有可用 tab
+            raise RuntimeError(f"Browser {browser.browser_id} has no available tabs")
+
+        # 3. 准备执行细节
         engine_task = ImageGenerationTask(
             prompt=prompt,
             input_images=input_images,
@@ -42,29 +49,40 @@ class TaskCoordinator:
             remove_watermark=remove_watermark
         )
 
+        # 4. 【生命周期管控点】：开始执行，标记资源忙碌
+        browser.record_request()
+        tab.status = BrowserStatus.BUSY
+        
         try:
-            # 3. 执行任务
-            result = await browser.run_task(engine_task, preferred_model=model)
+            # 5. 注入物理 Page 到业务 Task 中运行
+            result = await engine_task.run(tab.page)
             
+            # 统计
+            if result.success:
+                browser.total_tasks += 1
+            else:
+                browser.failed_tasks += 1
+
             if not result.success:
                 error_msg = result.error or "Unknown engine error"
                 await self._record_task_failure(task_id, error_msg, time.time() - start_time)
                 return {"success": False, "error": error_msg}
 
-            # 4. 成功后记录到数据库 (可选，看目前的 DB 实现)
-            # result.data 通常包含 {"images": [...], "date": "..."}
-            images = result.data.get("images", [])
-            
             return {
                 "success": True,
                 "task_id": task_id,
-                "images": images,
+                "images": result.data.get("images", []),
                 "duration": time.time() - start_time
             }
 
         except Exception as e:
             await self._record_task_failure(task_id, str(e), time.time() - start_time)
             raise e
+        finally:
+            # 6. 【生命周期管控点】：任务结束，回收资源至空闲状态
+            # 即使任务崩溃，也确保 Tab 状态能刷回 IDLE (除非是物理损坏，后续可补重置逻辑)
+            tab.status = BrowserStatus.IDLE
+            tab.last_active_at = time.time()
 
     async def _record_task_failure(self, task_id: str, error: str, duration: float):
         """记录任务失败到数据库"""

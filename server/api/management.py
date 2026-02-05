@@ -488,16 +488,8 @@ async def list_browser_tabs(browser_id: str):
 
     tabs_info = []
     for tab in browser.tabs:
-        tab_info = {
-            "tab_id": tab.tab_id,
-            "browser_id": tab.browser_id,
-            "preferred_model": tab.preferred_model,
-            "status": tab.status.value,
-            "total_tasks": tab.total_tasks,
-            "failed_tasks": tab.failed_tasks,
-            "current_task_id": tab.current_task_id,
-        }
-        # 尝试获取页面标题和 URL
+        tab_info = tab.to_dict()
+        # 补充页面动态信息
         if tab.page:
             try:
                 tab_info["url"] = tab.page.url
@@ -800,19 +792,7 @@ async def list_all_tabs():
     all_tabs = []
     for browser in browser_pool.browsers.values():
         for tab in browser.tabs:
-            tab_info = {
-                "browser_id": tab.browser_id,
-                "tab_id": tab.tab_id,
-                "preferred_model": tab.preferred_model,
-                "status": tab.status.value,
-                "total_tasks": tab.total_tasks,
-                "failed_tasks": tab.failed_tasks,
-                "consecutive_failures": tab.consecutive_failures,
-                "current_task_id": tab.current_task_id,
-                "last_active_at": (
-                    tab.last_active_at.isoformat() if tab.last_active_at else None
-                ),
-            }
+            tab_info = tab.to_dict()
             # 尝试获取页面标题和 URL
             if tab.page:
                 try:

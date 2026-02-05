@@ -1138,8 +1138,8 @@
                 // 更新统计卡片
                 document.getElementById('totalTabs').textContent = data.total;
                 document.getElementById('idleTabs').textContent = data.status_count.idle || 0;
-                document.getElementById('busyTabs').textContent = (data.status_count.busy || 0) + (data.status_count.downloading_hd || 0);
-                const errorCount = (data.status_count.error || 0) + (data.status_count.starting || 0) + (data.status_count.preheating || 0);
+                document.getElementById('busyTabs').textContent = data.status_count.busy || 0;
+                const errorCount = (data.status_count.error || 0) + (data.status_count.starting || 0) + (data.status_count.offline || 0);
                 document.getElementById('errorTabs').textContent = errorCount;
 
                 // 更新浏览器筛选器
@@ -1172,7 +1172,11 @@
                         <td><strong>${t.browser_id}</strong></td>
                         <td>Tab ${t.tab_id}</td>
                         <td><span class="status-badge ${t.preferred_model === 'Pro' ? 'status-processing' : 'status-completed'}">${t.preferred_model}</span></td>
-                        <td><span class="status-badge status-${t.status}">${t.status}</span></td>
+                        <td>
+                            <span class="status-badge status-${t.status}">
+                                ${t.status === 'busy' ? escapeHtml(t.activity || 'Busy') : t.status}
+                            </span>
+                        </td>
                         <td>${t.total_tasks}</td>
                         <td>${t.failed_tasks} (${t.consecutive_failures} consecutive)</td>
                         <td>${formatTime(t.last_active_at)}</td>

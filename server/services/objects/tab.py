@@ -22,6 +22,7 @@ class TabInstance:
         self.failed_tasks = 0
         self.consecutive_failures = 0
         self.last_active_at: Optional[datetime] = None
+        self.activity: str = "Idle"  # 细粒度执行活动描述
         
         # 任务相关中间状态
         self.hd_metadata: Optional[Dict[str, Any]] = None
@@ -37,5 +38,6 @@ class TabInstance:
             "total_tasks": self.total_tasks,
             "failed_tasks": self.failed_tasks,
             "current_task_id": self.current_task_id,
+            "activity": self.activity,
             "last_active_at": self.last_active_at.isoformat() if self.last_active_at else None,
         }

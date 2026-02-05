@@ -7,15 +7,12 @@ from enum import Enum
 class BrowserStatus(str, Enum):
     """浏览器状态"""
 
-    IDLE = "idle"  # 空闲，可接受任务
-    BUSY = "busy"  # 忙碌，正在处理任务
-    DOWNLOADING_HD = "downloading_hd"  # 后台下载高清图中
-    PREHEATING = "preheating"  # 预热中（准备环境）
-    OFFLINE = "offline"  # 下线状态，不接受任务
-    STARTING = "starting"  # 启动中
-    STOPPING = "stopping"  # 停止中
-    ERROR = "error"  # 错误状态
-    STOPPED = "stopped"  # 已停止
+    IDLE = "idle"  # 可用
+    BUSY = "busy"  # 忙碌
+    OFFLINE = "offline"  # 下线(检修)
+    ERROR = "error"  # 故障
+    STARTING = "starting" # 启动中
+    STOPPED = "stopped" # 已停止
 
 
 class RateLimitExceeded(Exception):
