@@ -135,6 +135,10 @@ class BrowserInstance:
         except:
             self.status = BrowserStatus.ERROR
 
+    def get_busy_tabs_count(self) -> int:
+        """获取忙碌标签页数量"""
+        return sum(1 for t in self.tabs if t.status == BrowserStatus.BUSY)
+
     def get_available_tab(self, preferred_model: Optional[str] = None) -> Optional[TabInstance]:
         """寻找可用标签页"""
         # 只要是 IDLE 状态的都可以被 Scheduler 调度

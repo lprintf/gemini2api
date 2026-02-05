@@ -39,3 +39,10 @@ class NoAvailableTabs(Exception):
         super().__init__(
             f"Browser {browser_id} has no available tabs (all {total_tabs} tabs are busy)"
         )
+
+
+class NoAvailableBrowsers(Exception):
+    """没有可用浏览器异常"""
+
+    def __init__(self):
+        super().__init__("No available browsers (all instances are busy or offline)")

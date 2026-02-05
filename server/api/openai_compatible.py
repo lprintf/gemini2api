@@ -28,6 +28,7 @@ from server.services.tasks import actions
 from server.services.scheduler.pool import BrowserPool
 from server.services.objects.exceptions import (
     BrowserStatus,
+    NoAvailableBrowsers,
     NoAvailableTabs,
     RateLimitExceeded,
 )
@@ -206,11 +207,6 @@ async def create_image_edit(
             detail="At least one image must be provided via 'images' or 'image_paths'",
         )
 
-    # 获取可用浏览器
-    browser = await browser_pool.get_available_browser()
-    if browser is None:
-        raise HTTPException(status_code=503, detail="No available browsers")
-
     # 转换模型名称
     gemini_model = "Pro" if "pro" in model.lower() else "Fast"
 
@@ -219,7 +215,7 @@ async def create_image_edit(
         prompt = f"{prompt_prefix}{prompt}"
 
     try:
-        # 使用协调者执行任务
+        # 使用协调者执行任务 (生成过程已包含资源调度)
         result_data = await task_coordinator.generate_images(
             prompt=prompt,
             input_images=[str(p) for p in input_paths],
@@ -268,14 +264,14 @@ async def create_image_edit(
             },
             headers={"Retry-After": str(e.retry_after)},
         )
-    except NoAvailableTabs as e:
+    except (NoAvailableTabs, NoAvailableBrowsers) as e:
         return JSONResponse(
             status_code=429,
             content={
                 "error": {
                     "message": str(e),
                     "type": "rate_limit_exceeded",
-                    "code": "no_available_tabs",
+                    "code": "no_available_resources",
                     "param": None,
                 }
             },
@@ -484,13 +480,13 @@ async def test_playwright_upload(
     if not input_paths:
         raise HTTPException(status_code=400, detail="No valid images")
 
-    # 获取可用浏览器
-    browser = await browser_pool.get_available_browser()
+    # 获取可用浏览器 (指定 Fast 优先，因为测试上传不需要高性能模型)
+    browser = await browser_pool.get_available_browser(preferred_model="Fast")
     if browser is None:
         raise HTTPException(status_code=503, detail="No available browsers")
 
     # 获取空闲标签页
-    tab = browser.get_available_tab()
+    tab = browser.get_available_tab(preferred_model="Fast")
     if tab is None:
         raise HTTPException(status_code=503, detail="No available tabs")
 

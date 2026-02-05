@@ -295,10 +295,13 @@ def parse_args() -> Config:
     """解析命令行参数"""
     parser = argparse.ArgumentParser(description="httpx 异步批量压测工具")
 
+    data_dir = os.getenv("DATA_DIR", "/app/data")
+    default_images_dir = Path(data_dir) / "sample_images"
+
     parser.add_argument(
         "--images-dir",
         type=Path,
-        default=Path("/data/gemini2api/sample_images/"),
+        default=default_images_dir,
         help="图片目录",
     )
     parser.add_argument(
@@ -378,7 +381,7 @@ def parse_args() -> Config:
     parser.add_argument(
         "--out-jsonl",
         type=Path,
-        default=Path("/data/gemini2api/out_files_httpx.jsonl"),
+        default=Path(data_dir) / "out_files_httpx.jsonl",
         help="输出文件路径",
     )
 

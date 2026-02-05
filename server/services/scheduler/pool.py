@@ -317,7 +317,7 @@ class BrowserPool:
         if strategy == "least_loaded":
             # 按空闲标签页数量分组
             def get_idle_tabs_count(b: BrowserInstance) -> int:
-                return len(b.tabs) - b.get_busy_tabs_count()
+                return sum(1 for t in b.tabs if t.status == BrowserStatus.IDLE)
 
             # 找出空闲标签页最多的数量
             max_idle_tabs = max(get_idle_tabs_count(b) for b in available_browsers)

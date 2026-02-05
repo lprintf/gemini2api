@@ -1,6 +1,7 @@
 import asyncio
 import uuid
 import time
+from datetime import datetime
 from typing import List, Optional, Any, Dict
 from server.db.database import get_db
 from .pool import BrowserPool
@@ -30,9 +31,10 @@ class TaskCoordinator:
         start_time = time.time()
         
         # 1. 获取可用浏览器
+        from ..objects.exceptions import NoAvailableBrowsers
         browser = await self.pool.get_available_browser(preferred_model=model)
         if not browser:
-            raise RuntimeError("No available browsers")
+            raise NoAvailableBrowsers()
 
         # 2. 从浏览器租借一个具体的 Tab (物理资源)
         tab = browser.get_available_tab(preferred_model=model)
@@ -54,8 +56,8 @@ class TaskCoordinator:
         tab.status = BrowserStatus.BUSY
         
         try:
-            # 5. 注入物理 Page 到业务 Task 中运行
-            result = await engine_task.run(tab.page)
+            # 5. 注入 TabInstance 到业务 Task 中运行
+            result = await engine_task.run(tab)
             
             # 统计
             if result.success:
@@ -82,7 +84,7 @@ class TaskCoordinator:
             # 6. 【生命周期管控点】：任务结束，回收资源至空闲状态
             # 即使任务崩溃，也确保 Tab 状态能刷回 IDLE (除非是物理损坏，后续可补重置逻辑)
             tab.status = BrowserStatus.IDLE
-            tab.last_active_at = time.time()
+            tab.last_active_at = datetime.now()
 
     async def _record_task_failure(self, task_id: str, error: str, duration: float):
         """记录任务失败到数据库"""
