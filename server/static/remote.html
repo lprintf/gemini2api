@@ -421,6 +421,24 @@
             <ul id="tabList" class="tab-list">
                 <li class="tab-item" style="color: #666;">Select a browser first</li>
             </ul>
+
+            <!-- 命令运行器 (Command Runner) -->
+            <div style="margin-top: 2rem; border-top: 1px solid #333; padding-top: 1.5rem;">
+                <h3>Command Runner</h3>
+                <div style="display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.5rem;">
+                    <input type="text" id="cmdInput" class="modal-input"
+                        style="font-size: 0.85rem; padding: 0.5rem; background: #0f172a; border-color: #334155;"
+                        placeholder='e.g. click #btn, input "hello" #box'
+                        onkeydown="if(event.key==='Enter') runCommand()">
+                    <button class="btn btn-primary" style="width: 100%;" onclick="runCommand()">Run Command</button>
+                    <div style="font-size: 0.7rem; color: #64748b; margin-top: 0.2rem; line-height: 1.4;">
+                        • <b>click</b> [#sel]<br>
+                        • <b>input</b> "text" [#sel]<br>
+                        • <b>model</b> fast|pro<br>
+                        • <b>new_chat</b>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- 主内容区 -->
@@ -688,6 +706,50 @@
                 showToast('Navigation failed: ' + e.message, 'error');
             }
         }
+
+        async function clearLastClick() {
+            if (!selectedBrowser || selectedTab === null) return;
+            // 通过获取一张新截图来隐式清除红点
+            await refreshScreenshot();
+        }
+
+        async function runCommand() {
+            const inputEl = document.getElementById('cmdInput');
+            const cmd = inputEl.value.trim();
+            if (!cmd) return;
+
+            if (!selectedBrowser || selectedTab === null) {
+                showToast('Please select a browser and tab first', 'error');
+                return;
+            }
+
+            const btn = event.target.tagName === 'BUTTON' ? event.target : event.target.closest('button');
+            const originalText = btn ? btn.textContent : 'Run';
+            if (btn) { btn.textContent = 'Running...'; btn.disabled = true; }
+
+            try {
+                // 直接发送原始字符串到后端解析
+                const response = await fetch(`${API_BASE}/browsers/${selectedBrowser}/tabs/${selectedTab}/command`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ cmd: cmd })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    showToast('Command executed', 'success');
+                    inputEl.value = '';
+                    if (autoRefresh) setTimeout(refreshScreenshot, 500);
+                } else {
+                    showToast('Failed: ' + (data.error || 'Unknown error'), 'error');
+                }
+            } catch (e) {
+                showToast('API error: ' + e.message, 'error');
+            } finally {
+                if (btn) { btn.textContent = originalText; btn.disabled = false; }
+            }
+        }
+
 
         // 后退
         async function goBack() {

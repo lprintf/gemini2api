@@ -4,6 +4,7 @@
 用于管理浏览器、配置、任务、日志等（需要身份认证）
 """
 
+import asyncio
 from io import BytesIO
 from typing import List, Optional
 
@@ -14,6 +15,8 @@ from server.auth import verify_admin
 from server.db.database import get_db
 from server.services.scheduler.pool import BrowserPool
 from server.services.tasks.system import ReinitializeTask
+from server.services.tasks import actions
+from server.services.tasks.parser import CommandParser
 
 router = APIRouter(
     prefix="/api/admin",
@@ -466,9 +469,22 @@ class KeyboardInputRequest(BaseModel):
 
 class NavigateRequest(BaseModel):
     """导航请求"""
-
     url: str
     wait_until: str = "load"  # "load", "domcontentloaded", "networkidle"
+
+
+class SelectorActionRequest(BaseModel):
+    """基于选择器的动作请求"""
+    action: str  # "click", "input", "new_chat", "set_model"
+    selector: Optional[str] = None
+    selectors: Optional[List[str]] = None
+    text: Optional[str] = None
+    model: Optional[str] = "Fast"
+
+
+class CommandExecuteRequest(BaseModel):
+    """纯字符串命令请求"""
+    cmd: str
 
 
 # 存储最近的点击位置（用于在截图上绘制标记）
@@ -814,4 +830,103 @@ async def list_all_tabs():
         "total": len(all_tabs),
         "status_count": status_count,
         "tabs": all_tabs,
+    }
+
+
+@router.post("/browsers/{browser_id}/tabs/{tab_id}/action")
+async def execute_selector_action(browser_id: str, tab_id: int, request: SelectorActionRequest):
+    """在指定的标签页上执行原子动作 (传统接口)"""
+    # 转换为 Command 执行请求
+    cmd_map = {
+        "click": f"click",
+        "input": f"input \"{request.text}\"",
+        "new_chat": "new_chat",
+        "set_model": f"model {request.model}"
+    }
+    if request.selector:
+        if request.action == "input":
+            cmd = f"input \"{request.text}\" selector=\"{request.selector}\""
+        elif request.action == "click":
+            cmd = f"click selector=\"{request.selector}\""
+        else:
+            cmd = f"{request.action} selector=\"{request.selector}\""
+    else:
+        cmd = cmd_map.get(request.action, request.action)
+        
+    return await execute_raw_command(browser_id, tab_id, CommandExecuteRequest(cmd=cmd))
+
+
+@router.post("/browsers/{browser_id}/tabs/{tab_id}/command")
+async def execute_raw_command(browser_id: str, tab_id: int, request: CommandExecuteRequest):
+    """解析并执行字符串指令 (全动态引擎)"""
+    parsed = CommandParser.parse(request.cmd)
+    if not parsed:
+        return {"success": False, "error": f"Invalid command format: {request.cmd}"}
+    
+    if browser_pool is None:
+        raise HTTPException(status_code=500, detail="Browser pool not initialized")
+
+    browser = browser_pool.get_browser(browser_id)
+    if not browser:
+        raise HTTPException(status_code=404, detail="Browser not found")
+
+    tab = next((t for t in browser.tabs if t.tab_id == tab_id), None)
+    if not tab or not tab.page:
+        raise HTTPException(status_code=400, detail="Tab not ready")
+
+    target_action = parsed["action"]
+    args = parsed["args"]
+    kwargs = parsed["kwargs"]
+    
+    success = False
+    error = None
+
+    try:
+        print(f"[Command] Executing action '{target_action}' on Browser {browser_id} Tab {tab_id}")
+        # 1. 动态查找 actions 模块
+        func = getattr(actions, target_action, None)
+        
+        if func and callable(func):
+            print(f"[Command] Calling actions.{target_action} with args={args} kwargs={kwargs}")
+            # 自动注入 page 作为第一个参数
+            res = func(tab.page, *args, **kwargs)
+            if asyncio.iscoroutine(res):
+                success = await res
+            else:
+                success = res
+            print(f"[Command] execution success: {success}")
+        
+        # 2. 处理特殊内置指令
+        elif target_action == "sleep":
+            seconds = args[0] if args else 1
+            print(f"[Command] Sleeping for {seconds}s")
+            await asyncio.sleep(float(seconds))
+            success = True
+        
+        elif target_action == "goto":
+            if not args: raise ValueError("URL is required for goto")
+            print(f"[Command] Navigating to {args[0]}")
+            await tab.page.goto(args[0], wait_until="networkidle")
+            success = True
+            
+        else:
+            success = False
+            error = f"Action '{target_action}' not found in actions.py or built-ins"
+            print(f"[Command] Error: {error}")
+
+    except Exception as e:
+        success = False
+        error = str(e)
+        print(f"[Command] Exception occurred: {error}")
+        import traceback
+        traceback.print_exc()
+
+    return {
+        "success": success, 
+        "error": error, 
+        "executed": {
+            "action": target_action,
+            "args": args,
+            "kwargs": kwargs
+        }
     }
