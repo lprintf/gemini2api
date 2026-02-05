@@ -46,8 +46,8 @@ class CommandParser:
         
         # 处理别名
         aliases = {
-            "click": "click_submit",
-            "submit": "click_submit",
+            "click": "click",        # 映射到通用的 click 函数
+            "submit": "click_submit", # 用于发送消息
             "type": "input_prompt",
             "input": "input_prompt",
             "reset": "start_new_chat",

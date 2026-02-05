@@ -56,8 +56,6 @@ _SELECTORS = {
     "image_gen_opt": [
         'button.toolbox-drawer-item-list-button:has-text("Create images")',
         'button.toolbox-drawer-item-list-button:has-text("生成图片")',
-        "text=Create images", 
-        "text=生成图片",
     ],
     "image_gen_deselect": ".toolbox-drawer-item-deselect-button",
     "response_container": ["model-response", "response-container"],
@@ -185,7 +183,7 @@ async def input_prompt(page: Page, prompt: str, selector: str = _SELECTORS["inpu
     return True
 
 async def upload_image(page: Page, image_path: str, selector: str = _SELECTORS["input_box"]):
-    """粘贴图片上传"""
+    """粘贴图片上传 (非阻塞版：仅触发粘贴)"""
     img_file = Path(image_path)
     if not img_file.exists(): return False
     
@@ -200,14 +198,44 @@ async def upload_image(page: Page, image_path: str, selector: str = _SELECTORS["
             const dt = new DataTransfer();
             dt.items.add(file);
             const target = document.querySelector(target_selector);
+            if (!target) return false;
             target.focus();
             target.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true }));
             return true;
         }
     """, [img_b64, selector])
 
+async def click(page: Page, selectors: List[str]):
+    """通用点击动作 (支持多选择器回退，不含业务逻辑检查)"""
+    for sel in selectors:
+        try:
+            btn = await page.wait_for_selector(sel, timeout=3000, state="visible")
+            if btn:
+                try:
+                    await btn.click(timeout=2000)
+                except:
+                    # JS 强制点击兜底
+                    await btn.evaluate("el => el.click()")
+                return True
+        except: continue
+    return False
+
 async def click_submit(page: Page, selectors: List[str] = _SELECTORS["submit_btns"]):
-    """点击提交 (采用物理点击+JS点击双重保障)"""
+    """点击提交 (采用物理点击+JS点击双重保障，带图片上传保护)"""
+    # 1. 预检：如果有正在上传的图片，先等图片就绪
+    try:
+        # 如果检测到预览框且有 loading 状态或进度条
+        if await page.query_selector('.image-preview.loading, .progress-spinner, mat-progress-bar'):
+            print("[Action] Image(s) still uploading, waiting for completion...")
+            await page.wait_for_function("""
+                () => {
+                    const loading = document.querySelector('.image-preview.loading, .progress-spinner, mat-progress-bar');
+                    return !loading;
+                }
+            """, timeout=20000)
+    except: pass
+
+    # 2. 执行物理点击+JS点击双重保障
     for sel in selectors:
         try:
             btn = await page.wait_for_selector(sel, timeout=3000, state="visible")
