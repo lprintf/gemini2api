@@ -519,5 +519,11 @@ async def test_playwright_upload(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Upload test failed: {e}")
     finally:
-        # 重新初始化标签页（清理状态）
-        tab.status = BrowserStatus.IDLE
+        # 启动后台重置，确保测试上传的图片被清理
+        async def background_cleanup(t):
+            try:
+                await actions.reinitialize_page(t.page, model="Fast")
+            finally:
+                t.status = BrowserStatus.IDLE
+        
+        asyncio.create_task(background_cleanup(tab))

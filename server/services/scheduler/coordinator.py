@@ -81,10 +81,21 @@ class TaskCoordinator:
             await self._record_task_failure(task_id, str(e), time.time() - start_time)
             raise e
         finally:
-            # 6. 【生命周期管控点】：任务结束，回收资源至空闲状态
-            # 即使任务崩溃，也确保 Tab 状态能刷回 IDLE (除非是物理损坏，后续可补重置逻辑)
-            tab.status = BrowserStatus.IDLE
-            tab.last_active_at = datetime.now()
+            # 6. 【生命周期管控点】：任务结束，触发环境重置
+            # 为了不增加 API 响应延迟，我们将重置逻辑放在后台执行，
+            # 但在重置完成前，Tab 依然保持 BUSY 状态以防止被抢占。
+            async def background_rewarm(t, m):
+                try:
+                    from ..tasks import actions
+                    await actions.reinitialize_page(t.page, model=m)
+                except Exception as e:
+                    print(f"[Coordinator] Background rewarm failed: {e}")
+                finally:
+                    t.status = BrowserStatus.IDLE
+                    t.last_active_at = datetime.now()
+            
+            # 启动后台重置任务，不阻塞当前请求的返回
+            asyncio.create_task(background_rewarm(tab, model))
 
     async def _record_task_failure(self, task_id: str, error: str, duration: float):
         """记录任务失败到数据库"""
