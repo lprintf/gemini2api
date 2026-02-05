@@ -11,8 +11,8 @@ import uvicorn
 
 from server.db.database import init_db, close_db, get_db
 from server.config import init_config_from_db, init_config_sync, get_config
-from server.services.browser_pool import BrowserPool
-from server.services.task_coordinator import TaskCoordinator
+from server.services.scheduler.pool import BrowserPool
+from server.services.scheduler.coordinator import TaskCoordinator
 from server.api import openai_compatible, management, gemini_compatible
 from server.auth import verify_admin
 
@@ -26,6 +26,7 @@ task_coordinator: TaskCoordinator | None = None
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
     global browser_pool
+    global task_coordinator
 
     # 启动时初始化
     print("Starting Gemini Image Edit API Server...")
@@ -208,28 +209,28 @@ async def root():
         <div class="container">
             <h1>Gemini Image Edit API</h1>
             <p>OpenAI-compatible image editing API powered by Google Gemini</p>
-
+ 
             <div class="info">
                 <strong>Status:</strong> Running<br>
                 <strong>API Docs:</strong> <a href="/docs">/docs</a><br>
                 <strong>Alternative Docs:</strong> <a href="/redoc">/redoc</a><br>
                 <strong>Admin Panel:</strong> <a href="/admin">/admin</a>
             </div>
-
+ 
             <a href="/admin" class="btn">Open Admin Panel</a>
-
+ 
             <h2>API Endpoints</h2>
-
+ 
             <h3>Gemini Compatible API</h3>
             <div class="endpoint">POST /v1beta/models/{model_id}:generateContent</div>
             <div class="endpoint">GET /v1beta/models</div>
             <div class="endpoint">GET /v1beta/models/{model_id}</div>
-
+ 
             <h3>OpenAI Compatible API</h3>
             <div class="endpoint">POST /v1/images/edits</div>
             <div class="endpoint">GET /v1/images/tasks/{task_id}</div>
             <div class="endpoint">GET /v1/models</div>
-
+ 
             <h3>Management API</h3>
             <div class="endpoint">GET /api/admin/browsers</div>
             <div class="endpoint">POST /api/admin/browsers</div>
@@ -244,19 +245,19 @@ async def root():
             <div class="endpoint">GET /api/admin/tasks/stats</div>
             <div class="endpoint">GET /api/admin/logs</div>
             <div class="endpoint">GET /api/admin/dashboard</div>
-
+ 
             <h2>Authentication</h2>
             <p>API requests accept an optional API key in the <code>Authorization</code> header:</p>
             <div class="endpoint">Authorization: Bearer sk-your-api-key</div>
-
+ 
             <h2>Documentation</h2>
             <p>Visit <a href="/docs">/docs</a> for interactive API documentation.</p>
         </div>
     </body>
     </html>
     """
-
-
+ 
+ 
 @app.get("/health")
 async def health_check():
     """健康检查"""
@@ -264,8 +265,8 @@ async def health_check():
         "status": "ok",
         "browsers": browser_pool.get_status() if browser_pool else None,
     }
-
-
+ 
+ 
 if __name__ == "__main__":
     # 开发模式运行
     try:
@@ -275,7 +276,7 @@ if __name__ == "__main__":
     except RuntimeError:
         host = "0.0.0.0"
         port = 8000
-
+ 
     uvicorn.run(
         "server.app:app",
         host=host,

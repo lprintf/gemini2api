@@ -9,8 +9,8 @@ from typing import Dict, Optional
 from server.db.database import get_db
 from server.db.models import BrowserConfig, TaskRecord
 
-from .browser import BrowserInstance
-from .exceptions import BrowserStatus
+from ..objects.browser import BrowserInstance
+from ..objects.exceptions import BrowserStatus
 
 
 class BrowserPool:

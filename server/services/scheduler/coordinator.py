@@ -3,7 +3,7 @@ import uuid
 import time
 from typing import List, Optional, Any, Dict
 from server.db.database import get_db
-from .browser_pool.pool import BrowserPool
+from .pool import BrowserPool
 
 class TaskCoordinator:
     """任务协调者：负责资源调度、执行引擎任务以及业务层的数据记录"""
@@ -21,7 +21,7 @@ class TaskCoordinator:
         task_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """执行图片生成/编辑完整流程"""
-        from server.services.automation.tasks.image_tasks import ImageGenerationTask
+        from ..tasks.image import ImageGenerationTask
 
         if not task_id:
             task_id = f"task-{uuid.uuid4().hex[:12]}"

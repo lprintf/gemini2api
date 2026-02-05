@@ -12,8 +12,8 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 from server.auth import verify_admin
 from server.db.database import get_db
-from server.services.browser_pool import BrowserPool
-from server.services.automation.tasks.system_tasks import ReinitializeTask
+from server.services.scheduler.pool import BrowserPool
+from server.services.tasks.system import ReinitializeTask
 
 router = APIRouter(
     prefix="/api/admin",

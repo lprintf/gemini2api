@@ -24,9 +24,9 @@ from fastapi import (
 )
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from server.services.automation import actions
-from server.services.browser_pool import (
-    BrowserPool,
+from server.services.tasks import actions
+from server.services.scheduler.pool import BrowserPool
+from server.services.objects.exceptions import (
     BrowserStatus,
     NoAvailableTabs,
     RateLimitExceeded,

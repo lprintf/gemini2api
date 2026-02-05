@@ -14,7 +14,8 @@ from typing import Optional, List, Literal, Any
 from pydantic import BaseModel
 from pathlib import Path
 
-from server.services.browser_pool import BrowserPool, RateLimitExceeded, NoAvailableTabs
+from server.services.scheduler.pool import BrowserPool
+from server.services.objects.exceptions import RateLimitExceeded, NoAvailableTabs
 
 
 router = APIRouter(prefix="/v1beta", tags=["Gemini Compatible API"])
