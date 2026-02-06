@@ -357,7 +357,7 @@ async def get_generated_urls(page: Page) -> List[str]:
         }}
     """)
 
-async def download_image(page: Page, img_url: str, save_path: str, remove_wm: bool = True):
+async def download_image(page: Page, img_url: str, save_path: str, remove_wm: bool = True, max_attempts: int = 5):
     """下载图片 (精准 Hover 下载版)"""
     # 策略：在最后一个容器中通过 JS 查找对应的 ElementHandle
     img_element = None
@@ -376,10 +376,11 @@ async def download_image(page: Page, img_url: str, save_path: str, remove_wm: bo
     
     # 1. 尝试 Hover 下载高清
     if img_element:
-        # 尝试最多 6 次，应对 DOM 获取瞬间的失联或不稳定
-        for attempt in range(6):
+        # 弹性重试逻辑
+        for attempt in range(max_attempts):
+            is_last = (attempt == max_attempts - 1)
             try:
-                print(f"[Action] Hovering over image (attempt {attempt + 1})...")
+                print(f"[Action] Hovering over image (attempt {attempt + 1}/{max_attempts})...")
                 await img_element.scroll_into_view_if_needed()
                 
                 # 双重保险：物理 hover + JS 推送
@@ -410,7 +411,7 @@ async def download_image(page: Page, img_url: str, save_path: str, remove_wm: bo
                     except: continue
                     
                 if download_btn:
-                    async with page.expect_download(timeout=10000) as download_info:
+                    async with page.expect_download(timeout=30000) as download_info:
                         await download_btn.click()
                     download = await download_info.value
                     path = await download.path()
@@ -418,15 +419,13 @@ async def download_image(page: Page, img_url: str, save_path: str, remove_wm: bo
                         print(f"[Action] HD Success: {save_path}")
                         return await _process_and_save(path, save_path, remove_wm)
                 
-                # 如果没找到按钮，可能是需要再次触发 hover
-                if attempt == 0: continue
+                # 如果没找到按钮且没到最后一次，继续重试
+                if not is_last: continue
             except Exception as e:
-                if attempt == 1:
-                    print(f"[Action] HD download failed after retries: {e}")
+                if is_last:
+                    print(f"[Action] HD download failed after {max_attempts} attempts: {e}")
                 else: 
-                    # 第一次失败，可能元素正好更新了，尝试重新获取
                     print(f"[Action] Hover attempt {attempt+1} failed ({type(e).__name__}), retrying...")
-                    await asyncio.sleep(0.5)
         
     print("[Action] Falling back to direct request.")
 
