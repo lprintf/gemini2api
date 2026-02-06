@@ -114,10 +114,9 @@ def build_request_params(image_bytes: bytes, req_id: int, size: str):
 
 
 async def run_single_request(req_id, client, headers, semaphore, image_bytes, size):
-    start_ts = time.perf_counter()
-    request_url = f"{BASE_URL}{ENDPOINT}"
-
     async with semaphore:
+        start_ts = time.perf_counter()
+        request_url = f"{BASE_URL}{ENDPOINT}"
         try:
             data, files = build_request_params(image_bytes, req_id, size)
             response = await client.post(request_url, data=data, files=files, headers=headers)
@@ -169,7 +168,8 @@ async def run_single_request(req_id, client, headers, semaphore, image_bytes, si
 def percentile(values, p: float) -> float:
     if not values:
         return 0.0
-    idx = int((len(values) - 1) * p)
+    idx = int(len(values) * p)
+    idx = max(0, min(idx, len(values) - 1))
     return values[idx]
 
 
@@ -218,7 +218,7 @@ async def run_load_test():
             for i in range(TOTAL_REQUESTS)
         ]
         results = await asyncio.gather(*tasks)
-    total_elapsed = time.perf_counter() - started
+        total_elapsed = time.perf_counter() - started
 
     success = [x for x in results if x["ok"]]
     failed = [x for x in results if not x["ok"]]
