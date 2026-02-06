@@ -48,37 +48,18 @@ class ImageGenerationTask(BaseEngineTask):
             if not urls:
                 return TaskResult(success=False, error="No images found in response")
 
-            # 5. 下载处理阶段
+            # 5. 下载处理阶段 (封装版)
             tab.activity = "Downloading & Processing"
-            images_info = []
-            output_base = Path("data/outputs")
-            date_str = datetime.now().strftime("%Y%m%d")
-            
-            for i, url in enumerate(urls):
-                save_dir = output_base / ("hd" if download_mode == "hd" else "q") / date_str
-                save_dir.mkdir(parents=True, exist_ok=True)
-                save_path = save_dir / f"temp_{int(time.time())}_{i}"
-                
-                success, img_hash = await actions.download_image(
-                    page, url, str(save_path), remove_wm=remove_watermark
-                )
-                
-                if success and img_hash:
-                    final_path = save_dir / f"{img_hash}.webp"
-                    downloaded_file = Path(str(save_path) + ".webp")
-                    if downloaded_file.exists():
-                        downloaded_file.rename(final_path)
-                    
-                    images_info.append({
-                        "id": f"{date_str}/{img_hash}",
-                        "hash": img_hash,
-                        "date": date_str,
-                        "format": "webp",
-                        "url": url,
-                    })
+            images_info = await actions.download_generated_images(
+                page, 
+                remove_watermark=remove_watermark,
+                download_mode=download_mode
+            )
 
             if not images_info:
                 return TaskResult(success=False, error="Failed to process any generated images")
+            
+            date_str = datetime.now().strftime("%Y%m%d")
             
             return TaskResult(
                 success=True, 

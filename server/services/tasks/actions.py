@@ -357,7 +357,7 @@ async def get_generated_urls(page: Page) -> List[str]:
         }}
     """)
 
-async def download_image(page: Page, img_url: str, save_path: str, remove_wm: bool = True, max_attempts: int = 5):
+async def download_image(page: Page, img_url: str, save_path: str, remove_wm: bool = True, max_attempts: int = 9):
     """下载图片 (精准 Hover 下载版)"""
     # 策略：在最后一个容器中通过 JS 查找对应的 ElementHandle
     img_element = None
@@ -438,6 +438,45 @@ async def download_image(page: Page, img_url: str, save_path: str, remove_wm: bo
         print(f"[Action] Fallback download failed: {e}")
     
     return False, None
+
+async def download_generated_images(
+    page: Page, 
+    remove_watermark: bool = True,
+    download_mode: str = "preview"
+) -> List[Dict[str, Any]]:
+    """获取所有生成的图片 URL 并在对应的目录下批量处理"""
+    urls = await get_generated_urls(page)
+    if not urls:
+        return []
+
+    images_info = []
+    output_base = Path("data/outputs")
+    date_str = datetime.now().strftime("%Y%m%d")
+    
+    for i, url in enumerate(urls):
+        save_dir = output_base / ("hd" if download_mode == "hd" else "q") / date_str
+        save_dir.mkdir(parents=True, exist_ok=True)
+        save_path = save_dir / f"temp_{int(time.time())}_{i}"
+        
+        success, img_hash = await download_image(
+            page, url, str(save_path), remove_wm=remove_watermark
+        )
+        
+        if success and img_hash:
+            final_path = save_dir / f"{img_hash}.webp"
+            temp_file = Path(str(save_path) + ".webp")
+            if temp_file.exists():
+                temp_file.rename(final_path)
+            
+            images_info.append({
+                "id": f"{date_str}/{img_hash}",
+                "hash": img_hash,
+                "date": date_str,
+                "format": "webp",
+                "url": url,
+            })
+            
+    return images_info
 
 async def _process_and_save(src: Any, dest: str, remove_wm: bool):
     """图片后处理内部函数"""
