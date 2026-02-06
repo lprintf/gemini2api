@@ -357,8 +357,8 @@ async def get_generated_urls(page: Page) -> List[str]:
         }}
     """)
 
-async def download_image(page: Page, img_url: str, save_path: str, remove_wm: bool = True, max_attempts: int = 9):
-    """下载图片 (精准 Hover 下载版)"""
+async def download_hd_image(page: Page, img_url: str, save_path: str, remove_wm: bool = True, max_attempts: int = 9):
+    """下载高清图片 (精准 Hover 下载版)"""
     # 策略：在最后一个容器中通过 JS 查找对应的 ElementHandle
     img_element = None
     try:
@@ -429,13 +429,17 @@ async def download_image(page: Page, img_url: str, save_path: str, remove_wm: bo
         
     print("[Action] Falling back to direct request.")
 
-    # 2. 备选方案：如果 Hover 失败或找不到按钮，直接请求 URL 获取预览图
+    # 2. 备选方案：如果 Hover 失败或找不到按钮，通过 URL 直接下载
+    return await download_q_image(page, img_url, save_path, remove_wm)
+
+async def download_q_image(page: Page, img_url: str, save_path: str, remove_wm: bool = True):
+    """通过 URL 直接请求下载预览图 (快)"""
     try:
         response = await page.request.get(img_url)
         if response.ok:
             return await _process_and_save(BytesIO(await response.body()), save_path, remove_wm)
     except Exception as e:
-        print(f"[Action] Fallback download failed: {e}")
+        print(f"[Action] download_q_image failed: {e}")
     
     return False, None
 
@@ -458,9 +462,14 @@ async def download_generated_images(
         save_dir.mkdir(parents=True, exist_ok=True)
         save_path = save_dir / f"temp_{int(time.time())}_{i}"
         
-        success, img_hash = await download_image(
-            page, url, str(save_path), remove_wm=remove_watermark
-        )
+        if download_mode == "hd":
+            success, img_hash = await download_hd_image(
+                page, url, str(save_path), remove_wm=remove_watermark
+            )
+        else:
+            success, img_hash = await download_q_image(
+                page, url, str(save_path), remove_wm=remove_watermark
+            )
         
         if success and img_hash:
             final_path = save_dir / f"{img_hash}.webp"
