@@ -39,15 +39,16 @@ _SELECTORS = {
         '[data-test-id="bard-mode-option-快速"]',
         '[data-test-id="bard-mode-option-Flash"]',
     ],
-    "model_thinking": [
+    # "model_thinking": [
+    "model_pro": [
         '[data-test-id="bard-mode-option-thinking"]',
         '[data-test-id="bard-mode-option-思考"]',
         '[data-test-id="bard-mode-option-Thinking"]',
     ],
-    "model_pro": [
-        '[data-test-id="bard-mode-option-pro"]',
-        '[data-test-id="bard-mode-option-Pro"]',
-    ],
+    # "model_pro": [
+    #     '[data-test-id="bard-mode-option-pro"]',
+    #     '[data-test-id="bard-mode-option-Pro"]',
+    # ],
     "tools_btn": [
         "button.toolbox-drawer-button",
         'button[aria-label="工具"]',
@@ -411,13 +412,19 @@ async def download_hd_image(page: Page, img_url: str, save_path: str, remove_wm:
                     except: continue
                     
                 if download_btn:
-                    async with page.expect_download(timeout=30000) as download_info:
+                    t_dl_start = time.time()
+                    async with page.expect_download(timeout=60000) as download_info:
                         await download_btn.click()
                     download = await download_info.value
                     path = await download.path()
+                    dl_time = round(time.time() - t_dl_start, 3)
+                    
                     if path:
-                        print(f"[Action] HD Success: {save_path}")
-                        return await _process_and_save(path, save_path, remove_wm)
+                        success, img_hash, p_stats = await _process_and_save(path, save_path, remove_wm)
+                        if success:
+                            p_stats["dl_time"] = dl_time
+                            p_stats["mode"] = "hd"
+                        return success, img_hash, p_stats
                 
                 # 如果没找到按钮且没到最后一次，继续重试
                 if not is_last: continue
@@ -430,18 +437,29 @@ async def download_hd_image(page: Page, img_url: str, save_path: str, remove_wm:
     print("[Action] Falling back to direct request.")
 
     # 2. 备选方案：如果 Hover 失败或找不到按钮，通过 URL 直接下载
-    return await download_q_image(page, img_url, save_path, remove_wm)
+    success, h, stats = await download_q_image(page, img_url, save_path, remove_wm)
+    if stats:
+        stats["mode"] = "hd_fallback_q"
+    return success, h, stats
 
 async def download_q_image(page: Page, img_url: str, save_path: str, remove_wm: bool = True):
     """通过 URL 直接请求下载预览图 (快)"""
+    stats = {}
     try:
+        t_dl_start = time.time()
         response = await page.request.get(img_url)
+        dl_time = round(time.time() - t_dl_start, 3)
         if response.ok:
-            return await _process_and_save(BytesIO(await response.body()), save_path, remove_wm)
+            success, h, p_stats = await _process_and_save(BytesIO(await response.body()), save_path, remove_wm)
+            if success:
+                stats.update(p_stats)
+                stats["dl_time"] = dl_time
+                stats["mode"] = "preview"
+            return success, h, stats
     except Exception as e:
         print(f"[Action] download_q_image failed: {e}")
     
-    return False, None
+    return False, None, stats
 
 async def download_generated_images(
     page: Page, 
@@ -463,11 +481,11 @@ async def download_generated_images(
         save_path = save_dir / f"temp_{int(time.time())}_{i}"
         
         if download_mode == "hd":
-            success, img_hash = await download_hd_image(
+            success, img_hash, stats = await download_hd_image(
                 page, url, str(save_path), remove_wm=remove_watermark
             )
         else:
-            success, img_hash = await download_q_image(
+            success, img_hash, stats = await download_q_image(
                 page, url, str(save_path), remove_wm=remove_watermark
             )
         
@@ -477,6 +495,17 @@ async def download_generated_images(
             if temp_file.exists():
                 temp_file.rename(final_path)
             
+            # 直接在 action 内打印详细统计
+            raw_size = stats.get('raw_size_kb', 0)
+            final_size = stats.get('size_kb', 0)
+            ratio = round((final_size / raw_size * 100), 1) if raw_size > 0 else 0
+            
+            print(f"[Action] Download Meta: {img_hash} ({stats.get('mode', 'unknown')}) | "
+                  f"Size: {raw_size}KB -> {final_size}KB ({ratio}%) | "
+                  f"DL: {stats.get('dl_time', 0)}s | "
+                  f"WM_Remove: {stats.get('wm_time', 0)}s | "
+                  f"Save: {stats.get('save_time', 0)}s")
+
             images_info.append({
                 "id": f"{date_str}/{img_hash}",
                 "hash": img_hash,
@@ -489,20 +518,50 @@ async def download_generated_images(
 
 async def _process_and_save(src: Any, dest: str, remove_wm: bool):
     """图片后处理内部函数"""
+    stats = {}
     try:
+        t_start = time.time()
+        
+        # 获取原始文件大小
+        if isinstance(src, (str, Path)):
+            raw_size = Path(src).stat().st_size
+        elif hasattr(src, "getbuffer"):
+            raw_size = src.getbuffer().nbytes
+        elif hasattr(src, "seek"):
+            src.seek(0, 2)
+            raw_size = src.tell()
+            src.seek(0)
+        else:
+            raw_size = 0
+        stats["raw_size_kb"] = round(raw_size / 1024, 2)
+
         img = Image.open(src)
+        
         if remove_wm:
-            img = WatermarkRemover.remove_watermark(img)
+            t_wm = time.time()
+            # 将去水印这一 CPU 密集型操作放到线程池执行
+            img = await asyncio.to_thread(WatermarkRemover.remove_watermark, img)
+            stats["wm_time"] = round(time.time() - t_wm, 3)
         
         final_p = Path(dest).with_suffix(".webp")
         final_p.parent.mkdir(parents=True, exist_ok=True)
-        img.save(final_p, "WEBP", lossless=True)
+        
+        t_save = time.time()
+        # 将 WebP 编码这一极度吃 CPU 的操作放到线程池执行
+        # 这能确保在保存大文件时，不会阻塞其他并发请求的调度
+        await asyncio.to_thread(img.save, final_p, "WEBP", lossless=True)
+        stats["save_time"] = round(time.time() - t_save, 3)
+        
+        stats["size_kb"] = round(final_p.stat().st_size / 1024, 2)
         
         with open(final_p, "rb") as f:
             h = base64.urlsafe_b64encode(hashlib.sha256(f.read()).digest()).decode().rstrip("=")
-        return True, h
-    except:
-        return False, None
+        
+        stats["process_total"] = round(time.time() - t_start, 3)
+        return True, h, stats
+    except Exception as e:
+        print(f"[Action] _process_and_save error: {e}")
+        return False, None, stats
 
 async def handle_consent_popups(page: Page, selectors: List[str] = _SELECTORS["agree_btns"]) -> bool:
     """处理各种同意弹窗"""

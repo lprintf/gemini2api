@@ -102,7 +102,7 @@ def build_request_params(image_bytes: bytes, req_id: int, size: str):
     prompt = f"{BASE_PROMPT}, aspect ratio {TARGET_RATIO}, load-test request {req_id}"
     data = {
         "prompt": prompt,
-        "model": "gemini-flash",
+        "model": "gemini-pro",
         "n": "1",
         "size": size,
         "aspect_ratio": TARGET_RATIO,

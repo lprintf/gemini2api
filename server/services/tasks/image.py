@@ -23,24 +23,33 @@ class ImageGenerationTask(BaseEngineTask):
         remove_watermark = self.payload.get("remove_watermark", True)
         download_mode = self.payload.get("download_mode", "preview")
 
+        durations = {}
+        start_ts = time.time()
+
         try:
             # 2. 准备阶段
             tab.activity = "Preparing environment"
+            t0 = time.time()
             success = await actions.prepare_environment(page, model=model)
+            durations["prepare"] = round(time.time() - t0, 3)
             if not success:
                 return TaskResult(success=False, error="Environment preparation failed")
 
             # 3. 输入与提交阶段
             tab.activity = "Uploading and submitting"
+            t1 = time.time()
             success = await actions.submit_image_prompt(
                 page, prompt, image_paths=input_images
             )
+            durations["submit"] = round(time.time() - t1, 3)
             if not success:
                 return TaskResult(success=False, error="Failed to submit image prompt")
 
             # 4. 生成阶段
             tab.activity = "Generating images..."
+            t2 = time.time()
             success = await actions.wait_for_results(page, timeout_s=90)
+            durations["generate"] = round(time.time() - t2, 3)
             if not success:
                 return TaskResult(success=False, error="Timed out waiting for image results")
 
@@ -50,17 +59,27 @@ class ImageGenerationTask(BaseEngineTask):
 
             # 5. 下载处理阶段 (封装版)
             tab.activity = "Downloading & Processing"
+            t3 = time.time()
             images_info = await actions.download_generated_images(
                 page, 
                 remove_watermark=remove_watermark,
                 download_mode=download_mode
             )
+            durations["download"] = round(time.time() - t3, 3)
 
             if not images_info:
                 return TaskResult(success=False, error="Failed to process any generated images")
             
             date_str = datetime.now().strftime("%Y%m%d")
+            durations["total"] = round(time.time() - start_ts, 3)
             
+            # 后端完成后打印耗时统计
+            print(f"[Task {tab.browser_id}:{tab.tab_id}] Completed in {durations['total']}s: "
+                  f"Prepare: {durations.get('prepare', 0)}s, "
+                  f"Submit: {durations.get('submit', 0)}s, "
+                  f"Generate: {durations.get('generate', 0)}s, "
+                  f"Download: {durations.get('download', 0)}s")
+
             return TaskResult(
                 success=True, 
                 data={"images": images_info, "date": date_str},
