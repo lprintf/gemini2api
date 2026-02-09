@@ -213,7 +213,7 @@ async def upload_image(page: Page, image_path: str, selector: str = _SELECTORS["
         await page.wait_for_selector(".image-preview", timeout=5000)
         # 2. 确认已经进入 loading 状态 (或进度条已出)
         # 这确保了 click_submit 运行时能看到“正在上传”的状态
-        await page.wait_for_selector(".image-preview.loading, .progress-spinner, mat-progress-bar", timeout=3000)
+        await page.wait_for_selector(".image-preview.loading, .progress-spinner, mat-progress-bar", timeout=6000)
         print("[Action] Image upload detected and loading started.")
     except:
         print("[Action] Warning: upload_image timed out waiting for loading state. Image might be missing.")
@@ -229,11 +229,9 @@ async def upload_images_by_paste(page: Page, image_paths: List[str]):
 async def get_uploaded_image_count(page: Page) -> int:
     """原子动作：获取当前输入框中已物理存在的图片预览数量"""
     try:
+        # 使用 blob 图片作为可靠的计数依据（确保图片实际已加载）
         count = await page.evaluate("""
-            () => {
-                const images = document.querySelectorAll('.image-preview, img[src*="blob:"], img[src*="data:"], [data-image]');
-                return images.length;
-            }
+            () => document.querySelectorAll('img[src*="blob:"]').length
         """)
         return int(count or 0)
     except:
@@ -308,13 +306,11 @@ async def submit_image_prompt(page: Page, prompt: str, image_paths: List[str] = 
             print(f"[Action] Waiting for image count to reach {target_count}...")
             try:
                 await page.wait_for_function(f"""
-                    (count) => {{
-                        const images = document.querySelectorAll('.image-preview, img[src*="blob:"], img[src*="data:"], [data-image]');
-                        return images.length >= count;
-                    }}
+                    (count) => document.querySelectorAll('img[src*="blob:"]').length >= count
                 """, arg=target_count, timeout=10000)
             except:
                 print(f"[Action] Warning: Image count sync timeout (curr={await get_uploaded_image_count(page)}, expected={target_count})")
+
             
         # 4. 最终提交 (click_submit 会处理后续的 loading 消失等待)
         return await click_submit(page)

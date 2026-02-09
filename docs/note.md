@@ -9,7 +9,19 @@
 点击工具：`click selectors=['button.toolbox-drawer-item-list-button:has-text("Create images")','button.toolbox-drawer-item-list-button:has-text("生成图片")',"text=Create images", "text=生成图片"]`
 发送消息：`submit`
 提交：`generate prompt="makeit✨" image_paths=["server/services/tasks/remove_watermark/bg_48.png"]`
+`submit_image_prompt prompt='这两张图那个大' image_paths=["server/services/tasks/remove_watermark/bg_48.png","server/services/tasks/remove_watermark/bg_96.png"]`
 download_generated_images download_mode=hd
+
+## 常用js
+```
+// 获取当前输入框中已物理存在的图片预览数量
+(() => {
+    const inputArea = document.querySelector('.input-area, .chat-input, [class*="input"]');
+    const container = inputArea || document;
+    const images = container.querySelectorAll('.image-preview, img[src*="blob:"]');
+    return Array.from(images).length;
+})()
+```
 
 ## 测试
 

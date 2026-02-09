@@ -435,7 +435,23 @@
                         • <b>click</b> [#sel]<br>
                         • <b>input</b> "text" [#sel]<br>
                         • <b>model</b> fast|pro<br>
-                        • <b>new_chat</b>
+                        • <b>new</b> / <b>reset</b><br>
+                        • <b>goto</b> url<br>
+                        • <b>eval</b> "js code"
+                    </div>
+                </div>
+            </div>
+
+            <!-- JS 执行器 -->
+            <div style="margin-top: 1.5rem; border-top: 1px solid #333; padding-top: 1.5rem;">
+                <h3>JS Console</h3>
+                <div style="display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.5rem;">
+                    <textarea id="jsInput" class="modal-input"
+                        style="font-size: 0.8rem; padding: 0.5rem; background: #0f172a; border-color: #334155; min-height: 80px; font-family: monospace; resize: vertical;"
+                        placeholder="document.title"></textarea>
+                    <button class="btn btn-success" style="width: 100%;" onclick="runJS()">▶ Execute JS</button>
+                    <div id="jsResult"
+                        style="font-size: 0.75rem; color: #94a3b8; background: #0f172a; padding: 0.5rem; border-radius: 4px; max-height: 100px; overflow: auto; display: none; font-family: monospace; white-space: pre-wrap;">
                     </div>
                 </div>
             </div>
@@ -750,6 +766,50 @@
             }
         }
 
+        // 执行 JavaScript
+        async function runJS() {
+            const jsCode = document.getElementById('jsInput').value.trim();
+            const resultEl = document.getElementById('jsResult');
+
+            if (!jsCode) {
+                showToast('Please enter JS code', 'error');
+                return;
+            }
+
+            if (!selectedBrowser || selectedTab === null) {
+                showToast('Please select a browser and tab first', 'error');
+                return;
+            }
+
+            try {
+                // 使用 eval 命令执行 JS
+                const response = await fetch(`${API_BASE}/browsers/${selectedBrowser}/tabs/${selectedTab}/command`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ cmd: `eval "${jsCode.replace(/"/g, '\\"')}"` })
+                });
+
+                const data = await response.json();
+                resultEl.style.display = 'block';
+
+                if (data.success) {
+                    const result = data.result;
+                    resultEl.style.color = '#4ade80';
+                    resultEl.textContent = result !== undefined ? JSON.stringify(result, null, 2) : '(undefined)';
+                    showToast('JS executed', 'success');
+                    if (autoRefresh) setTimeout(refreshScreenshot, 300);
+                } else {
+                    resultEl.style.color = '#f87171';
+                    resultEl.textContent = 'Error: ' + (data.error || 'Unknown');
+                    showToast('JS failed', 'error');
+                }
+            } catch (e) {
+                resultEl.style.display = 'block';
+                resultEl.style.color = '#f87171';
+                resultEl.textContent = 'API Error: ' + e.message;
+                showToast('API error', 'error');
+            }
+        }
 
         // 后退
         async function goBack() {

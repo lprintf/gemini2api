@@ -835,23 +835,28 @@ async def list_all_tabs():
 
 @router.post("/browsers/{browser_id}/tabs/{tab_id}/action")
 async def execute_selector_action(browser_id: str, tab_id: int, request: SelectorActionRequest):
-    """在指定的标签页上执行原子动作 (传统接口)"""
-    # 转换为 Command 执行请求
-    cmd_map = {
-        "click": f"click",
-        "input": f"input \"{request.text}\"",
-        "new_chat": "new_chat",
-        "set_model": f"model {request.model}"
-    }
-    if request.selector:
-        if request.action == "input":
-            cmd = f"input \"{request.text}\" selector=\"{request.selector}\""
-        elif request.action == "click":
-            cmd = f"click selector=\"{request.selector}\""
+    """在指定的标签页上执行原子动作 (传统接口，仅做格式转换)"""
+    # 直接构建命令字符串，所有别名由 CommandParser 统一处理
+    action = request.action
+    
+    if action == "input":
+        if request.selector:
+            cmd = f'input "{request.text}" selector="{request.selector}"'
         else:
-            cmd = f"{request.action} selector=\"{request.selector}\""
+            cmd = f'input "{request.text}"'
+    elif action == "click":
+        if request.selector:
+            cmd = f'click selector="{request.selector}"'
+        else:
+            cmd = "click"
+    elif action == "set_model":
+        cmd = f"model {request.model}"
     else:
-        cmd = cmd_map.get(request.action, request.action)
+        # 其他动作直接传递（如 new_chat, submit 等由 parser aliases 处理）
+        if request.selector:
+            cmd = f'{action} selector="{request.selector}"'
+        else:
+            cmd = action
         
     return await execute_raw_command(browser_id, tab_id, CommandExecuteRequest(cmd=cmd))
 
@@ -908,6 +913,15 @@ async def execute_raw_command(browser_id: str, tab_id: int, request: CommandExec
             print(f"[Command] Navigating to {args[0]}")
             await tab.page.goto(args[0], wait_until="networkidle")
             success = True
+        
+        elif target_action in ("eval", "js"):
+            # 执行任意 JavaScript
+            if not args: raise ValueError("JS code is required for eval")
+            js_code = args[0]
+            print(f"[Command] Executing JS: {js_code[:100]}...")
+            result = await tab.page.evaluate(js_code)
+            print(f"[Command] JS result: {result}")
+            return {"success": True, "result": result}
             
         else:
             success = False
