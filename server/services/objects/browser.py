@@ -41,7 +41,7 @@ class BrowserInstance:
         self.rate_window = rate_window
         self._request_times: deque = deque()
 
-        self.status = BrowserStatus.STOPPED
+        self.status = BrowserStatus.CLOSED
         self.launcher: Optional[GeminiLauncher] = None
         self.tabs: List[TabInstance] = []
         
@@ -70,10 +70,10 @@ class BrowserInstance:
     def record_request(self):
         self._request_times.append(time.time())
 
-    async def start(self):
+    async def launch(self):
         """核心启动逻辑：初始化物理浏览器并并行预热标签页"""
         print(f"[Browser {self.browser_id}] Starting Resource...")
-        self.status = BrowserStatus.STARTING
+        self.status = BrowserStatus.LAUNCHING
 
         try:
             # 1. 物理启动
@@ -124,14 +124,14 @@ class BrowserInstance:
             print(f"[Browser {self.browser_id}] Start Fail: {e}")
             raise
 
-    async def stop(self):
+    async def close(self):
         """释放资源"""
-        self.status = BrowserStatus.STOPPING
+        self.status = BrowserStatus.CLOSING
         try:
             if self.launcher:
                 await self.launcher.close()
             self.tabs = []
-            self.status = BrowserStatus.STOPPED
+            self.status = BrowserStatus.CLOSED
         except:
             self.status = BrowserStatus.ERROR
 

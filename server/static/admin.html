@@ -171,19 +171,19 @@
             color: #721c24;
         }
 
-        .status-stopped {
+        .status-closed {
             background: #e2e3e5;
             color: #383d41;
         }
 
-        .status-offline {
+        .status-disabled {
             background: #f8d7da;
             color: #721c24;
             border: 1px dashed #721c24;
         }
 
-        .status-starting,
-        .status-stopping {
+        .status-launching,
+        .status-closing {
             background: #cce5ff;
             color: #004085;
         }
@@ -615,7 +615,9 @@
                         <option value="busy">Busy</option>
                         <option value="preheating">Preheating</option>
                         <option value="downloading_hd">Downloading HD</option>
-                        <option value="starting">Starting</option>
+                        <option value="launching">Launching</option>
+                        <option value="closing">Closing</option>
+                        <option value="closed">Closed</option>
                         <option value="error">Error</option>
                     </select>
                     <select id="tabBrowserFilter" onchange="loadTabs()">
@@ -982,15 +984,15 @@
                         <td>${b.total_tasks} (${b.failed_tasks} failed)</td>
                         <td>${b.rate_limit.remaining}/${b.rate_limit.limit} per ${b.rate_limit.window_seconds}s</td>
                         <td>
-                            ${b.status === 'stopped'
-                        ? `<button class="btn btn-success" onclick="startBrowser('${b.browser_id}')">Start</button>`
-                        : `<button class="btn btn-warning" onclick="stopBrowser('${b.browser_id}')">Stop</button>`
-                    }
-                            ${b.status !== 'stopped'
-                        ? (b.status === 'offline'
-                            ? `<button class="btn btn-success" onclick="toggleBrowserEnabled('${b.browser_id}', true)">Online</button>`
-                            : `<button class="btn btn-secondary" onclick="toggleBrowserEnabled('${b.browser_id}', false)">Offline</button>`)
+                            ${b.status !== 'closed'
+                        ? (b.status === 'disabled'
+                            ? `<button class="btn btn-success" onclick="toggleBrowserEnabled('${b.browser_id}', true)">Enable</button>`
+                            : `<button class="btn btn-secondary" onclick="toggleBrowserEnabled('${b.browser_id}', false)">Disable</button>`)
                         : ''
+                    }
+                            ${b.status === 'closed'
+                        ? `<button class="btn btn-success" onclick="launchBrowser('${b.browser_id}')">Launch</button>`
+                        : `<button class="btn btn-warning" onclick="closeBrowser('${b.browser_id}')">Close</button>`
                     }
                             <button class="btn btn-primary" onclick="showEditBrowserModal('${b.browser_id}')">Edit</button>
                             <button class="btn btn-danger" onclick="deleteBrowser('${b.browser_id}')">Delete</button>
@@ -1013,23 +1015,23 @@
             document.getElementById('logBrowserFilter').innerHTML = '<option value="">All Browsers</option>' + options;
         }
 
-        async function startBrowser(id) {
+        async function launchBrowser(id) {
             try {
-                await api(`/browsers/${id}/start`, 'POST');
-                showToast(`Browser ${id} started`, 'success');
+                await api(`/browsers/${id}/launch`, 'POST');
+                showToast(`Browser ${id} launched`, 'success');
                 loadBrowsers();
             } catch (e) {
-                showToast('Failed to start browser: ' + e.message, 'error');
+                showToast('Failed to launch browser: ' + e.message, 'error');
             }
         }
 
-        async function stopBrowser(id) {
+        async function closeBrowser(id) {
             try {
-                await api(`/browsers/${id}/stop`, 'POST');
-                showToast(`Browser ${id} stopped`, 'success');
+                await api(`/browsers/${id}/close`, 'POST');
+                showToast(`Browser ${id} closed`, 'success');
                 loadBrowsers();
             } catch (e) {
-                showToast('Failed to stop browser: ' + e.message, 'error');
+                showToast('Failed to close browser: ' + e.message, 'error');
             }
         }
 
@@ -1139,7 +1141,7 @@
                 document.getElementById('totalTabs').textContent = data.total;
                 document.getElementById('idleTabs').textContent = data.status_count.idle || 0;
                 document.getElementById('busyTabs').textContent = data.status_count.busy || 0;
-                const errorCount = (data.status_count.error || 0) + (data.status_count.starting || 0) + (data.status_count.offline || 0);
+                const errorCount = (data.status_count.error || 0) + (data.status_count.launching || 0) + (data.status_count.disabled || 0);
                 document.getElementById('errorTabs').textContent = errorCount;
 
                 // 更新浏览器筛选器

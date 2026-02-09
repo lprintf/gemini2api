@@ -14,7 +14,7 @@ class TabInstance:
         self.tab_id = tab_id
         self.browser_id = browser_id
         self.page: Any = None  # Playwright Page 对象
-        self.status = BrowserStatus.STARTING
+        self.status = BrowserStatus.LAUNCHING
         self.preferred_model = preferred_model
         
         self.current_task_id: Optional[str] = None

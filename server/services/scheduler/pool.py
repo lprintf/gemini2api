@@ -74,7 +74,7 @@ class BrowserPool:
         async def start_browser_safe(browser: BrowserInstance) -> tuple[str, bool, str]:
             """安全启动单个浏览器，返回 (browser_id, success, error_msg)"""
             try:
-                await browser.start()
+                await browser.launch()
                 return (browser.browser_id, True, "")
             except Exception as e:
                 return (browser.browser_id, False, str(e))
@@ -190,7 +190,7 @@ class BrowserPool:
             self.browsers[browser_id_str] = browser
 
             if auto_start:
-                await browser.start()
+                await browser.launch()
 
             print(
                 f"[BrowserPool] Created browser {browser_id_str} (account: {account_name}, tabs: {max_tabs}, dir: {user_data_dir})"
@@ -221,12 +221,12 @@ class BrowserPool:
             if "is_enabled" in updates:
                 is_enabled = updates["is_enabled"]
                 if not is_enabled:
-                    # 如果下线，且当前是空闲或错误状态，则设置为 OFFLINE
+                    # 如果禁用，且当前是空闲或错误状态，则设置为 DISABLED
                     if browser.status in (BrowserStatus.IDLE, BrowserStatus.ERROR):
-                        browser.status = BrowserStatus.OFFLINE
+                        browser.status = BrowserStatus.DISABLED
                 else:
-                    # 如果重新上线，且当前是 OFFLINE 状态，则回退到 IDLE
-                    if browser.status == BrowserStatus.OFFLINE:
+                    # 如果重新启用，且当前是 DISABLED 状态，则回退到 IDLE
+                    if browser.status == BrowserStatus.DISABLED:
                         browser.status = BrowserStatus.IDLE
 
             # 更新数据库
@@ -248,7 +248,7 @@ class BrowserPool:
                 raise KeyError(f"Browser {browser_id} not found")
 
             browser = self.browsers[browser_id]
-            await browser.stop()
+            await browser.close()
             del self.browsers[browser_id]
 
             # 从数据库删除
@@ -261,29 +261,29 @@ class BrowserPool:
 
             print(f"[BrowserPool] Removed browser {browser_id}")
 
-    async def start_browser(self, browser_id: str):
+    async def launch_browser(self, browser_id: str):
         """启动指定浏览器"""
         if browser_id not in self.browsers:
             raise KeyError(f"Browser {browser_id} not found")
 
         browser = self.browsers[browser_id]
-        if browser.status != BrowserStatus.STOPPED:
+        if browser.status != BrowserStatus.CLOSED:
             raise RuntimeError(
-                f"Browser {browser_id} is not stopped (status: {browser.status})"
+                f"Browser {browser_id} is not closed (status: {browser.status})"
             )
 
-        await browser.start()
+        await browser.launch()
 
-    async def stop_browser(self, browser_id: str):
+    async def close_browser(self, browser_id: str):
         """停止指定浏览器"""
         if browser_id not in self.browsers:
             raise KeyError(f"Browser {browser_id} not found")
 
         browser = self.browsers[browser_id]
-        if browser.status == BrowserStatus.STOPPED:
-            raise RuntimeError(f"Browser {browser_id} is already stopped")
+        if browser.status == BrowserStatus.CLOSED:
+            raise RuntimeError(f"Browser {browser_id} is already closed")
 
-        await browser.stop()
+        await browser.close()
 
     async def get_available_browser(
         self, strategy: str = "least_loaded", preferred_model: Optional[str] = None
@@ -420,7 +420,7 @@ class BrowserPool:
         except Exception:
             pass
 
-        tasks = [browser.stop() for browser in self.browsers.values()]
+        tasks = [browser.close() for browser in self.browsers.values()]
         await asyncio.gather(*tasks, return_exceptions=True)
         self.browsers.clear()
         print("[BrowserPool] All browsers stopped")

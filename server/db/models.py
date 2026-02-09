@@ -149,7 +149,7 @@ class BrowserStatus(BaseModel):
     account_name: str
     proxy: Optional[str] = None
     headless: bool = True
-    status: str  # idle/busy/starting/stopping/error/stopped
+    status: str  # idle/busy/launching/closing/error/closed
     user_data_dir: str
     is_enabled: bool = True
     auto_start: bool = True

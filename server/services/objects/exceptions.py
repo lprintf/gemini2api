@@ -9,10 +9,11 @@ class BrowserStatus(str, Enum):
 
     IDLE = "idle"  # 可用
     BUSY = "busy"  # 忙碌
-    OFFLINE = "offline"  # 下线(检修)
+    DISABLED = "disabled" # 禁用(不接活)
     ERROR = "error"  # 故障
-    STARTING = "starting" # 启动中
-    STOPPED = "stopped" # 已停止
+    LAUNCHING = "launching" # 启动中
+    CLOSING = "closing" # 关闭中
+    CLOSED = "closed"   # 已关闭
 
 
 class RateLimitExceeded(Exception):

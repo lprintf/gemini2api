@@ -236,8 +236,8 @@ async def root():
             <div class="endpoint">POST /api/admin/browsers</div>
             <div class="endpoint">PUT /api/admin/browsers/{browser_id}</div>
             <div class="endpoint">DELETE /api/admin/browsers/{browser_id}</div>
-            <div class="endpoint">POST /api/admin/browsers/{browser_id}/start</div>
-            <div class="endpoint">POST /api/admin/browsers/{browser_id}/stop</div>
+            <div class="endpoint">POST /api/admin/browsers/{browser_id}/launch</div>
+            <div class="endpoint">POST /api/admin/browsers/{browser_id}/close</div>
             <div class="endpoint">GET /api/admin/browsers/{browser_id}/check-login</div>
             <div class="endpoint">GET /api/admin/config</div>
             <div class="endpoint">PUT /api/admin/config</div>

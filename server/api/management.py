@@ -198,17 +198,17 @@ async def delete_browser(browser_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/browsers/{browser_id}/start")
-async def start_browser(browser_id: str):
+@router.post("/browsers/{browser_id}/launch")
+async def launch_browser(browser_id: str):
     """启动浏览器"""
     if browser_pool is None:
         raise HTTPException(status_code=500, detail="Browser pool not initialized")
 
     try:
-        await browser_pool.start_browser(browser_id)
+        await browser_pool.launch_browser(browser_id)
         browser = browser_pool.get_browser(browser_id)
         return {
-            "message": f"Browser {browser_id} started",
+            "message": f"Browser {browser_id} launched",
             "status": browser.status.value if browser else "unknown",
         }
     except KeyError:
@@ -219,17 +219,17 @@ async def start_browser(browser_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/browsers/{browser_id}/stop")
-async def stop_browser(browser_id: str):
+@router.post("/browsers/{browser_id}/close")
+async def close_browser(browser_id: str):
     """停止浏览器"""
     if browser_pool is None:
         raise HTTPException(status_code=500, detail="Browser pool not initialized")
 
     try:
-        await browser_pool.stop_browser(browser_id)
+        await browser_pool.close_browser(browser_id)
         browser = browser_pool.get_browser(browser_id)
         return {
-            "message": f"Browser {browser_id} stopped",
+            "message": f"Browser {browser_id} closed",
             "status": browser.status.value if browser else "unknown",
         }
     except KeyError:
