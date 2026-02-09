@@ -32,24 +32,27 @@ class BrowserPool:
         self._next_id = 0  # 自增 ID 计数器
 
     async def load_from_db(self):
-        """从数据库加载浏览器配置（后台并行启动，不阻塞服务器）"""
+        """从数据库加载所有浏览器配置（后台并行启动自动启动的浏览器）"""
         try:
             db = get_db()
 
             # 获取下一个可用 ID
             self._next_id = await db.get_next_browser_id()
 
-            # 获取所有自动启动的浏览器配置
-            configs = await db.get_auto_start_browsers()
+            # 获取所有浏览器配置（包括 disabled 的）
+            all_configs = await db.get_all_browsers()
 
-            print(f"[BrowserPool] Loading {len(configs)} browsers from database...")
+            print(f"[BrowserPool] Loading {len(all_configs)} browsers from database...")
 
-            if not configs:
+            if not all_configs:
                 await db.add_log("INFO", "Browser pool loaded 0 browsers")
                 return
 
-            # 先创建所有 BrowserInstance 对象
-            for config in configs:
+            # 分类：需要自动启动的 vs 只需要注册的
+            auto_start_browsers = []
+            disabled_after_start = []  # 启动后需要标记为 disabled 的
+
+            for config in all_configs:
                 browser = BrowserInstance(
                     browser_id=config.browser_id,
                     account_name=config.account_name,
@@ -59,17 +62,34 @@ class BrowserPool:
                     rate_limit=config.rate_limit,
                     rate_window=config.rate_window,
                 )
+                
                 self.browsers[config.browser_id] = browser
+                
+                # 根据配置决定是否自动启动
+                if config.auto_start:
+                    auto_start_browsers.append(browser)
+                    # disabled 的浏览器也会启动，但启动后标记为 DISABLED（不接受任务）
+                    if not config.is_enabled:
+                        disabled_after_start.append(browser.browser_id)
+                else:
+                    # 不自动启动的浏览器直接标记为 CLOSED
+                    browser.status = BrowserStatus.CLOSED
 
-            # 后台并行启动所有浏览器（不阻塞服务器启动）
-            asyncio.create_task(self._start_browsers_background())
+            print(f"[BrowserPool] {len(auto_start_browsers)} browsers marked for auto-start")
+
+            # 后台并行启动需要自动启动的浏览器
+            if auto_start_browsers:
+                asyncio.create_task(self._start_browsers_background(auto_start_browsers, disabled_after_start))
+
 
         except Exception as e:
             print(f"[BrowserPool] Failed to load from database: {e}")
 
-    async def _start_browsers_background(self):
-        """后台并行启动所有浏览器"""
+
+    async def _start_browsers_background(self, browsers_to_start: list, disabled_after_start: list = None):
+        """后台并行启动指定的浏览器"""
         db = get_db()
+        disabled_after_start = disabled_after_start or []
 
         async def start_browser_safe(browser: BrowserInstance) -> tuple[str, bool, str]:
             """安全启动单个浏览器，返回 (browser_id, success, error_msg)"""
@@ -79,11 +99,11 @@ class BrowserPool:
             except Exception as e:
                 return (browser.browser_id, False, str(e))
 
-        print(f"[BrowserPool] Starting {len(self.browsers)} browsers in background...")
+        print(f"[BrowserPool] Starting {len(browsers_to_start)} browsers in background...")
         start_time = time.time()
 
         results = await asyncio.gather(
-            *[start_browser_safe(b) for b in self.browsers.values()]
+            *[start_browser_safe(b) for b in browsers_to_start]
         )
 
         # 处理启动结果
@@ -92,6 +112,10 @@ class BrowserPool:
             if success:
                 success_count += 1
                 print(f"[BrowserPool] Browser {browser_id} started successfully")
+                # 如果是 disabled 的浏览器，启动后标记为 DISABLED（不接受任务调度）
+                if browser_id in disabled_after_start:
+                    self.browsers[browser_id].status = BrowserStatus.DISABLED
+                    print(f"[BrowserPool] Browser {browser_id} marked as DISABLED")
             else:
                 print(
                     f"[BrowserPool] Failed to start browser {browser_id}: {error_msg}"
@@ -104,14 +128,16 @@ class BrowserPool:
 
         elapsed = time.time() - start_time
         print(
-            f"[BrowserPool] Background startup completed: {success_count}/{len(self.browsers)} "
+            f"[BrowserPool] Background startup completed: {success_count}/{len(browsers_to_start)} "
             f"browsers in {elapsed:.2f}s"
         )
 
         await db.add_log(
             "INFO",
-            f"Browser pool loaded {success_count}/{len(self.browsers)} browsers in {elapsed:.2f}s",
+            f"Browser pool loaded {success_count}/{len(browsers_to_start)} browsers in {elapsed:.2f}s",
         )
+
+
 
     async def create_browser(
         self,
