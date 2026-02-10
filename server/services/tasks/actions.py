@@ -7,6 +7,7 @@ import base64
 import hashlib
 import re
 import time
+import traceback
 from datetime import datetime
 from io import BytesIO
 from pathlib import Path
@@ -359,8 +360,8 @@ async def get_generated_urls(page: Page) -> List[str]:
         }}
     """)
 
-async def download_hd_image(page: Page, img_url: str, save_path: str, remove_wm: bool = True, max_attempts: int = 9):
-    """下载高清图片 (精准 Hover 下载版)"""
+async def download_hd_image(page: Page, img_url: str, remove_wm: bool = True, max_attempts: int = 9):
+    """下载高清图片 (精准 Hover 下载版，纯内存处理)"""
     # 策略：在最后一个容器中通过 JS 查找对应的 ElementHandle
     img_element = None
     try:
@@ -421,11 +422,13 @@ async def download_hd_image(page: Page, img_url: str, save_path: str, remove_wm:
                     dl_time = round(time.time() - t_dl_start, 3)
                     
                     if path:
-                        success, img_hash, p_stats = await _process_and_save(path, save_path, remove_wm)
+                        # 读入内存后立即释放临时文件依赖
+                        buf = BytesIO(Path(path).read_bytes())
+                        success, img_bytes, img_hash, p_stats = await _process_image(buf, remove_wm)
                         if success:
                             p_stats["dl_time"] = dl_time
                             p_stats["mode"] = "hd"
-                        return success, img_hash, p_stats
+                        return success, img_bytes, img_hash, p_stats
                 
                 # 如果没找到按钮且没到最后一次，继续重试
                 if not is_last: continue
@@ -438,36 +441,36 @@ async def download_hd_image(page: Page, img_url: str, save_path: str, remove_wm:
     print("[Action] Falling back to direct request.")
 
     # 2. 备选方案：如果 Hover 失败或找不到按钮，通过 URL 直接下载
-    success, h, stats = await download_q_image(page, img_url, save_path, remove_wm)
+    success, img_bytes, h, stats = await download_q_image(page, img_url, remove_wm)
     if stats:
         stats["mode"] = "hd_fallback_q"
-    return success, h, stats
+    return success, img_bytes, h, stats
 
-async def download_q_image(page: Page, img_url: str, save_path: str, remove_wm: bool = True):
-    """通过 URL 直接请求下载预览图 (快)"""
+async def download_q_image(page: Page, img_url: str, remove_wm: bool = True):
+    """通过 URL 直接请求下载预览图 (纯内存处理)"""
     stats = {}
     try:
         t_dl_start = time.time()
         response = await page.request.get(img_url)
         dl_time = round(time.time() - t_dl_start, 3)
         if response.ok:
-            success, h, p_stats = await _process_and_save(BytesIO(await response.body()), save_path, remove_wm)
+            success, img_bytes, h, p_stats = await _process_image(BytesIO(await response.body()), remove_wm)
             if success:
                 stats.update(p_stats)
                 stats["dl_time"] = dl_time
                 stats["mode"] = "preview"
-            return success, h, stats
+            return success, img_bytes, h, stats
     except Exception as e:
         print(f"[Action] download_q_image failed: {e}")
     
-    return False, None, stats
+    return False, None, None, stats
 
 async def download_generated_images(
     page: Page, 
     remove_watermark: bool = True,
     download_mode: str = "preview"
 ) -> List[Dict[str, Any]]:
-    """获取所有生成的图片 URL 并在对应的目录下批量处理"""
+    """获取所有生成的图片 URL 并下载处理（纯内存，直接用 hash 文件名落盘）"""
     urls = await get_generated_urls(page)
     if not urls:
         return []
@@ -477,26 +480,22 @@ async def download_generated_images(
     date_str = datetime.now().strftime("%Y%m%d")
     
     for i, url in enumerate(urls):
-        save_dir = output_base / ("hd" if download_mode == "hd" else "q") / date_str
-        save_dir.mkdir(parents=True, exist_ok=True)
-        save_path = save_dir / f"temp_{int(time.time())}_{i}"
-        
         if download_mode == "hd":
-            success, img_hash, stats = await download_hd_image(
-                page, url, str(save_path), remove_wm=remove_watermark
+            success, img_bytes, img_hash, stats = await download_hd_image(
+                page, url, remove_wm=remove_watermark
             )
         else:
-            success, img_hash, stats = await download_q_image(
-                page, url, str(save_path), remove_wm=remove_watermark
+            success, img_bytes, img_hash, stats = await download_q_image(
+                page, url, remove_wm=remove_watermark
             )
         
-        if success and img_hash:
+        if success and img_hash and img_bytes:
+            save_dir = output_base / ("hd" if download_mode == "hd" else "q") / date_str
+            save_dir.mkdir(parents=True, exist_ok=True)
             final_path = save_dir / f"{img_hash}.webp"
-            temp_file = Path(str(save_path) + ".webp")
-            if temp_file.exists():
-                temp_file.rename(final_path)
+            final_path.write_bytes(img_bytes)
             
-            # 直接在 action 内打印详细统计
+            # 打印详细统计
             raw_size = stats.get('raw_size_kb', 0)
             final_size = stats.get('size_kb', 0)
             ratio = round((final_size / raw_size * 100), 1) if raw_size > 0 else 0
@@ -505,7 +504,7 @@ async def download_generated_images(
                   f"Size: {raw_size}KB -> {final_size}KB ({ratio}%) | "
                   f"DL: {stats.get('dl_time', 0)}s | "
                   f"WM_Remove: {stats.get('wm_time', 0)}s | "
-                  f"Save: {stats.get('save_time', 0)}s")
+                  f"Encode: {stats.get('save_time', 0)}s")
 
             images_info.append({
                 "id": f"{date_str}/{img_hash}",
@@ -517,52 +516,39 @@ async def download_generated_images(
             
     return images_info
 
-async def _process_and_save(src: Any, dest: str, remove_wm: bool):
-    """图片后处理内部函数"""
+async def _process_image(src: BytesIO, remove_wm: bool):
+    """图片纯内存处理：去水印 + WebP 编码，返回 (success, img_bytes, hash, stats)"""
     stats = {}
     try:
         t_start = time.time()
         
-        # 获取原始文件大小
-        if isinstance(src, (str, Path)):
-            raw_size = Path(src).stat().st_size
-        elif hasattr(src, "getbuffer"):
-            raw_size = src.getbuffer().nbytes
-        elif hasattr(src, "seek"):
-            src.seek(0, 2)
-            raw_size = src.tell()
-            src.seek(0)
-        else:
-            raw_size = 0
+        # 获取原始大小
+        raw_size = src.getbuffer().nbytes
         stats["raw_size_kb"] = round(raw_size / 1024, 2)
 
         img = Image.open(src)
+        img.load()
         
         if remove_wm:
             t_wm = time.time()
-            # 将去水印这一 CPU 密集型操作放到线程池执行
             img = await asyncio.to_thread(WatermarkRemover.remove_watermark, img)
             stats["wm_time"] = round(time.time() - t_wm, 3)
         
-        final_p = Path(dest).with_suffix(".webp")
-        final_p.parent.mkdir(parents=True, exist_ok=True)
+        # WebP 编码到内存
+        t_enc = time.time()
+        out_buf = BytesIO()
+        await asyncio.to_thread(img.save, out_buf, "WEBP", lossless=True)
+        img_bytes = out_buf.getvalue()
+        stats["save_time"] = round(time.time() - t_enc, 3)
         
-        t_save = time.time()
-        # 将 WebP 编码这一极度吃 CPU 的操作放到线程池执行
-        # 这能确保在保存大文件时，不会阻塞其他并发请求的调度
-        await asyncio.to_thread(img.save, final_p, "WEBP", lossless=True)
-        stats["save_time"] = round(time.time() - t_save, 3)
-        
-        stats["size_kb"] = round(final_p.stat().st_size / 1024, 2)
-        
-        with open(final_p, "rb") as f:
-            h = base64.urlsafe_b64encode(hashlib.sha256(f.read()).digest()).decode().rstrip("=")
+        stats["size_kb"] = round(len(img_bytes) / 1024, 2)
+        h = base64.urlsafe_b64encode(hashlib.sha256(img_bytes).digest()).decode().rstrip("=")
         
         stats["process_total"] = round(time.time() - t_start, 3)
-        return True, h, stats
+        return True, img_bytes, h, stats
     except Exception as e:
-        print(f"[Action] _process_and_save error: {e}")
-        return False, None, stats
+        traceback.print_exc()
+        return False, None, None, stats
 
 async def handle_consent_popups(page: Page, selectors: List[str] = _SELECTORS["agree_btns"]) -> bool:
     """处理各种同意弹窗"""
