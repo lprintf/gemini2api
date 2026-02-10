@@ -20,7 +20,7 @@ Gemini 水印去除工具
     其中 alpha 来自预提取的水印透明度映射
 """
 
-from io import BytesIO
+
 from pathlib import Path
 from typing import Literal, Optional
 
@@ -229,64 +229,16 @@ class WatermarkRemover:
 
         return result
 
-    @staticmethod
-    def remove_watermark_from_bytes(
-        image_bytes: bytes,
-        watermark_size: Optional[Literal[48, 96]] = None,
-        verbose: bool = False,
-    ) -> bytes:
-        """
-        从图片字节数据中去除水印
-
-        Args:
-            image_bytes: 图片字节数据
-            watermark_size: 水印尺寸（48 或 96），None 表示自动检测
-            verbose: 是否打印详细信息
-
-        Returns:
-            去除水印后的图片字节数据（PNG 格式）
-        """
-        # 从字节数据加载图片
-        img = Image.open(BytesIO(image_bytes))
-
-        # 去除水印
-        result = WatermarkRemover.remove_watermark(img, watermark_size, verbose)
-
-        # 转换回字节数据
-        output = BytesIO()
-        result.save(output, format="PNG")
-        return output.getvalue()
-
-
-def test_watermark_remover():
-    """测试水印去除功能"""
-    import sys
-
-    if len(sys.argv) < 2:
-        print("用法: python watermark_remover.py <input_image> [output_image]")
-        sys.exit(1)
-
-    input_path = sys.argv[1]
-    output_path = sys.argv[2] if len(sys.argv) > 2 else "output_no_watermark.png"
-
-    print(f"输入: {input_path}")
-    print(f"输出: {output_path}")
-
-    # 加载图片
-    with open(input_path, "rb") as f:
-        image_bytes = f.read()
-
-    # 去除水印
-    result_bytes = WatermarkRemover.remove_watermark_from_bytes(
-        image_bytes, watermark_size=None, verbose=True  # 自动检测
-    )
-
-    # 保存结果
-    with open(output_path, "wb") as f:
-        f.write(result_bytes)
-
-    print(f"\n✓ 完成！已保存到: {output_path}")
 
 
 if __name__ == "__main__":
-    test_watermark_remover()
+    import sys
+    if len(sys.argv) < 2:
+        print("用法: python main.py <input_image> [output_image]")
+        sys.exit(1)
+    img = Image.open(sys.argv[1])
+    result = WatermarkRemover.remove_watermark(img, verbose=True)
+    out = sys.argv[2] if len(sys.argv) > 2 else "output.webp"
+    result.save(out)
+    print(f"\n✓ 已保存到: {out}")
+
