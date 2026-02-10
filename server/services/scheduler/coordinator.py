@@ -81,21 +81,29 @@ class TaskCoordinator:
             await self._record_task_failure(task_id, str(e), time.time() - start_time)
             raise e
         finally:
-            # 6. 【生命周期管控点】：任务结束，触发环境重置
-            # 为了不增加 API 响应延迟，我们将重置逻辑放在后台执行，
-            # 但在重置完成前，Tab 依然保持 BUSY 状态以防止被抢占。
-            async def background_rewarm(t, m):
+            # 6. 【生命周期管控点】：任务结束，按需执行后台延续任务，最终重置环境
+            # Tab 在整个链条完成前保持 BUSY，防止被抢占
+            bg_work = result.background_work if result and result.background_work else None
+
+            async def background_chain(t, m, work):
                 try:
-                    from ..tasks import actions
-                    await actions.reinitialize_page(t.page, model=m)
+                    if work:
+                        print(f"[Coordinator] Running background work on Tab {t.browser_id}:{t.tab_id}")
+                        await work
+                        print(f"[Coordinator] Background work completed on Tab {t.browser_id}:{t.tab_id}")
                 except Exception as e:
-                    print(f"[Coordinator] Background rewarm failed: {e}")
+                    print(f"[Coordinator] Background work failed: {e}")
                 finally:
-                    t.status = BrowserStatus.IDLE
-                    t.last_active_at = datetime.now()
+                    try:
+                        from ..tasks import actions
+                        await actions.reinitialize_page(t.page, model=m)
+                    except Exception as e:
+                        print(f"[Coordinator] Background rewarm failed: {e}")
+                    finally:
+                        t.status = BrowserStatus.IDLE
+                        t.last_active_at = datetime.now()
             
-            # 启动后台重置任务，不阻塞当前请求的返回
-            asyncio.create_task(background_rewarm(tab, model))
+            asyncio.create_task(background_chain(tab, model, bg_work))
 
     async def _record_task_failure(self, task_id: str, error: str, duration: float):
         """记录任务失败到数据库"""

@@ -57,15 +57,35 @@ class ImageGenerationTask(BaseEngineTask):
             if not urls:
                 return TaskResult(success=False, error="No images found in response")
 
-            # 5. 下载处理阶段 (封装版)
+            # 5. 下载处理阶段
             tab.activity = "Downloading & Processing"
             t3 = time.time()
-            images_info = await actions.download_generated_images(
-                page, 
-                remove_watermark=remove_watermark,
-                download_mode=download_mode
-            )
-            durations["download"] = round(time.time() - t3, 3)
+            background_work = None
+
+            if download_mode == "both":
+                # both 模式：先同步下载预览图（客户端等这个），HD 下载作为后台任务
+                images_info = await actions.download_generated_images(
+                    page, remove_watermark=remove_watermark, download_mode="preview"
+                )
+                durations["download_preview"] = round(time.time() - t3, 3)
+
+                # 构建 HD 下载协程，交给 coordinator 后台执行
+                async def bg_hd_download():
+                    t_hd = time.time()
+                    tab.activity = "Background HD download"
+                    hd_images = await actions.download_generated_images(
+                        page, remove_watermark=remove_watermark, download_mode="hd"
+                    )
+                    print(f"[Task {tab.browser_id}:{tab.tab_id}] Background HD download: "
+                          f"{len(hd_images)} images in {time.time() - t_hd:.1f}s")
+
+                background_work = bg_hd_download()
+            else:
+                # preview 或 hd 模式：正常同步下载
+                images_info = await actions.download_generated_images(
+                    page, remove_watermark=remove_watermark, download_mode=download_mode
+                )
+                durations["download"] = round(time.time() - t3, 3)
 
             if not images_info:
                 return TaskResult(success=False, error="Failed to process any generated images")
@@ -78,12 +98,13 @@ class ImageGenerationTask(BaseEngineTask):
                   f"Prepare: {durations.get('prepare', 0)}s, "
                   f"Submit: {durations.get('submit', 0)}s, "
                   f"Generate: {durations.get('generate', 0)}s, "
-                  f"Download: {durations.get('download', 0)}s")
+                  f"Download: {durations.get('download', durations.get('download_preview', 0))}s")
 
             return TaskResult(
                 success=True, 
                 data={"images": images_info, "date": date_str},
-                metadata={"model": model, "prompt": prompt, "download_mode": download_mode}
+                metadata={"model": model, "prompt": prompt, "download_mode": download_mode},
+                background_work=background_work
             )
 
         except Exception as e:
