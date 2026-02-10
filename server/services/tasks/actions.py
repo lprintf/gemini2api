@@ -189,13 +189,17 @@ async def upload_image(page: Page, image_path: str, selector: str = _SELECTORS["
     if not img_file.exists(): return False
     
     with open(img_file, "rb") as f:
-        img_b64 = base64.b64encode(f.read()).decode()
+        img_data = f.read()
+        img_b64 = base64.b64encode(img_data).decode()
+    
+    # 使用原始文件名，避免 Gemini 的"你已经上传过"重复检测
+    filename = img_file.name
     
     return await page.evaluate("""
-        async ([b64, target_selector]) => {
+        async ([b64, target_selector, fname]) => {
             const res = await fetch(`data:image/webp;base64,${b64}`);
             const blob = await res.blob();
-            const file = new File([blob], "input.webp", { type: "image/webp" });
+            const file = new File([blob], fname, { type: "image/webp" });
             const dt = new DataTransfer();
             dt.items.add(file);
             const target = document.querySelector(target_selector);
@@ -204,7 +208,8 @@ async def upload_image(page: Page, image_path: str, selector: str = _SELECTORS["
             target.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true }));
             return true;
         }
-    """, [img_b64, selector])
+    """, [img_b64, selector, filename])
+
 
     # 必须等待预览容器和 loading 状态出现
     # 如果这一步等不到，说明图片粘贴失败或 Gemini 没反应，后续提交肯定会缺图
@@ -307,7 +312,7 @@ async def submit_image_prompt(page: Page, prompt: str, image_paths: List[str] = 
             try:
                 await page.wait_for_function(f"""
                     (count) => document.querySelectorAll('img[src*="blob:"]').length >= count
-                """, arg=target_count, timeout=10000)
+                """, arg=target_count, timeout=90000)
             except:
                 print(f"[Action] Warning: Image count sync timeout (curr={await get_uploaded_image_count(page)}, expected={target_count})")
 
