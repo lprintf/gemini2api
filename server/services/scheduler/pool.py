@@ -275,8 +275,11 @@ class BrowserPool:
                 raise KeyError(f"Browser {browser_id} not found")
 
             browser = self.browsers[browser_id]
-            await browser.close()
+            # 从内存中移除，这样其它请求就不会再看到它
             del self.browsers[browser_id]
+
+            # 异步关闭浏览器，不占锁
+            asyncio.create_task(browser.close())
 
             # 从数据库删除
             try:
@@ -311,7 +314,8 @@ class BrowserPool:
         if browser.status == BrowserStatus.CLOSED:
             raise RuntimeError(f"Browser {browser_id} is already closed")
 
-        await browser.close()
+        # 异步关闭，不阻塞 API
+        asyncio.create_task(browser.close())
 
     async def get_available_browser(
         self, preferred_model: Optional[str] = None
