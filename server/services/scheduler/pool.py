@@ -216,7 +216,8 @@ class BrowserPool:
             self.browsers[browser_id_str] = browser
 
             if auto_start:
-                await browser.launch()
+                # 异步启动，不阻塞 API
+                asyncio.create_task(browser.launch())
 
             print(
                 f"[BrowserPool] Created browser {browser_id_str} (account: {account_name}, tabs: {max_tabs}, dir: {user_data_dir})"
@@ -298,7 +299,8 @@ class BrowserPool:
                 f"Browser {browser_id} is not closed (status: {browser.status})"
             )
 
-        await browser.launch()
+        # 异步启动，不阻塞 API
+        asyncio.create_task(browser.launch())
 
     async def close_browser(self, browser_id: str):
         """停止指定浏览器"""
