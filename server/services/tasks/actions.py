@@ -17,6 +17,7 @@ from PIL import Image
 from playwright.async_api import Page
 
 from .remove_watermark.main import WatermarkRemover
+from server.utils.logger import tab_log
 
 # =========================================================================
 # 物理层定位符 (内部隐藏)
@@ -136,7 +137,7 @@ async def select_menu_item(page: Page, item_selectors: List[str], menu_selectors
                 await opt.evaluate("el => el.click()")
             return True
     except Exception as e:
-        print(f"[Action] select_menu_item error: {e}")
+        tab_log(page, f"select_menu_item error: {e}", "error")
     return False
 
 async def ensure_image_gen_active(page: Page) -> bool:
@@ -220,9 +221,9 @@ async def upload_image(page: Page, image_path: str, selector: str = _SELECTORS["
         # 2. 确认已经进入 loading 状态 (或进度条已出)
         # 这确保了 click_submit 运行时能看到“正在上传”的状态
         await page.wait_for_selector(".image-preview.loading, .progress-spinner, mat-progress-bar", timeout=6000)
-        print("[Action] Image upload detected and loading started.")
+        tab_log(page, "Image upload detected and loading started.")
     except:
-        print("[Action] Warning: upload_image timed out waiting for loading state. Image might be missing.")
+        tab_log(page, "Warning: upload_image timed out waiting for loading state.", "warning")
     return True
 
 
@@ -266,7 +267,7 @@ async def click_submit(page: Page, selectors: List[str] = _SELECTORS["submit_btn
         # 即使现在不 loading，也要等一下确认它确实不是在 loading
         check_selector = '.image-preview, .image-preview.loading, .progress-spinner, mat-progress-bar'
         if await page.query_selector(check_selector):
-            print("[Action] Detected image elements, ensuring upload completion...")
+            tab_log(page, "Detected image elements, ensuring upload completion...")
             await page.wait_for_function("""
                 () => {
                     const loaders = document.querySelector('.image-preview.loading, .progress-spinner, mat-progress-bar');
@@ -276,7 +277,7 @@ async def click_submit(page: Page, selectors: List[str] = _SELECTORS["submit_btn
             # 上传完后给极短的缓冲让“发送”按钮变为可用状态
             await asyncio.sleep(0.5)
     except Exception as e:
-        print(f"[Action] click_submit sync wait finished or failed: {e}")
+        tab_log(page, f"click_submit sync wait finished or failed: {e}", "warning")
 
     # 2. 执行物理点击+JS点击双重保障
     for sel in selectors:
@@ -299,7 +300,7 @@ async def submit_image_prompt(page: Page, prompt: str, image_paths: List[str] = 
         
         # 1. 批量发起上传
         if image_paths:
-            print(f"[Action] Starting batch upload for {target_count} images...")
+            tab_log(page, f"Starting batch upload for {target_count} images...")
             for p in image_paths:
                 await upload_image(page, p)
         
@@ -309,19 +310,19 @@ async def submit_image_prompt(page: Page, prompt: str, image_paths: List[str] = 
             
         # 3. 核心等待：直到 UI 上的图片数量达到预期
         if target_count > 0:
-            print(f"[Action] Waiting for image count to reach {target_count}...")
+            tab_log(page, f"Waiting for image count to reach {target_count}...")
             try:
                 await page.wait_for_function(f"""
                     (count) => document.querySelectorAll('img[src*="blob:"]').length >= count
                 """, arg=target_count, timeout=90000)
             except:
-                print(f"[Action] Warning: Image count sync timeout (curr={await get_uploaded_image_count(page)}, expected={target_count})")
+                tab_log(page, f"Warning: Image count sync timeout (curr={await get_uploaded_image_count(page)}, expected={target_count})", "warning")
 
             
         # 4. 最终提交 (click_submit 会处理后续的 loading 消失等待)
         return await click_submit(page)
     except Exception as e:
-        print(f"[Action] submit_image_prompt error: {e}")
+        tab_log(page, f"submit_image_prompt error: {e}", "error")
         return False
 
 async def wait_for_results(page: Page, timeout_s: int = 60):
@@ -383,7 +384,7 @@ async def download_hd_image(page: Page, img_url: str, remove_wm: bool = True, ma
         for attempt in range(max_attempts):
             is_last = (attempt == max_attempts - 1)
             try:
-                print(f"[Action] Hovering over image (attempt {attempt + 1}/{max_attempts})...")
+                tab_log(page, f"Hovering over image (attempt {attempt + 1}/{max_attempts})...")
                 await img_element.scroll_into_view_if_needed()
                 
                 # 双重保险：物理 hover + JS 推送
@@ -409,7 +410,7 @@ async def download_hd_image(page: Page, img_url: str, remove_wm: bool = True, ma
                     try:
                         download_btn = await page.wait_for_selector(sel, timeout=2000, state="visible")
                         if download_btn:
-                            print(f"[Action] Download button found: {sel}")
+                            tab_log(page, f"Download button found: {sel}")
                             break
                     except: continue
                     
@@ -434,11 +435,11 @@ async def download_hd_image(page: Page, img_url: str, remove_wm: bool = True, ma
                 if not is_last: continue
             except Exception as e:
                 if is_last:
-                    print(f"[Action] HD download failed after {max_attempts} attempts: {e}")
+                    tab_log(page, f"HD download failed after {max_attempts} attempts: {e}", "error")
                 else: 
-                    print(f"[Action] Hover attempt {attempt+1} failed ({type(e).__name__}), retrying...")
+                    tab_log(page, f"Hover attempt {attempt+1} failed ({type(e).__name__}), retrying...", "warning")
         
-    print("[Action] Falling back to direct request.")
+    tab_log(page, "Falling back to direct request.", "warning")
 
     # 2. 备选方案：如果 Hover 失败或找不到按钮，通过 URL 直接下载
     success, img_bytes, h, stats = await download_q_image(page, img_url, remove_wm)
@@ -461,7 +462,7 @@ async def download_q_image(page: Page, img_url: str, remove_wm: bool = True):
                 stats["mode"] = "preview"
             return success, img_bytes, h, stats
     except Exception as e:
-        print(f"[Action] download_q_image failed: {e}")
+        tab_log(page, f"download_q_image failed: {e}", "error")
     
     return False, None, None, stats
 
@@ -500,7 +501,7 @@ async def download_generated_images(
             final_size = stats.get('size_kb', 0)
             ratio = round((final_size / raw_size * 100), 1) if raw_size > 0 else 0
             
-            print(f"[Action] Download Meta: {img_hash} ({stats.get('mode', 'unknown')}) | "
+            tab_log(page, f"Download Meta: {img_hash} ({stats.get('mode', 'unknown')}) | "
                   f"Size: {raw_size}KB -> {final_size}KB ({ratio}%) | "
                   f"DL: {stats.get('dl_time', 0)}s | "
                   f"WM_Remove: {stats.get('wm_time', 0)}s | "

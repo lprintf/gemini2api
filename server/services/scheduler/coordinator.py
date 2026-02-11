@@ -4,6 +4,7 @@ import time
 from datetime import datetime
 from typing import List, Optional, Any, Dict
 from server.db.database import get_db
+from server.utils.logger import tab_log
 from .pool import BrowserPool
 
 class TaskCoordinator:
@@ -88,17 +89,17 @@ class TaskCoordinator:
             async def background_chain(t, m, work):
                 try:
                     if work:
-                        print(f"[Coordinator] Running background work on Tab {t.browser_id}:{t.tab_id}")
+                        tab_log(t.page, "Running background work...")
                         await work
-                        print(f"[Coordinator] Background work completed on Tab {t.browser_id}:{t.tab_id}")
+                        tab_log(t.page, "Background work completed")
                 except Exception as e:
-                    print(f"[Coordinator] Background work failed: {e}")
+                    tab_log(t.page, f"Background work failed: {e}", "error")
                 finally:
                     try:
                         from ..tasks import actions
                         await actions.reinitialize_page(t.page, model=m)
                     except Exception as e:
-                        print(f"[Coordinator] Background rewarm failed: {e}")
+                        tab_log(t.page, f"Background rewarm failed: {e}", "error")
                     finally:
                         t.status = BrowserStatus.IDLE
                         t.last_active_at = datetime.now()

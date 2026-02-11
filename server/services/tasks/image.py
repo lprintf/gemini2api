@@ -6,12 +6,15 @@ from typing import List, Literal, Optional, Any, Dict
 from .base import BaseEngineTask, TaskResult
 from . import actions
 from ..objects.exceptions import BrowserStatus
+from server.utils.logger import get_tab_logger, tab_log
 
 class ImageGenerationTask(BaseEngineTask):
     """图片生成与编辑任务（逻辑编排层）"""
     
     async def run(self, tab: Any) -> TaskResult:
         page = tab.page
+        # 挂载 per-tab logger，actions 层通过 tab_log(page, msg) 使用
+        page._logger = get_tab_logger(tab.browser_id, tab.tab_id)
         
         # 1. 提取参数
         prompt = self.payload.get("prompt")
@@ -76,7 +79,7 @@ class ImageGenerationTask(BaseEngineTask):
                     hd_images = await actions.download_generated_images(
                         page, remove_watermark=remove_watermark, download_mode="hd"
                     )
-                    print(f"[Task {tab.browser_id}:{tab.tab_id}] Background HD download: "
+                    tab_log(page, f"Background HD download: "
                           f"{len(hd_images)} images in {time.time() - t_hd:.1f}s")
 
                 background_work = bg_hd_download()
@@ -94,7 +97,7 @@ class ImageGenerationTask(BaseEngineTask):
             durations["total"] = round(time.time() - start_ts, 3)
             
             # 后端完成后打印耗时统计
-            print(f"[Task {tab.browser_id}:{tab.tab_id}] Completed in {durations['total']}s: "
+            tab_log(page, f"Completed in {durations['total']}s: "
                   f"Prepare: {durations.get('prepare', 0)}s, "
                   f"Submit: {durations.get('submit', 0)}s, "
                   f"Generate: {durations.get('generate', 0)}s, "
