@@ -41,16 +41,15 @@ _SELECTORS = {
         '[data-test-id="bard-mode-option-快速"]',
         '[data-test-id="bard-mode-option-Flash"]',
     ],
-    # "model_thinking": [
-    "model_pro": [
+    "model_thinking": [ # 目前不如pro好用，指令跟随能力差
         '[data-test-id="bard-mode-option-thinking"]',
         '[data-test-id="bard-mode-option-思考"]',
         '[data-test-id="bard-mode-option-Thinking"]',
     ],
-    # "model_pro": [
-    #     '[data-test-id="bard-mode-option-pro"]',
-    #     '[data-test-id="bard-mode-option-Pro"]',
-    # ],
+    "model_pro": [
+        '[data-test-id="bard-mode-option-pro"]',
+        '[data-test-id="bard-mode-option-Pro"]',
+    ],
     "tools_btn": [
         "button.toolbox-drawer-button",
         'button[aria-label="工具"]',
