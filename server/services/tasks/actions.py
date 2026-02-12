@@ -17,7 +17,7 @@ from PIL import Image
 from playwright.async_api import Page
 
 from .remove_watermark.main import WatermarkRemover
-from server.utils.logger import tab_log
+from server.utils.logger import tab_log, DATA_DIR
 
 # =========================================================================
 # 物理层定位符 (内部隐藏)
@@ -610,4 +610,60 @@ async def reinitialize_page(page: Page, model: str = "Fast") -> bool:
         await page.goto("https://gemini.google.com/app", wait_until="load", timeout=60000)
         return await prepare_environment(page, model)
     except:
+        return False
+
+# =========================================================================
+# Debug & Analysis Actions
+# =========================================================================
+
+async def dump_inspect(page: Page) -> bool:
+    """[Debug] 分析并输出当前页面的交互元素清单"""
+    script = """
+    () => {
+        const results = [];
+        const elements = document.querySelectorAll('button, a, input, [role="button"], [contenteditable="true"]');
+        elements.forEach(el => {
+            const rect = el.getBoundingClientRect();
+            if (rect.width > 0 && rect.height > 0 && getComputedStyle(el).visibility !== 'hidden') {
+                results.push({
+                    tag: el.tagName,
+                    text: (el.innerText || el.value || "").trim().substring(0, 50).replace(/\\n/g, ' '),
+                    label: el.getAttribute('aria-label') || "",
+                    selector: el.id ? `#${el.id}` : (el.className ? `.${el.className.split(' ').join('.')}` : '')
+                });
+            }
+        });
+        return results;
+    }
+    """
+    try:
+        elements = await page.evaluate(script)
+        tab_log(page, f"--- Page Inspection ({len(elements)} elements) ---")
+        for idx, el in enumerate(elements):
+            msg = f"[{idx}] <{el['tag']}> Text: '{el['text']}'"
+            if el['label']: msg += f" | Label: '{el['label']}'"
+            if el['selector']: msg += f" | Sel: {el['selector']}"
+            tab_log(page, msg)
+        tab_log(page, "--- End of Inspection ---")
+        return True
+    except Exception as e:
+        tab_log(page, f"Inspection failed: {e}", "error")
+        return False
+
+async def dump_html(page: Page) -> bool:
+    """[Debug] 保存当前页面源码到 data/debug 目录"""
+    try:
+        html = await page.content()
+        date_str = datetime.now().strftime("%Y%m%d")
+        time_str = datetime.now().strftime("%H%M%S")
+        
+        debug_dir = DATA_DIR / "debug" / date_str
+        debug_dir.mkdir(parents=True, exist_ok=True)
+        file_path = debug_dir / f"{time_str}.html"
+        file_path.write_text(html, encoding="utf-8")
+        
+        tab_log(page, f"HTML Source saved: {file_path}")
+        return True
+    except Exception as e:
+        tab_log(page, f"Failed to save HTML: {e}", "error")
         return False
