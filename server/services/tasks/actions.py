@@ -73,10 +73,13 @@ _SELECTORS = {
         '[role="dialog"] button[data-mdc-dialog-action="accept"]',
     ],
     "sign_in_btns": [
+        'a[href*="accounts.google.com/ServiceLogin"]', # 最稳固的选择器
+        'a:has-text("Sign in")', 
+        'a:has-text("登录")',
         'button:has-text("Sign in")',
         'button:has-text("登录")',
-        'a[href*="accounts.google.com/ServiceLogin"]', # 有效
-        'button.sign-in-button',
+        'button[aria-label*="Sign in"]',
+        'button[aria-label*="登录"]',
     ],
 }
 
