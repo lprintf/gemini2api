@@ -61,7 +61,11 @@ class CommandParser:
             "wait": "sleep",
             "inspect": "dump_inspect",
             "html": "dump_html",
-            "listen": "listen"
+            "listen": "listen",
+            "login-go": "login_go",
+            "login-account": "login_account",
+            "login-pass": "login_pass",
+            "login": "login"
         }
         
         real_action = aliases.get(action_name, action_name)

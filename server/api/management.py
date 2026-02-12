@@ -884,8 +884,9 @@ async def execute_raw_command(browser_id: str, tab_id: int, request: CommandExec
     args = parsed["args"]
     kwargs = parsed["kwargs"]
     
-    # 挂载 per-tab logger，确保调试输出能进入日志文件
+    # 挂载 per-tab logger 和账号名，确保调试输出和动作能获取上下文
     tab.page._logger = get_tab_logger(browser_id, tab_id)
+    tab.page._account_name = browser.account_name
     
     success = False
     error = None

@@ -1,7 +1,66 @@
-from typing import List
+import asyncio
+import os
+from typing import List, Optional
 from playwright.async_api import Page
 from server.utils.logger import tab_log
 from .selectors import _SELECTORS
+from .base import click, input_prompt
+
+async def login_go(page: Page) -> bool:
+    """[Login] 点击登录按钮"""
+    return await click(page, _SELECTORS["sign_in_btns"])
+
+async def login_account(page: Page, account: Optional[str] = None) -> bool:
+    """[Login] 输入账号并点击下一步"""
+    if not account:
+        account = getattr(page, "_account_name", "")
+    
+    # 1. 针对 Google 登录页面的账号输入框
+    selector_input = "#identifierId"
+    if await input_prompt(page, account, selector=selector_input):
+        # 2. 点击下一步 (click 内部自带 wait_for_selector)
+        selector_next = ["#identifierNext", 'button:has-text("Next")', 'button:has-text("下一步")']
+        return await click(page, selector_next)
+    return False
+
+async def login_pass(page: Page, password: Optional[str] = None) -> bool:
+    """[Login] 输入密码并提交"""
+    if not password:
+        password = os.getenv("DEFAULT_ACCOUNT_PASSWORD", "")
+    
+    # 1. 输入密码
+    if await input_prompt(page, password, selector="#password"):
+        # 2. 点击确认/下一步
+        selector_next = ["#passwordNext", 'button:has-text("Next")', 'button:has-text("下一步")']
+        return await click(page, selector_next)
+    return False
+
+async def login(page: Page, account: Optional[str] = None, password: Optional[str] = None) -> bool:
+    """[Login] 一键三连：点击登录 -> 输入账号 -> 输入密码"""
+    tab_log(page, "Starting unified login process...")
+    
+    # 1. 尝试点击首页的登录按钮
+    if await login_go(page):
+        tab_log(page, "Waiting for login page to settle...")
+        await asyncio.sleep(2.5) # 给页面跳转和脚本加载留出“人类感”时间
+    
+    # 2. 账号阶段
+    tab_log(page, "Entering account...")
+    if not await login_account(page, account):
+        tab_log(page, "Login failed at account stage", "error")
+        return False
+    
+    # 点击“下一步”后，Google 会进行各种反爬校验和转场
+    await asyncio.sleep(2.0)
+        
+    # 3. 密码阶段
+    tab_log(page, "Entering password...")
+    if not await login_pass(page, password):
+        tab_log(page, "Login failed at password stage", "error")
+        return False
+        
+    tab_log(page, "Login process completed successfully")
+    return True
 
 # 注意：为了避免循环引用，business 中的函数由 __init__ 统一分发，或者 environment 只依赖 selectors 和 base
 # 这里暂时只放环境相关的原子组合

@@ -37,7 +37,11 @@ from .business import (
 from .environment import (
     handle_consent_popups,
     prepare_environment,
-    reinitialize_page
+    reinitialize_page,
+    login_go,
+    login_account,
+    login_pass,
+    login
 )
 
 # 5. 调试与分析工具 (debug.py)
@@ -56,5 +60,6 @@ __all__ = [
     "click_submit", "submit_image_prompt", "wait_for_results", "get_generated_urls",
     "download_hd_image", "download_q_image", "download_generated_images",
     "handle_consent_popups", "prepare_environment", "reinitialize_page",
+    "login_go", "login_account", "login_pass", "login",
     "dump_inspect", "dump_html", "listen"
 ]

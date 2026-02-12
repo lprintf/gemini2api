@@ -14,6 +14,9 @@ services:
       - ./tests:/app/tests:ro
     environment:
       - TZ=${TZ:-Asia/Shanghai}
+      - DEFAULT_ACCOUNT_PASSWORD=${DEFAULT_ACCOUNT_PASSWORD}
+      - ADMIN_USERNAME=${ADMIN_USERNAME}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
       interval: 30s

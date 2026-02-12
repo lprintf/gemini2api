@@ -97,7 +97,6 @@ async def click_submit(page: Page, selectors: List[str] = _SELECTORS["submit_btn
                     return !loaders;
                 }
             """, timeout=30000)
-            await asyncio.sleep(0.5)
     except Exception as e:
         tab_log(page, f"click_submit sync wait finished or failed: {e}", "warning")
 
@@ -185,7 +184,6 @@ async def download_hd_image(page: Page, img_url: str, remove_wm: bool = True, ma
                 except:
                     await img_element.dispatch_event("mouseenter")
                 
-                await asyncio.sleep(0.5)
                 download_btn = None
                 selectors = [
                     'button[aria-label*="Download"]',
