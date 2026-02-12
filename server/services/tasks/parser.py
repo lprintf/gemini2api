@@ -8,13 +8,17 @@ class CommandParser:
     
     @staticmethod
     def parse(cmd_str: str) -> Optional[Dict[str, Any]]:
-        print(f"[Parser] Parsing command: {cmd_str}")
         try:
-            # posix=False 保持引号，避免 shlex 自动去掉 target_selectors=['xxx'] 里的单引号
-            tokens = shlex.split(cmd_str, posix=False)
-        except ValueError as e:
-            print(f"[Parser] shlex split error: {e}")
+            # 使用正则拆分，保留引号/括号内的空格，同时确保连在一起的字符被视为一个 token
+            import re
+            # 模式：(引号内容 | 括号内容 | 非空格非特殊字符)+
+            # 这可以确保 button:has-text("Sign in") 这种中间带引号且没有空格的文本被视为一个整体
+            pattern = r'(?:"(?:\\.|[^"])*"|\'(?:\\.|[^\'])*\'|\[(?:\\.|[^\[\]])*\]|\{(?:\\.|[^\{\}])*\}|[^\s"\'\[\]\{\}]+)+'
+            tokens = re.findall(pattern, cmd_str)
+        except Exception as e:
+            print(f"[Parser] split error: {e}")
             return None
+
             
         if not tokens:
             return None

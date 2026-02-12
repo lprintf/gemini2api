@@ -75,7 +75,7 @@ _SELECTORS = {
     "sign_in_btns": [
         'button:has-text("Sign in")',
         'button:has-text("登录")',
-        'a[href*="accounts.google.com/ServiceLogin"]',
+        'a[href*="accounts.google.com/ServiceLogin"]', # 有效
         'button.sign-in-button',
     ],
 }
@@ -146,6 +146,10 @@ async def prepare_environment(page: Page, model: str = "Fast") -> bool:
 
 async def select_menu_item(page: Page, item_selectors: List[str], menu_selectors: List[str] = _SELECTORS["model_menu"]) -> bool:
     """原子动作：点击下拉菜单并从中选择一项 (优化版本：利用 CSS 组选择器)"""
+    # 鲁棒性：支持单字符串
+    if isinstance(item_selectors, str): item_selectors = [item_selectors]
+    if isinstance(menu_selectors, str): menu_selectors = [menu_selectors]
+    
     try:
         # 1. 一次性等待任何一个可能的菜单按钮
         all_menus = ", ".join(menu_selectors)
@@ -164,6 +168,7 @@ async def select_menu_item(page: Page, item_selectors: List[str], menu_selectors
     except Exception as e:
         tab_log(page, f"select_menu_item error: {e}", "error")
     return False
+
 
 async def ensure_image_gen_active(page: Page) -> bool:
     """业务动作：确保图片生成功能开启"""
@@ -271,6 +276,9 @@ async def get_uploaded_image_count(page: Page) -> int:
 
 async def click(page: Page, selectors: List[str]):
     """通用点击动作 (支持多选择器回退，不含业务逻辑检查)"""
+    # 鲁棒性：支持单字符串
+    if isinstance(selectors, str): selectors = [selectors]
+    
     for sel in selectors:
         try:
             btn = await page.wait_for_selector(sel, timeout=3000, state="visible")
@@ -284,8 +292,12 @@ async def click(page: Page, selectors: List[str]):
         except: continue
     return False
 
+
 async def click_submit(page: Page, selectors: List[str] = _SELECTORS["submit_btns"]):
     """点击提交 (采用物理点击+JS点击双重保障，带图片上传保护)"""
+    # 鲁棒性：支持单字符串
+    if isinstance(selectors, str): selectors = [selectors]
+    
     # 1. 预检：如果有任何正在加载的迹象，死等它完成
     try:
         # 只要存在 preview 或任何 loading 元素，就进入等待逻辑
@@ -578,7 +590,11 @@ async def _process_image(src: BytesIO, remove_wm: bool):
 
 async def handle_consent_popups(page: Page, selectors: List[str] = _SELECTORS["agree_btns"]) -> bool:
     """处理各种同意弹窗"""
+    # 鲁棒性：支持单字符串
+    if isinstance(selectors, str): selectors = [selectors]
+    
     found = False
+
     for sel in selectors:
         try:
             btn = await page.query_selector(sel)
