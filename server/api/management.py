@@ -17,6 +17,7 @@ from server.services.scheduler.pool import BrowserPool
 from server.services.tasks.system import ReinitializeTask
 from server.services.tasks import actions
 from server.services.tasks.parser import CommandParser
+from server.utils.logger import get_tab_logger
 
 router = APIRouter(
     prefix="/api/admin",
@@ -882,6 +883,9 @@ async def execute_raw_command(browser_id: str, tab_id: int, request: CommandExec
     target_action = parsed["action"]
     args = parsed["args"]
     kwargs = parsed["kwargs"]
+    
+    # 挂载 per-tab logger，确保调试输出能进入日志文件
+    tab.page._logger = get_tab_logger(browser_id, tab_id)
     
     success = False
     error = None

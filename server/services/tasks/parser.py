@@ -58,7 +58,10 @@ class CommandParser:
             "reset": "start_new_chat",
             "new": "start_new_chat",
             "model": "set_model",
-            "wait": "sleep" # 需要特殊处理
+            "wait": "sleep",
+            "inspect": "dump_inspect",
+            "html": "dump_html",
+            "listen": "listen"
         }
         
         real_action = aliases.get(action_name, action_name)

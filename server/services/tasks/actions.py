@@ -670,3 +670,56 @@ async def dump_html(page: Page) -> bool:
     except Exception as e:
         tab_log(page, f"Failed to save HTML: {e}", "error")
         return False
+
+async def listen(page: Page, duration: Any = 30.0) -> bool:
+    """[Debug] 开启当前页面监听（录像机模式）。记录 DOM 变动到日志。"""
+    try:
+        duration_val = float(duration)
+    except:
+        duration_val = 30.0
+
+    def handle_console(msg):
+        if msg.text.startswith("[DOM] "):
+            tab_log(page, f"[Monitor] {msg.text[6:]}")
+
+    setup_script = """
+    (() => {
+        if (window._dom_observer) return;
+        const log = (m) => console.log("[DOM] " + m);
+        const observer = new MutationObserver((mutations) => {
+            mutations.forEach((m) => {
+                if (m.type === 'childList') {
+                    m.addedNodes.forEach(node => {
+                        if (node.nodeType === 1) {
+                            const desc = `<${node.tagName}> ${node.className || ""}`.substring(0, 60);
+                            const text = (node.innerText || node.textContent || "").trim().substring(0, 30);
+                            if (text) log(`ADD: ${desc} | "${text}"`);
+                        }
+                    });
+                } else if (m.type === 'characterData') {
+                    const text = m.target.data.trim();
+                    if (text.length > 2) log(`TEXT: "${text.substring(0, 50)}"`);
+                }
+            });
+        });
+        observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+        window._dom_observer = observer;
+        console.log("[DOM] --- Listener Injected ---");
+    })();
+    """
+
+    async def run_monitor():
+        tab_log(page, f"--- Monitoring Current Page for {duration_val}s ---")
+        page.on("console", handle_console)
+        try:
+            await page.evaluate(setup_script)
+        except: pass
+        await asyncio.sleep(duration_val)
+        page.remove_listener("console", handle_console)
+        await page.evaluate("() => { if(window._dom_observer) window._dom_observer.disconnect(); delete window._dom_observer; }")
+        tab_log(page, f"--- Monitoring Finished ---")
+
+    asyncio.create_task(run_monitor())
+    return True
+
+
