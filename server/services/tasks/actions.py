@@ -72,6 +72,12 @@ _SELECTORS = {
         'button:has-text("OK")',
         '[role="dialog"] button[data-mdc-dialog-action="accept"]',
     ],
+    "sign_in_btns": [
+        'button:has-text("Sign in")',
+        'button:has-text("登录")',
+        'a[href*="accounts.google.com/ServiceLogin"]',
+        'button.sign-in-button',
+    ],
 }
 
 _AVATAR_PATTERN = "/a/ACg8oc"
@@ -109,14 +115,34 @@ async def start_new_chat(page: Page, selector: str = _SELECTORS["input_box"]) ->
 async def prepare_environment(page: Page, model: str = "Fast") -> bool:
     """准备页面环境：切换模型并确保功能开启"""
     await handle_consent_popups(page)
-    await start_new_chat(page)
     
-    # 切换模型
-    await set_model(page, model)
+    # 1. 快速检查是否出现了登录按钮
+    for sel in _SELECTORS["sign_in_btns"]:
+        try:
+            if await page.query_selector(sel):
+                tab_log(page, "Login required (Sign-in button detected)", "warning")
+                return False
+        except: pass
+
+    # 2. 检查是否有核心输入框
+    if not await start_new_chat(page):
+        tab_log(page, "Environment check failed: Input box not found", "error")
+        return False
     
-    # 激活图片生成 (如果需要)
-    await ensure_image_gen_active(page)
+    # 3. 必须能成功切换模型
+    if not await set_model(page, model):
+        tab_log(page, f"Environment check failed: Failed to set model {model}", "error")
+        return False
+    
+    # 4. 必须能成功开启图片生成功能 (对于图片生成任务，这是关键判定点)
+    # 如果没登录或状态异常，这里通常会找不到或无法点击按钮
+    if not await ensure_image_gen_active(page):
+        tab_log(page, "Environment check failed: Cannot activate image generation", "error")
+        return False
+        
     return True
+
+
 
 async def select_menu_item(page: Page, item_selectors: List[str], menu_selectors: List[str] = _SELECTORS["model_menu"]) -> bool:
     """原子动作：点击下拉菜单并从中选择一项 (优化版本：利用 CSS 组选择器)"""

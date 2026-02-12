@@ -97,8 +97,15 @@ class BrowserInstance:
             tab0 = await init_tab_resource(0, page0, "Fast")
             self.tabs = [tab0]
 
-            # 4. 并行启动其它 Tab
+            # 4. 如果 Tab 0 没登录/初始化失败，不启动副标签页
+            if tab0.status == BrowserStatus.ERROR:
+                print(f"[Browser {self.browser_id}] Main tab failed to initialize. Skipping additional tabs.")
+                self.status = BrowserStatus.ERROR
+                return
+
+            # 5. 并行启动其它 Tab
             if self.max_tabs > 1:
+
                 fast_count = self.max_tabs // 2
                 
                 async def create_new_tab(tab_id: int) -> TabInstance:
