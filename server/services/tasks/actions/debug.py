@@ -4,18 +4,33 @@ from datetime import datetime
 from playwright.async_api import Page
 from server.utils.logger import tab_log, DATA_DIR
 
-async def dump_inspect(page: Page) -> bool:
+async def dump_inspect(page: Page, mode: str = "basic") -> bool:
     """[Debug] 分析并输出当前页面的交互元素清单"""
+    is_full = str(mode).lower() in ["full", "all", "verbose", "1", "true"]
+    
     script = """
-    () => {
+    (full) => {
         const results = [];
-        const elements = document.querySelectorAll('button, a, input, [role="button"], [contenteditable="true"]');
+        const baseSelector = 'button, a, input, [role="button"], [contenteditable="true"]';
+        const fullSelector = baseSelector + ', h1, h2, h3, h4, h5, h6, p';
+        const elements = document.querySelectorAll(full ? fullSelector : baseSelector);
+        
         elements.forEach(el => {
             const rect = el.getBoundingClientRect();
             if (rect.width > 0 && rect.height > 0 && getComputedStyle(el).visibility !== 'hidden') {
+                const text = (el.innerText || el.value || "").trim().substring(0, 100).replace(/\\n/g, ' ');
+                
+                // 逻辑修正：如果是交互元素，哪怕没文字也要看；
+                // 如果是展示元素（full模式下新增的），没文字才过滤。
+                const isInteractive = ['BUTTON', 'A', 'INPUT'].includes(el.tagName) || 
+                                     el.getAttribute('role') === 'button' || 
+                                     el.getAttribute('contenteditable') === 'true';
+                
+                if (full && !isInteractive && !text) return;
+
                 results.push({
                     tag: el.tagName,
-                    text: (el.innerText || el.value || "").trim().substring(0, 50).replace(/\\n/g, ' '),
+                    text: text,
                     label: el.getAttribute('aria-label') || "",
                     selector: el.id ? `#${el.id}` : (el.className ? `.${el.className.split(' ').join('.')}` : '')
                 });
@@ -25,8 +40,8 @@ async def dump_inspect(page: Page) -> bool:
     }
     """
     try:
-        elements = await page.evaluate(script)
-        tab_log(page, f"--- Page Inspection ({len(elements)} elements) ---")
+        elements = await page.evaluate(script, is_full)
+        tab_log(page, f"--- Page Inspection ({'Full' if is_full else 'Basic'}, {len(elements)} elements) ---")
         for idx, el in enumerate(elements):
             msg = f"[{idx}] <{el['tag']}> Text: '{el['text']}'"
             if el['label']: msg += f" | Label: '{el['label']}'"
