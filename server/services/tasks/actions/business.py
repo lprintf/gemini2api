@@ -43,10 +43,65 @@ async def start_new_chat(page: Page, selector: str = _SELECTORS["input_box"]) ->
 
 async def ensure_image_gen_active(page: Page) -> bool:
     """业务动作：确保图片生成功能开启"""
-    if await page.query_selector(_SELECTORS["image_gen_deselect"]):
-        return True
     
-    return await select_menu_item(page, _SELECTORS["image_gen_opt"], menu_selectors=_SELECTORS["tools_btn"])
+    # 1. 预检：等待一小段时间，看页面自身是否自带了“已开启”的状态
+    # 包含两种情况：直接看到了取消选中按钮，或者工具按钮上有 selected 标记
+    try:
+        already_active_selector = (
+            f"{_SELECTORS['image_gen_deselect']}, "
+            ".toolbox-drawer-button.has-selected-item, "
+            ".toolbox-drawer-button[class*='selected']"
+        )
+        # 给页面2秒钟的时间去渲染这些状态类
+        is_already_active = await page.wait_for_selector(already_active_selector, timeout=2000, state="attached")
+        if is_already_active:
+            tab_log(page, "Image generation tool is already active (detected via UI state). Skipping click.")
+            return True
+    except: pass
+    
+    tab_log(page, "Tool state not active. Attempting to open menu...")
+    # 2. 如果没能识别，我们就点开菜单检查
+    try:
+        all_menus = ", ".join(_SELECTORS["tools_btn"])
+        menu_btn = await page.wait_for_selector(all_menus, timeout=5000, state="visible")
+        if menu_btn:
+            try:
+                await menu_btn.click(timeout=2000)
+            except:
+                await menu_btn.evaluate("el => el.click()")
+                
+            # 4. 等待下拉菜单中的元素渲染（可能需要等待动画）
+            all_deselect = _SELECTORS["image_gen_deselect"]
+            all_opt = ", ".join(_SELECTORS["image_gen_opt"])
+            
+            try:
+                # 给足 3 秒时间等待其中任何一个出现（不论是选中状态还是未选中状态）
+                target = await page.wait_for_selector(f"{all_deselect}, {all_opt}", timeout=3000, state="attached")
+                
+                # 现在检查具体出现的是哪一个
+                is_deselected = await page.query_selector(all_deselect)
+                if is_deselected:
+                    tab_log(page, "Tool menu opened, found tool is already active (deselect button visible).")
+                    try:
+                        await menu_btn.click(timeout=2000) # 收起菜单
+                    except:
+                        await menu_btn.evaluate("el => el.click()")
+                    return True
+                    
+                opt = await page.query_selector(all_opt)
+                if opt:
+                    tab_log(page, "Tool menu opened, clicking tool to activate...")
+                    try:
+                        await opt.click(timeout=2000)
+                    except:
+                        await opt.evaluate("el => el.click()")
+                    return True
+            except Exception as e:
+                tab_log(page, f"Menu content wait failed: {e}", "warning")
+    except Exception as e:
+        tab_log(page, f"ensure_image_gen_active error: {e}", "error")
+        
+    return False
 
 async def set_model(page: Page, model: str = "Fast"):
     """业务动作：切换模型 (内置预检优化，支持 Fast/Pro/Thinking)"""
