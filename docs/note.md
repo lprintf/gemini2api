@@ -8,7 +8,7 @@
 自动同意弹窗：`handle_consent_popups`
 点击工具：`click selectors=['button.toolbox-drawer-item-list-button:has-text("Create images")','button.toolbox-drawer-item-list-button:has-text("生成图片")',"text=Create images", "text=生成图片"]`
 发送消息：`submit`
-提交：`generate prompt="makeit✨" image_paths=["server/services/tasks/remove_watermark/bg_48.png"]`
+提交：`generate prompt="make it ✨" image_paths=["server/services/tasks/remove_watermark/bg_48.png"]`
 `submit_image_prompt prompt='这两张图那个大' image_paths=["server/services/tasks/remove_watermark/bg_48.png","server/services/tasks/remove_watermark/bg_96.png"]`
 download_generated_images download_mode=hd
 
