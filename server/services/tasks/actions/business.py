@@ -95,6 +95,15 @@ async def ensure_image_gen_active(page: Page) -> bool:
                         await opt.click(timeout=2000)
                     except:
                         await opt.click(timeout=3000, force=True)
+                        
+                    # 极其关键的护城河：等待 Angular 的组件重构（类似刷新）完成
+                    # 只有当包含 "has-selected-item" 的外层工具按钮再次挂载并稳住，才说明大功告成
+                    try:
+                        await page.wait_for_selector(".toolbox-drawer-button.has-selected-item", timeout=5000, state="attached")
+                        tab_log(page, "Tool activation confirmed (UI re-render completed).")
+                    except:
+                        tab_log(page, "Warning: Tool click executed, but UI activation state timeout.", "warning")
+                        
                     return True
             except Exception as e:
                 tab_log(page, f"Menu content wait failed: {e}", "warning")

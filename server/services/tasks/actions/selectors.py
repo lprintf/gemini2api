@@ -39,9 +39,9 @@ _SELECTORS = {
     ],
     "tools_btn": [
         "button.toolbox-drawer-button",
-        'button[aria-label*="工具"]',
-        'button[aria-label*="Tools"]',
-        'button[aria-label*="toolbox"]',
+        'button[aria-label="工具"]',
+        'button[aria-label="Tools"]',
+        'button[aria-label="toolbox"]',
     ],
     "image_gen_opt": [
         'button.toolbox-drawer-item-list-button:has-text("Create images")',
