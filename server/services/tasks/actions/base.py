@@ -18,8 +18,8 @@ async def click(page: Page, selectors: List[str]):
                 try:
                     await btn.click(timeout=2000)
                 except:
-                    # JS 强制点击兜底
-                    await btn.evaluate("el => el.click()")
+                    # 原生物理强制点击，穿透遮罩层
+                    await btn.click(timeout=2000, force=True)
                 return True
         except: continue
     return False
@@ -40,7 +40,10 @@ async def select_menu_item(page: Page, item_selectors: List[str], menu_selectors
         # 1. 一次性等待任何一个可能的菜单按钮
         all_menus = ", ".join(menu_selectors)
         menu_btn = await page.wait_for_selector(all_menus, timeout=5000, state="visible")
-        await menu_btn.click()
+        try:
+            await menu_btn.click(timeout=2000)
+        except:
+            await menu_btn.click(timeout=2000, force=True)
         
         # 2. 一次性等待任何一个可能的待选项
         all_items = ", ".join(item_selectors)
@@ -49,7 +52,7 @@ async def select_menu_item(page: Page, item_selectors: List[str], menu_selectors
             try:
                 await opt.click(timeout=2000)
             except:
-                await opt.evaluate("el => el.click()")
+                await opt.click(timeout=2000, force=True)
             return True
     except Exception as e:
         tab_log(page, f"select_menu_item error: {e}", "error")

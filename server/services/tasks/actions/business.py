@@ -68,7 +68,7 @@ async def ensure_image_gen_active(page: Page) -> bool:
             try:
                 await menu_btn.click(timeout=2000)
             except:
-                await menu_btn.evaluate("el => el.click()")
+                await menu_btn.click(timeout=3000, force=True)
                 
             # 4. 等待下拉菜单中的元素渲染（可能需要等待动画）
             all_deselect = _SELECTORS["image_gen_deselect"]
@@ -85,7 +85,7 @@ async def ensure_image_gen_active(page: Page) -> bool:
                     try:
                         await menu_btn.click(timeout=2000) # 收起菜单
                     except:
-                        await menu_btn.evaluate("el => el.click()")
+                        await menu_btn.click(timeout=3000, force=True)
                     return True
                     
                 opt = await page.query_selector(all_opt)
@@ -94,7 +94,7 @@ async def ensure_image_gen_active(page: Page) -> bool:
                     try:
                         await opt.click(timeout=2000)
                     except:
-                        await opt.evaluate("el => el.click()")
+                        await opt.click(timeout=3000, force=True)
                     return True
             except Exception as e:
                 tab_log(page, f"Menu content wait failed: {e}", "warning")
