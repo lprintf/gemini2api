@@ -53,7 +53,7 @@ async def ensure_image_gen_active(page: Page) -> bool:
             ".toolbox-drawer-button[class*='selected']"
         )
         # 给页面2秒钟的时间去渲染这些状态类
-        is_already_active = await page.wait_for_selector(already_active_selector, timeout=2000, state="attached")
+        is_already_active = await page.wait_for_selector(already_active_selector, timeout=2000, state="visible")
         if is_already_active:
             tab_log(page, "Image generation tool is already active (detected via UI state). Skipping click.")
             return True
@@ -76,11 +76,11 @@ async def ensure_image_gen_active(page: Page) -> bool:
             
             try:
                 # 给足 3 秒时间等待其中任何一个出现（不论是选中状态还是未选中状态）
-                target = await page.wait_for_selector(f"{all_deselect}, {all_opt}", timeout=3000, state="attached")
+                target = await page.wait_for_selector(f"{all_deselect}, {all_opt}", timeout=3000, state="visible")
                 
-                # 现在检查具体出现的是哪一个
+                # 现在检查具体出现的是哪一个（必须是肉眼可见的，因为 Angular 组件可能会常驻 DOM 里隐藏）
                 is_deselected = await page.query_selector(all_deselect)
-                if is_deselected:
+                if is_deselected and await is_deselected.is_visible():
                     tab_log(page, "Tool menu opened, found tool is already active (deselect button visible).")
                     try:
                         await menu_btn.click(timeout=2000) # 收起菜单
@@ -89,7 +89,7 @@ async def ensure_image_gen_active(page: Page) -> bool:
                     return True
                     
                 opt = await page.query_selector(all_opt)
-                if opt:
+                if opt and await opt.is_visible():
                     tab_log(page, "Tool menu opened, clicking tool to activate...")
                     try:
                         await opt.click(timeout=2000)

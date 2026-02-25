@@ -64,12 +64,13 @@ _SELECTORS = {
     ],
     "sign_in_btns": [
         'a[href*="accounts.google.com/ServiceLogin"]',
-        'a:has-text("Sign in")', 
-        'a:has-text("登录")',
-        'button:has-text("Sign in")',
-        'button:has-text("登录")',
-        'button[aria-label*="Sign in"]',
-        'button[aria-label*="登录"]',
+        'a:text-is("Sign in")', 
+        'a:text-is("登录")',
+        'button:text-is("Sign in")',
+        'button:text-is("登录")',
+        'button:text-is("登入")',
+        'button[aria-label="Sign in"]',
+        'button[aria-label="登录"]',
     ],
 }
 
