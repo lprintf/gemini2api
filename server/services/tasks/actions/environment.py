@@ -114,5 +114,6 @@ async def reinitialize_page(page: Page, model: str = "Fast") -> bool:
     try:
         await page.goto("https://gemini.google.com/app", wait_until="load", timeout=60000)
         return await prepare_environment(page, model)
-    except:
+    except Exception as e:
+        tab_log(page, f"Page reinitialization failed: {e}", "error")
         return False

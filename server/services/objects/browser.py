@@ -86,8 +86,14 @@ class BrowserInstance:
 
             # 2. 标签页初始化函数 (封装内部逻辑，避免依赖外部 Task)
             async def init_tab_resource(tab_id: int, page: Page, model: str) -> TabInstance:
+                from server.utils.logger import get_tab_logger
                 tab = TabInstance(tab_id, self.browser_id, model)
                 tab.page = page
+                
+                # 挂载日志和账号上下文，确保启动阶段的预检日志也能写入对应的 tab 文件
+                tab.page._logger = get_tab_logger(self.browser_id, tab_id)
+                tab.page._account_name = self.account_name
+                
                 # 直接调用 Action 原子步进行环境准备
                 success = await actions.reinitialize_page(page, model=model)
                 tab.status = BrowserStatus.IDLE if success else BrowserStatus.ERROR
