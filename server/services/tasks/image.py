@@ -15,8 +15,7 @@ class ImageGenerationTask(BaseEngineTask):
         page = tab.page
         # 挂载 per-tab logger，actions 层通过 tab_log(page, msg) 使用
         page._logger = get_tab_logger(tab.browser_id, tab.tab_id)
-        
-        # 1. 提取参数
+                # 1. 提取参数
         prompt = self.payload.get("prompt")
         input_images = self.payload.get("input_images", [])
         if not input_images and self.payload.get("input_image"):
@@ -36,6 +35,7 @@ class ImageGenerationTask(BaseEngineTask):
             success = await actions.prepare_environment(page, model=model)
             durations["prepare"] = round(time.time() - t0, 3)
             if not success:
+                tab_log(page, "Environment preparation failed", "error")
                 return TaskResult(success=False, error="Environment preparation failed")
 
             # 3. 输入与提交阶段
@@ -46,6 +46,7 @@ class ImageGenerationTask(BaseEngineTask):
             )
             durations["submit"] = round(time.time() - t1, 3)
             if not success:
+                tab_log(page, "Failed to submit image prompt", "error")
                 return TaskResult(success=False, error="Failed to submit image prompt")
 
             # 4. 生成阶段
@@ -54,10 +55,12 @@ class ImageGenerationTask(BaseEngineTask):
             success = await actions.wait_for_results(page, timeout_s=90)
             durations["generate"] = round(time.time() - t2, 3)
             if not success:
+                tab_log(page, f"Timed out waiting for image results after {durations['generate']}s", "error")
                 return TaskResult(success=False, error="Timed out waiting for image results")
 
             urls = await actions.get_generated_urls(page)
             if not urls:
+                tab_log(page, "No images found in response", "error")
                 return TaskResult(success=False, error="No images found in response")
 
             # 5. 下载处理阶段
@@ -91,6 +94,7 @@ class ImageGenerationTask(BaseEngineTask):
                 durations["download"] = round(time.time() - t3, 3)
 
             if not images_info:
+                tab_log(page, "Failed to process any generated images", "error")
                 return TaskResult(success=False, error="Failed to process any generated images")
             
             date_str = datetime.now().strftime("%Y%m%d")
@@ -113,6 +117,7 @@ class ImageGenerationTask(BaseEngineTask):
         except Exception as e:
             import traceback
             traceback.print_exc()
+            tab_log(page, f"Task failed with exception: {str(e)}", "error")
             return TaskResult(success=False, error=str(e))
         finally:
             tab.activity = "Idle"

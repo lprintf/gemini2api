@@ -176,6 +176,8 @@ async def submit_image_prompt(page: Page, prompt: str, image_paths: List[str] = 
                 await upload_image(page, p)
         
         if prompt:
+            if target_count == 0:
+                tab_log(page, f"Submitting text prompt: '{prompt[:50]}...'")
             await input_prompt(page, prompt)
             
         if target_count > 0:
