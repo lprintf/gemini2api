@@ -14,9 +14,8 @@ _SELECTORS = {
     ],
     "model_menu": [
         '[data-test-id="bard-mode-menu-button"]',
-        'button[aria-label*="Model"]',
-        'button[aria-label*="模型"]',
-        'button[aria-label*="模式"]',
+        'button.input-area-switch',
+        'button[aria-label*="模式选择"]',
         'button[aria-label*="mode picker"]',
     ],
     "model_fast": [
