@@ -44,8 +44,14 @@ _SELECTORS = {
     "model_pro": [
         '[data-test-id="bard-mode-option-pro"]',
         '[data-test-id="bard-mode-option-Pro"]',
+        '.bard-mode-list-button:has-text("Pro Advanced")',
+        '.bard-mode-list-button:has-text("Pro 使用")',
         '.bard-mode-list-button:has-text("Pro")',
+        '.menu-option-container:has-text("Pro Advanced")',
+        '.menu-option-container:has-text("Pro 使用")',
         '.menu-option-container:has-text("Pro")',
+        '.mat-mdc-menu-item:has-text("Pro Advanced")',
+        '.mat-mdc-menu-item:has-text("Pro 使用")',
         '.mat-mdc-menu-item:has-text("Pro")',
     ],
     "tools_btn": [
