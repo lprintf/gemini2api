@@ -161,7 +161,7 @@ async def run_single_request(req_id, client, headers, semaphore, image_bytes, si
         except Exception as exc:
             elapsed = time.perf_counter() - start_ts
             msg = f"请求异常: {exc}"
-            print(f"[{req_id:04d}] ❌ {msg}")
+            print(f"[{req_id:04d}] ❌ {msg}, elapsed: {elapsed}")
             return {"ok": False, "req_id": req_id, "latency": elapsed, "error": msg}
 
 
