@@ -52,7 +52,7 @@ class ImageGenerationTask(BaseEngineTask):
             # 4. 生成阶段
             tab.activity = "Generating images..."
             t2 = time.time()
-            success = await actions.wait_for_results(page, timeout_s=90)
+            success = await actions.wait_for_results(page, timeout_s=119)
             durations["generate"] = round(time.time() - t2, 3)
             if not success:
                 tab_log(page, f"Timed out waiting for image results after {durations['generate']}s", "error")

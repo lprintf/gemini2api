@@ -37,7 +37,7 @@ BASE_PROMPT = "Make it look like a cyberpunk city at night, neon lights"
 # 压测配置（可通过环境变量覆盖）
 TOTAL_REQUESTS = int(os.getenv("LOAD_TOTAL_REQUESTS", "10"))
 CONCURRENCY = int(os.getenv("LOAD_CONCURRENCY", "5"))
-REQUEST_TIMEOUT_SEC = int(os.getenv("LOAD_REQUEST_TIMEOUT_SEC", "120"))
+REQUEST_TIMEOUT_SEC = int(os.getenv("LOAD_REQUEST_TIMEOUT_SEC", "160"))
 HD_POLL_RETRIES = int(os.getenv("LOAD_HD_RETRIES", "60"))
 HD_POLL_DELAY_SEC = float(os.getenv("LOAD_HD_DELAY_SEC", "2"))
 OUTPUT_DIR = os.getenv("LOAD_OUTPUT_DIR", "/imagedata/deploy/nano_banana/test_image")
@@ -161,7 +161,7 @@ async def run_single_request(req_id, client, headers, semaphore, image_bytes, si
         except Exception as exc:
             elapsed = time.perf_counter() - start_ts
             msg = f"请求异常: {exc}"
-            print(f"[{req_id:04d}] ❌ {msg}")
+            print(f"[{req_id:04d}] ❌ {msg}, elapsed: {elapsed}")
             return {"ok": False, "req_id": req_id, "latency": elapsed, "error": msg}
 
 

@@ -39,7 +39,7 @@ async def select_menu_item(page: Page, item_selectors: List[str], menu_selectors
     try:
         # 1. 一次性等待任何一个可能的菜单按钮
         all_menus = ", ".join(menu_selectors)
-        menu_btn = await page.wait_for_selector(all_menus, timeout=5000, state="visible")
+        menu_btn = await page.wait_for_selector(all_menus, timeout=15000, state="visible")
         try:
             await menu_btn.click(timeout=2000)
         except:
@@ -47,7 +47,7 @@ async def select_menu_item(page: Page, item_selectors: List[str], menu_selectors
         
         # 2. 一次性等待任何一个可能的待选项
         all_items = ", ".join(item_selectors)
-        opt = await page.wait_for_selector(all_items, timeout=3000, state="visible")
+        opt = await page.wait_for_selector(all_items, timeout=15000, state="visible")
         if opt:
             try:
                 await opt.click(timeout=2000)

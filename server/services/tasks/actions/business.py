@@ -52,8 +52,8 @@ async def ensure_image_gen_active(page: Page) -> bool:
             ".toolbox-drawer-button.has-selected-item, "
             ".toolbox-drawer-button[class*='selected']"
         )
-        # 给页面2秒钟的时间去渲染这些状态类
-        is_already_active = await page.wait_for_selector(already_active_selector, timeout=2000, state="visible")
+        # 等待渲染
+        is_already_active = await page.wait_for_selector(already_active_selector, timeout=5000, state="visible")
         if is_already_active:
             tab_log(page, "Image generation tool is already active (detected via UI state). Skipping click.")
             return True
@@ -185,7 +185,7 @@ async def submit_image_prompt(page: Page, prompt: str, image_paths: List[str] = 
             try:
                 await page.wait_for_function(f"""
                     (count) => document.querySelectorAll('img[src*="blob:"]').length >= count
-                """, arg=target_count, timeout=90000)
+                """, arg=target_count, timeout=99000)
             except:
                 tab_log(page, f"Warning: Image count sync timeout (curr={await get_uploaded_image_count(page)}, expected={target_count})", "warning")
 
@@ -250,20 +250,18 @@ async def download_hd_image(page: Page, img_url: str, remove_wm: bool = True, ma
                 except:
                     await img_element.dispatch_event("mouseenter")
                 
-                download_btn = None
-                selectors = [
+                combined_selector = ', '.join([
                     'button[aria-label*="Download"]',
                     'button[aria-label*="下载"]',
                     '.download-button',
                     'button:has(mat-icon:has-text("download"))'
-                ]
-                for sel in selectors:
-                    try:
-                        download_btn = await page.wait_for_selector(sel, timeout=2000, state="visible")
-                        if download_btn:
-                            tab_log(page, f"Download button found: {sel}")
-                            break
-                    except: continue
+                ])
+                try:
+                    download_btn = await page.wait_for_selector(combined_selector, timeout=3000, state="visible")
+                    if download_btn:
+                        tab_log(page, "Download button found")
+                except Exception:
+                    download_btn = None
                 if download_btn:
                     t_dl_start = time.time()
                     async with page.expect_download(timeout=60000) as download_info:
