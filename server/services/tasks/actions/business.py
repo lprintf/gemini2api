@@ -28,14 +28,14 @@ async def start_new_chat(page: Page, selector: str = _SELECTORS["input_box"]) ->
             
         # 3. 检查输入框是否出现 (判定为成功)
         try:
-            await page.wait_for_selector(selector, timeout=15000)
+            await page.wait_for_selector(selector, timeout=5000)
             return True
         except:
             # 4. 兜底：尝试点击页面上的 New Chat 按钮 (针对快捷键失效的情况)
             new_btn = await page.query_selector('a[href="/app"], .new-chat-button')
             if new_btn: 
                 await new_btn.click()
-                await page.wait_for_selector(selector, timeout=15000)
+                await page.wait_for_selector(selector, timeout=5000)
                 return True
         return False
     except:
@@ -52,8 +52,8 @@ async def ensure_image_gen_active(page: Page) -> bool:
             ".toolbox-drawer-button.has-selected-item, "
             ".toolbox-drawer-button[class*='selected']"
         )
-        # 给页面长一点时间去渲染这些状态类
-        is_already_active = await page.wait_for_selector(already_active_selector, timeout=8000, state="visible")
+        # 等待渲染
+        is_already_active = await page.wait_for_selector(already_active_selector, timeout=5000, state="visible")
         if is_already_active:
             tab_log(page, "Image generation tool is already active (detected via UI state). Skipping click.")
             return True
@@ -63,7 +63,7 @@ async def ensure_image_gen_active(page: Page) -> bool:
     # 2. 如果没能识别，我们就点开菜单检查
     try:
         all_menus = ", ".join(_SELECTORS["tools_btn"])
-        menu_btn = await page.wait_for_selector(all_menus, timeout=15000, state="visible")
+        menu_btn = await page.wait_for_selector(all_menus, timeout=5000, state="visible")
         if menu_btn:
             try:
                 await menu_btn.click(timeout=2000)
@@ -75,8 +75,8 @@ async def ensure_image_gen_active(page: Page) -> bool:
             all_opt = ", ".join(_SELECTORS["image_gen_opt"])
             
             try:
-                # 给足 15 秒时间等待其中任何一个出现（不论是选中状态还是未选中状态）
-                target = await page.wait_for_selector(f"{all_deselect}, {all_opt}", timeout=15000, state="visible")
+                # 给足 3 秒时间等待其中任何一个出现（不论是选中状态还是未选中状态）
+                target = await page.wait_for_selector(f"{all_deselect}, {all_opt}", timeout=3000, state="visible")
                 
                 # 现在检查具体出现的是哪一个（必须是肉眼可见的，因为 Angular 组件可能会常驻 DOM 里隐藏）
                 is_deselected = await page.query_selector(all_deselect)
@@ -99,7 +99,7 @@ async def ensure_image_gen_active(page: Page) -> bool:
                     # 极其关键的护城河：等待 Angular 的组件重构（类似刷新）完成
                     # 只有当包含 "has-selected-item" 的外层工具按钮再次挂载并稳住，才说明大功告成
                     try:
-                        await page.wait_for_selector(".toolbox-drawer-button.has-selected-item", timeout=15000, state="attached")
+                        await page.wait_for_selector(".toolbox-drawer-button.has-selected-item", timeout=5000, state="attached")
                         tab_log(page, "Tool activation confirmed (UI re-render completed).")
                     except:
                         tab_log(page, "Warning: Tool click executed, but UI activation state timeout.", "warning")
@@ -250,20 +250,18 @@ async def download_hd_image(page: Page, img_url: str, remove_wm: bool = True, ma
                 except:
                     await img_element.dispatch_event("mouseenter")
                 
-                download_btn = None
-                selectors = [
+                combined_selector = ', '.join([
                     'button[aria-label*="Download"]',
                     'button[aria-label*="下载"]',
                     '.download-button',
                     'button:has(mat-icon:has-text("download"))'
-                ]
-                for sel in selectors:
-                    try:
-                        download_btn = await page.wait_for_selector(sel, timeout=2000, state="visible")
-                        if download_btn:
-                            tab_log(page, f"Download button found: {sel}")
-                            break
-                    except: continue
+                ])
+                try:
+                    download_btn = await page.wait_for_selector(combined_selector, timeout=3000, state="visible")
+                    if download_btn:
+                        tab_log(page, "Download button found")
+                except Exception:
+                    download_btn = None
                 if download_btn:
                     t_dl_start = time.time()
                     async with page.expect_download(timeout=60000) as download_info:

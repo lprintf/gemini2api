@@ -68,15 +68,14 @@ async def login(page: Page, account: Optional[str] = None, password: Optional[st
 async def handle_consent_popups(page: Page, selectors: List[str] = _SELECTORS["agree_btns"]) -> bool:
     """处理各种同意弹窗"""
     if isinstance(selectors, str): selectors = [selectors]
-    found = False
-    for sel in selectors:
-        try:
-            btn = await page.query_selector(sel)
-            if btn and await btn.is_visible():
-                await btn.click()
-                found = True
-        except: pass
-    return found
+    combined_sel = ", ".join(selectors)
+    try:
+        btn = await page.query_selector(combined_sel)
+        if btn and await btn.is_visible():
+            await btn.click()
+            return True
+    except: pass
+    return False
 
 async def prepare_environment(page: Page, model: str = "Fast") -> bool:
     """准备页面环境：切换模型并确保功能开启"""
@@ -85,12 +84,12 @@ async def prepare_environment(page: Page, model: str = "Fast") -> bool:
     await handle_consent_popups(page)
     
     # 1. 快速检查是否出现了登录按钮
-    for sel in _SELECTORS["sign_in_btns"]:
-        try:
-            if await page.query_selector(sel):
-                tab_log(page, "Login required (Sign-in button detected)", "warning")
-                return False
-        except: pass
+    try:
+        combined_signin = ", ".join(_SELECTORS["sign_in_btns"])
+        if await page.query_selector(combined_signin):
+            tab_log(page, "Login required (Sign-in button detected)", "warning")
+            return False
+    except: pass
 
     # 2. 检查是否有核心输入框
     if not await start_new_chat(page):
