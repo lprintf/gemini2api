@@ -96,14 +96,14 @@ async def prepare_environment(page: Page, model: str = "Fast") -> bool:
         tab_log(page, "Environment check failed: Input box not found", "error")
         return False
     
-    # 3. 必须能成功切换模型
-    if not await set_model(page, model):
-        tab_log(page, f"Environment check failed: Failed to set model {model}", "error")
-        return False
-    
-    # 4. 必须能成功开启图片生成功能 
+    # 3. 必须能成功开启图片生成功能（先激活工具，因为激活可能重置模型）
     if not await ensure_image_gen_active(page):
         tab_log(page, "Environment check failed: Cannot activate image generation", "error")
+        return False
+
+    # 4. 必须能成功切换模型（放在最后，确保不被工具激活重置）
+    if not await set_model(page, model):
+        tab_log(page, f"Environment check failed: Failed to set model {model}", "error")
         return False
         
     return True

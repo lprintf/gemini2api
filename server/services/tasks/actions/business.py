@@ -16,22 +16,33 @@ from .environment import handle_consent_popups
 from ..remove_watermark.main import WatermarkRemover
 
 async def start_new_chat(page: Page, selector: str = _SELECTORS["input_box"]) -> bool:
-    """开启新对话"""
+    """开启新对话（优化：如果已经是空白新对话则跳过 Ctrl+Shift+O，避免重置模型）"""
     try:
-        # 1. 优先尝试快捷键
         if "/app" in page.url:
+            # 先检查是否已经在空白新对话上（输入框存在 + 无已有对话内容）
+            try:
+                box = await page.wait_for_selector(selector, timeout=2000)
+                if box:
+                    has_responses = await page.query_selector('model-response, response-container')
+                    if not has_responses:
+                        tab_log(page, "Already on fresh chat, skipping Ctrl+Shift+O.")
+                        return True
+            except:
+                pass
+            # 页面上有旧对话内容，需要开新对话
+            tab_log(page, "Stale chat detected, opening new chat...")
             await page.keyboard.press("Control+Shift+O")
         
-        # 2. 如果 URL 不对，强行跳转
+        # 如果 URL 不对，强行跳转
         if "/app" not in page.url:
             await page.goto("https://gemini.google.com/app", wait_until="domcontentloaded")
             
-        # 3. 检查输入框是否出现 (判定为成功)
+        # 检查输入框是否出现 (判定为成功)
         try:
             await page.wait_for_selector(selector, timeout=5000)
             return True
         except:
-            # 4. 兜底：尝试点击页面上的 New Chat 按钮 (针对快捷键失效的情况)
+            # 兜底：尝试点击页面上的 New Chat 按钮 (针对快捷键失效的情况)
             new_btn = await page.query_selector('a[href="/app"], .new-chat-button')
             if new_btn: 
                 await new_btn.click()
