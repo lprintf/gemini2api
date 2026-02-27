@@ -11,3 +11,4 @@ trigger: always_on
 ## Action
 - **Intent-First**: Do not perform destructive or complex actions without clear user intent.
 - **Inquiry**: If intent is ambiguous, ask for clarification before proceeding.
+- debug时,明确问题在动手,必要时向用户询问

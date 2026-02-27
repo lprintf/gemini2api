@@ -185,7 +185,7 @@ async def submit_image_prompt(page: Page, prompt: str, image_paths: List[str] = 
             try:
                 await page.wait_for_function(f"""
                     (count) => document.querySelectorAll('img[src*="blob:"]').length >= count
-                """, arg=target_count, timeout=90000)
+                """, arg=target_count, timeout=99000)
             except:
                 tab_log(page, f"Warning: Image count sync timeout (curr={await get_uploaded_image_count(page)}, expected={target_count})", "warning")
 
