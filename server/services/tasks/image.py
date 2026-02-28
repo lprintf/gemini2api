@@ -36,6 +36,7 @@ class ImageGenerationTask(BaseEngineTask):
             durations["prepare"] = round(time.time() - t0, 3)
             if not success:
                 tab_log(page, "Environment preparation failed", "error")
+                await actions.dump_inspect(page)
                 return TaskResult(success=False, error="Environment preparation failed")
 
             # 3. 输入与提交阶段
@@ -47,6 +48,7 @@ class ImageGenerationTask(BaseEngineTask):
             durations["submit"] = round(time.time() - t1, 3)
             if not success:
                 tab_log(page, "Failed to submit image prompt", "error")
+                await actions.dump_inspect(page)
                 return TaskResult(success=False, error="Failed to submit image prompt")
 
             # 4. 生成阶段
@@ -56,11 +58,13 @@ class ImageGenerationTask(BaseEngineTask):
             durations["generate"] = round(time.time() - t2, 3)
             if not success:
                 tab_log(page, f"Timed out waiting for image results after {durations['generate']}s", "error")
+                await actions.dump_inspect(page)
                 return TaskResult(success=False, error="Timed out waiting for image results")
 
             urls = await actions.get_generated_urls(page)
             if not urls:
                 tab_log(page, "No images found in response", "error")
+                await actions.dump_inspect(page)
                 return TaskResult(success=False, error="No images found in response")
 
             # 5. 下载处理阶段
@@ -95,29 +99,39 @@ class ImageGenerationTask(BaseEngineTask):
 
             if not images_info:
                 tab_log(page, "Failed to process any generated images", "error")
+                await actions.dump_inspect(page)
                 return TaskResult(success=False, error="Failed to process any generated images")
             
-            date_str = datetime.now().strftime("%Y%m%d")
-            durations["total"] = round(time.time() - start_ts, 3)
-            
-            # 后端完成后打印耗时统计
-            tab_log(page, f"Completed in {durations['total']}s: "
-                  f"Prepare: {durations.get('prepare', 0)}s, "
-                  f"Submit: {durations.get('submit', 0)}s, "
-                  f"Generate: {durations.get('generate', 0)}s, "
-                  f"Download: {durations.get('download', durations.get('download_preview', 0))}s")
-
             return TaskResult(
                 success=True, 
-                data={"images": images_info, "date": date_str},
+                data={"images": images_info, "date": datetime.now().strftime("%Y%m%d")},
                 metadata={"model": model, "prompt": prompt, "download_mode": download_mode},
                 background_work=background_work
             )
 
         except Exception as e:
             import traceback
-            traceback.print_exc()
-            tab_log(page, f"Task failed with exception: {str(e)}", "error")
+            error_trace = traceback.format_exc()
+            tab_log(page, f"Task failed with exception: {str(e)}\n{error_trace}", "error")
+            # 异常发生时自动捕获快照
+            try:
+                await actions.dump_inspect(page)
+            except: pass
             return TaskResult(success=False, error=str(e))
         finally:
+            # 统一计算总耗时并打印已完成阶段的统计
+            durations["total"] = round(time.time() - start_ts, 3)
+            
+            parts = []
+            if "prepare" in durations: parts.append(f"Prepare: {durations['prepare']}s")
+            if "submit" in durations: parts.append(f"Submit: {durations['submit']}s")
+            if "generate" in durations: parts.append(f"Generate: {durations['generate']}s")
+            # 兼容 download 或 download_preview
+            dl_time = durations.get("download") or durations.get("download_preview")
+            if dl_time: parts.append(f"Download: {dl_time}s")
+            
+            if parts:
+                detail = ", ".join(parts)
+                tab_log(page, f"Time Stats: Total {durations['total']}s ({detail})")
+                
             tab.activity = "Idle"

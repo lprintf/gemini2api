@@ -15,10 +15,8 @@ class CommandParser:
             # 这可以确保 button:has-text("Sign in") 这种中间带引号且没有空格的文本被视为一个整体
             pattern = r'(?:"(?:\\.|[^"])*"|\'(?:\\.|[^\'])*\'|\[(?:\\.|[^\[\]])*\]|\{(?:\\.|[^\{\}])*\}|[^\s"\'\[\]\{\}]+)+'
             tokens = re.findall(pattern, cmd_str)
-        except Exception as e:
-            print(f"[Parser] split error: {e}")
+        except:
             return None
-
             
         if not tokens:
             return None
@@ -88,7 +86,6 @@ class CommandParser:
             "args": args,
             "kwargs": kwargs
         }
-        print(f"[Parser] Result: {result}")
         return result
 
     @staticmethod

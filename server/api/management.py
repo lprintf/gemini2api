@@ -150,9 +150,6 @@ async def update_browser(browser_id: str, request: UpdateBrowserRequest):
     if browser_pool is None:
         raise HTTPException(status_code=500, detail="Browser pool not initialized")
 
-    print(f"[API] Received update request for browser {browser_id}")
-    print(f"[API] Raw request data: {request.model_dump()}")
-    print(f"[API] Actually set fields: {request.model_dump(exclude_unset=True)}")
 
     # 只处理前端实际发送的字段
     updates = {}
@@ -160,11 +157,6 @@ async def update_browser(browser_id: str, request: UpdateBrowserRequest):
         # 对于 proxy 字段，None 或空字符串都表示删除代理
         if k == "proxy":
             updates[k] = None if (v is None or v == "") else v
-            print(f"[API] Proxy field: '{v}' -> {updates[k]}")
-        else:
-            updates[k] = v
-
-    print(f"[API] Processed updates: {updates}")
 
     if not updates:
         raise HTTPException(status_code=400, detail="No updates provided")
@@ -892,30 +884,30 @@ async def execute_raw_command(browser_id: str, tab_id: int, request: CommandExec
     error = None
 
     try:
-        print(f"[Command] Executing action '{target_action}' on Browser {browser_id} Tab {tab_id}")
+        tab_log(tab.page, f"[Command] Executing action '{target_action}' on Browser {browser_id} Tab {tab_id}")
         # 1. 动态查找 actions 模块
         func = getattr(actions, target_action, None)
         
         if func and callable(func):
-            print(f"[Command] Calling actions.{target_action} with args={args} kwargs={kwargs}")
+            tab_log(tab.page, f"[Command] Calling actions.{target_action} with args={args} kwargs={kwargs}")
             # 自动注入 page 作为第一个参数
             res = func(tab.page, *args, **kwargs)
             if asyncio.iscoroutine(res):
                 success = await res
             else:
                 success = res
-            print(f"[Command] execution success: {success}")
+            tab_log(tab.page, f"[Command] execution success: {success}")
         
         # 2. 处理特殊内置指令
         elif target_action == "sleep":
             seconds = args[0] if args else 1
-            print(f"[Command] Sleeping for {seconds}s")
+            tab_log(tab.page, f"[Command] Sleeping for {seconds}s")
             await asyncio.sleep(float(seconds))
             success = True
         
         elif target_action == "goto":
             if not args: raise ValueError("URL is required for goto")
-            print(f"[Command] Navigating to {args[0]}")
+            tab_log(tab.page, f"[Command] Navigating to {args[0]}")
             await tab.page.goto(args[0], wait_until="networkidle")
             success = True
         
@@ -923,22 +915,19 @@ async def execute_raw_command(browser_id: str, tab_id: int, request: CommandExec
             # 执行任意 JavaScript
             if not args: raise ValueError("JS code is required for eval")
             js_code = args[0]
-            print(f"[Command] Executing JS: {js_code[:100]}...")
-            result = await tab.page.evaluate(js_code)
-            print(f"[Command] JS result: {result}")
+            tab_log(tab.page, f"[Command] JS result: {result}")
             return {"success": True, "result": result}
             
         else:
             success = False
             error = f"Action '{target_action}' not found in actions.py or built-ins"
-            print(f"[Command] Error: {error}")
+            tab_log(tab.page, f"[Command] Error: {error}", "error")
 
     except Exception as e:
         success = False
         error = str(e)
-        print(f"[Command] Exception occurred: {error}")
-        import traceback
-        traceback.print_exc()
+        error_trace = traceback.format_exc()
+        tab_log(tab.page, f"[Command] Exception occurred: {error}\n{error_trace}", "error")
 
     return {
         "success": success, 
