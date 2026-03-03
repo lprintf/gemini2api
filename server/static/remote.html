@@ -47,7 +47,7 @@
 
         /* 左侧选择器 */
         .sidebar {
-            width: 280px;
+            width: 300px;
             background: #16213e;
             border-right: 1px solid #333;
             padding: 1rem;
@@ -65,6 +65,11 @@
         .browser-list,
         .tab-list {
             list-style: none;
+            max-height: 40vh;
+            overflow-y: auto;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 4px;
+            padding: 2px;
         }
 
         .browser-item,
@@ -94,7 +99,9 @@
             width: 8px;
             height: 8px;
             border-radius: 50%;
-            margin-right: 8px;
+            margin-right: 4px;
+            /* Tightened */
+            flex-shrink: 0;
         }
 
         .status.idle {
@@ -110,7 +117,62 @@
         }
 
         .status.error {
-            background: #dc3545;
+            background: #dc3545 !important;
+            /* Force red for errors */
+        }
+
+        .status.disabled {
+            background: #6c757d;
+            /* Subtle gray for administrative but idle */
+        }
+
+        .status.sleep {
+            background: #6c757d;
+            border: 1px dashed #fff;
+        }
+
+        /* Toggle Checkbox Styles */
+        .toggle-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 14px;
+            height: 14px;
+            cursor: pointer;
+            margin-right: 4px;
+            /* Tightened */
+            border: 2px solid #555;
+            border-radius: 2px;
+            background: transparent;
+            color: #90EE90;
+            font-size: 11px;
+            transition: all 0.2s;
+            user-select: none;
+            flex-shrink: 0;
+        }
+
+        .toggle-btn:hover {
+            border-color: #764ba2;
+        }
+
+        .toggle-btn.on {
+            background: #764ba2;
+            border-color: #764ba2;
+            color: white;
+        }
+
+        .toggle-btn.off {
+            border-color: #666;
+            color: transparent;
+        }
+
+        .status.launching,
+        .status.closing {
+            background: #007bff;
+        }
+
+        .status.preheating {
+            background: #17a2b8;
         }
 
         .tab-item .model-badge {
@@ -559,17 +621,43 @@
                     return;
                 }
 
-                list.innerHTML = data.browsers.map(b => `
+                const sortedBrowsers = data.browsers.sort((a, b) => a.browser_id.localeCompare(b.browser_id, undefined, { numeric: true }));
+
+                list.innerHTML = sortedBrowsers.map(b => `
                     <li class="browser-item ${selectedBrowser === b.browser_id ? 'active' : ''}"
                         onclick="selectBrowser('${b.browser_id}')"
                         data-browser-id="${b.browser_id}">
+                        <span class="toggle-btn ${b.is_enabled ? 'on' : 'off'}" 
+                              onclick="event.stopPropagation(); toggleBrowserEnabled('${b.browser_id}', ${!b.is_enabled})"
+                              title="${b.is_enabled ? 'Enabled (Click to Disable)' : 'Disabled (Click to Enable)'}">
+                            ${b.is_enabled ? '✓' : ''}
+                        </span>
+                        <span>${b.browser_id}</span>
                         <span class="status ${b.status}"></span>
-                        ${b.browser_id} - ${escapeHtml(b.account_name)}
+                        <span style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                            ${escapeHtml(b.account_name)}
+                        </span>
                     </li>
                 `).join('');
 
             } catch (e) {
                 showToast('Failed to load browsers: ' + e.message, 'error');
+            }
+        }
+
+        // 切换浏览器启用状态
+        async function toggleBrowserEnabled(id, enabled) {
+            try {
+                const response = await fetch(`${API_BASE}/browsers/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ is_enabled: enabled })
+                });
+                if (!response.ok) throw new Error('Update failed');
+                showToast(`Browser ${id} ${enabled ? 'Enabled' : 'Disabled'}`, 'success');
+                loadBrowsers();
+            } catch (e) {
+                showToast('Action failed: ' + e.message, 'error');
             }
         }
 
@@ -604,7 +692,9 @@
                         onclick="selectTab(${t.tab_id})"
                         data-tab-id="${t.tab_id}">
                         <span class="status ${t.status}"></span>
-                        Tab ${t.tab_id} ${t.status === 'busy' && t.activity ? `<small style="opacity:0.7">(${escapeHtml(t.activity)})</small>` : ''}
+                        Tab ${t.tab_id} 
+                        ${t.status === 'busy' && t.activity ? `<small style="opacity:0.7">(${escapeHtml(t.activity)})</small>` : ''}
+                        ${t.status === 'sleep' ? `<small style="opacity:0.7; color: #ff6b6b"> (Sleep until ${formatTime(t.sleep_until)})</small>` : ''}
                         <span class="model-badge">${t.preferred_model}</span>
                     </li>
                 `).join('');
@@ -1086,6 +1176,18 @@
             const div = document.createElement('div');
             div.textContent = str;
             return div.innerHTML;
+        }
+
+        function formatTime(isoString) {
+            if (!isoString) return '-';
+            const date = new Date(isoString);
+            return date.toLocaleString('zh-CN', {
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+            });
         }
 
         // 点击弹窗外部关闭

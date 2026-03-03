@@ -206,20 +206,63 @@ async def submit_image_prompt(page: Page, prompt: str, image_paths: List[str] = 
         return False
 
 async def wait_for_results(page: Page, timeout_s: int = 60):
-    """等待结果生成完成"""
+    """
+    等待结果生成完成
+    优化：探测到回答容器变为“非忙碌”或“已完成”状态时即刻返回，不强制等图片
+    """
     try:
         await page.wait_for_function(f"""
             () => {{
-                const containers = document.querySelectorAll('model-response, response-container');
+                const containers = document.querySelectorAll('model-response, response-container, .model-response');
                 if (containers.length === 0) return false;
                 const last = containers[containers.length - 1];
+                
+                // 1. 成功路径：检测到图片 (googleusercontent 域名且非头像)
                 const imgs = Array.from(last.querySelectorAll('img'));
-                return imgs.some(i => i.src.includes('googleusercontent') && !i.src.includes('{_AVATAR_PATTERN}'));
+                const hasImages = imgs.some(i => i.src.includes('googleusercontent') && !i.src.includes('{_AVATAR_PATTERN}'));
+                if (hasImages) return true;
+
+                // 2. 失败/停顿路径：检测到回答已结束
+                // 检查最后回复及其内容的 busy 状态
+                const mc = last.querySelector('message-content');
+                const isBusy = (last.getAttribute('aria-busy') === 'true') || (mc && mc.getAttribute('aria-busy') === 'true');
+                
+                const footer = last.querySelector('.response-footer, response-footer');
+                const isComplete = footer && footer.classList.contains('complete');
+
+                // 如果不再忙碌，且已经出现了完成标记，或者已经不再忙碌一段时间（由外层 loop 控制）
+                if (!isBusy && isComplete) {{
+                    return true; 
+                }}
+                
+                return false;
             }}
         """, timeout=timeout_s * 1000)
         return True
     except:
         return False
+
+async def get_last_response_text(page: Page) -> str:
+    """获取最后一条回复的纯文本内容，用于诊断拒绝原因"""
+    try:
+        text = await page.evaluate("""
+            () => {
+                const containers = document.querySelectorAll('model-response, response-container, .model-response, [data-test-id="model-response"]');
+                if (containers.length === 0) return "";
+                const last = containers[containers.length - 1];
+                
+                // 优先从 message-content 获取，避免混入头像等杂质
+                const mc = last.querySelector('message-content, .message-content, .model-response-text');
+                if (mc) return mc.innerText;
+
+                // 尝试定位 markdown 面板或直接取 innerText
+                const panel = last.querySelector('.markdown, .markdown-main-panel, .response-content');
+                return panel ? panel.innerText : last.innerText;
+            }
+        """)
+        return text.strip() if text else ""
+    except:
+        return ""
 
 async def get_generated_urls(page: Page) -> List[str]:
     """获取生成的图片 URL 列表 (锁定最后一个回复容器)"""
@@ -315,31 +358,44 @@ async def download_q_image(page: Page, img_url: str, remove_wm: bool = True):
                 stats["mode"] = "preview"
             return success, img_bytes, h, stats
     except Exception as e:
-        tab_log(page, f"download_q_image failed: {e}", "error")
+        msg = f"download_q_image failed: {e}"
+        tab_log(page, msg, "error")
+        stats["error"] = msg
     return False, None, None, stats
 
 async def download_generated_images(page: Page, remove_watermark: bool = True, download_mode: str = "preview") -> List[Dict[str, Any]]:
     """获取所有生成的图片 URL 并下载处理（纯内存，直接用 hash 文件名落盘）"""
     urls = await get_generated_urls(page)
     if not urls: return []
+    
+    tab_log(page, f"Found {len(urls)} generated image URLs. Starting download ({download_mode})...")
     images_info = []
     output_base = Path("data/outputs")
     date_str = datetime.now().strftime("%Y%m%d")
     for i, url in enumerate(urls):
-        if download_mode == "hd":
-            success, img_bytes, img_hash, stats = await download_hd_image(page, url, remove_wm=remove_watermark)
-        else:
-            success, img_bytes, img_hash, stats = await download_q_image(page, url, remove_wm=remove_watermark)
-        if success and img_hash and img_bytes:
-            save_dir = output_base / ("hd" if download_mode == "hd" else "q") / date_str
-            save_dir.mkdir(parents=True, exist_ok=True)
-            final_path = save_dir / f"{img_hash}.webp"
-            final_path.write_bytes(img_bytes)
-            raw_size = stats.get('raw_size_kb', 0)
-            final_size = stats.get('size_kb', 0)
-            ratio = round((final_size / raw_size * 100), 1) if raw_size > 0 else 0
-            tab_log(page, f"Download Meta: {img_hash} ({stats.get('mode', 'unknown')}) | Size: {raw_size}KB -> {final_size}KB ({ratio}%) | DL: {stats.get('dl_time', 0)}s | WM_Remove: {stats.get('wm_time', 0)}s | Encode: {stats.get('save_time', 0)}s")
-            images_info.append({"id": f"{date_str}/{img_hash}", "hash": img_hash, "date": date_str, "format": "webp", "url": url})
+        try:
+            if download_mode == "hd":
+                success, img_bytes, img_hash, stats = await download_hd_image(page, url, remove_wm=remove_watermark)
+            else:
+                success, img_bytes, img_hash, stats = await download_q_image(page, url, remove_wm=remove_watermark)
+            
+            if success and img_hash and img_bytes:
+                save_dir = output_base / ("hd" if download_mode == "hd" else "q") / date_str
+                save_dir.mkdir(parents=True, exist_ok=True)
+                final_path = save_dir / f"{img_hash}.webp"
+                final_path.write_bytes(img_bytes)
+                raw_size = stats.get('raw_size_kb', 0)
+                final_size = stats.get('size_kb', 0)
+                ratio = round((final_size / raw_size * 100), 1) if raw_size > 0 else 0
+                tab_log(page, f"[Img {i+1}/{len(urls)}] OK: {img_hash} | Size: {raw_size}K -> {final_size}K ({ratio}%) | DL: {stats.get('dl_time', 0)}s | Type: {stats.get('mode', 'unknown')}")
+                images_info.append({"id": f"{date_str}/{img_hash}", "hash": img_hash, "date": date_str, "format": "webp", "url": url})
+            else:
+                tab_log(page, f"[Img {i+1}/{len(urls)}] Failed: {stats.get('error', 'Unknown error')} (URL: {url[:60]}...)", "error")
+        except Exception as e:
+            tab_log(page, f"[Img {i+1}/{len(urls)}] Critical download error: {str(e)}", "error")
+    
+    if not images_info and urls:
+        tab_log(page, f"All {len(urls)} image download attempts failed.", "error")
     return images_info
 
 async def _process_image(src: BytesIO, remove_wm: bool):
@@ -365,5 +421,8 @@ async def _process_image(src: BytesIO, remove_wm: bool):
         stats["process_total"] = round(time.time() - t_start, 3)
         return True, img_bytes, h, stats
     except Exception as e:
-        traceback.print_exc()
+        error_msg = f"Image processing failed: {str(e)}"
+        tab_log(None, error_msg, "error") # tab_log fallback to print or if page is available... 
+        # Actually _process_image doesn't have page.
+        stats["error"] = error_msg
         return False, None, None, stats

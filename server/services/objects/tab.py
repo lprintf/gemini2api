@@ -27,6 +27,8 @@ class TabInstance:
         # 任务相关中间状态
         self.hd_metadata: Optional[Dict[str, Any]] = None
         self.hd_download_task: Optional[asyncio.Task] = None
+        
+        self.sleep_until: Optional[datetime] = None
 
     def to_dict(self) -> Dict:
         """转换为字典"""
@@ -40,4 +42,5 @@ class TabInstance:
             "current_task_id": self.current_task_id,
             "activity": self.activity,
             "last_active_at": self.last_active_at.isoformat() if self.last_active_at else None,
+            "sleep_until": self.sleep_until.isoformat() if self.sleep_until else None,
         }

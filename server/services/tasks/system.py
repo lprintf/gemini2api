@@ -18,7 +18,7 @@ class ReinitializeTask(BaseEngineTask):
                 return TaskResult(success=True)
             
             # 逻辑失败也记录下快照
-            await actions.dump_inspect(page)
+            await actions.dump_inspect(page, mode="full")
             return TaskResult(success=False, error="Reinitialize failed")
         except Exception as e:
             import traceback
@@ -26,7 +26,7 @@ class ReinitializeTask(BaseEngineTask):
             from server.utils.logger import tab_log
             tab_log(page, f"Reinitialize fatal error: {str(e)}\n{error_trace}", "error")
             try:
-                await actions.dump_inspect(page)
+                await actions.dump_inspect(page, mode="full")
             except: pass
             return TaskResult(success=False, error=str(e))
         finally:

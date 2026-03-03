@@ -501,6 +501,7 @@ async def list_browser_tabs(browser_id: str):
     tabs_info = []
     for tab in browser.tabs:
         tab_info = tab.to_dict()
+        tab_info["is_enabled"] = browser.is_enabled # Pass it here
         # 补充页面动态信息
         if tab.page:
             try:
@@ -805,6 +806,7 @@ async def list_all_tabs():
     for browser in browser_pool.browsers.values():
         for tab in browser.tabs:
             tab_info = tab.to_dict()
+            tab_info["is_enabled"] = browser.is_enabled
             # 尝试获取页面标题和 URL
             if tab.page:
                 try:

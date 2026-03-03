@@ -46,7 +46,7 @@ async def dump_inspect(page: Page, mode: str = "basic") -> bool:
             msg = f"[{idx}] <{el['tag']}> Text: '{el['text']}'"
             if el['label']: msg += f" | Label: '{el['label']}'"
             if el['selector']: msg += f" | Sel: {el['selector']}"
-            tab_log(page, msg)
+            tab_log(page, msg, silent=True)
         tab_log(page, "--- End of Inspection ---")
         return True
     except Exception as e:

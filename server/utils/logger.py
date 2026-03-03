@@ -62,10 +62,17 @@ def get_tab_logger(browser_id: str, tab_id: int) -> logging.Logger:
     return logger
 
 
-def tab_log(page, msg: str, level: str = "info"):
+def tab_log(page, msg: str, level: str = "info", silent: bool = False):
     """从 page 对象获取 logger 并记录日志，fallback 到 print"""
     logger = getattr(page, "_logger", None)
     if logger:
-        getattr(logger, level)(msg)
-    else:
+        if silent:
+            # 仅输出到 FileHandler
+            for handler in logger.handlers:
+                if isinstance(handler, logging.FileHandler):
+                    record = logger.makeRecord(logger.name, getattr(logging, level.upper()), "", 0, msg, None, None)
+                    handler.emit(record)
+        else:
+            getattr(logger, level)(msg)
+    elif not silent:
         print(f"[Action] {msg}")

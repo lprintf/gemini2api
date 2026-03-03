@@ -36,7 +36,7 @@ class ImageGenerationTask(BaseEngineTask):
             durations["prepare"] = round(time.time() - t0, 3)
             if not success:
                 tab_log(page, "Environment preparation failed", "error")
-                await actions.dump_inspect(page)
+                await actions.dump_inspect(page, mode="full")
                 return TaskResult(success=False, error="Environment preparation failed")
 
             # 3. 输入与提交阶段
@@ -48,7 +48,7 @@ class ImageGenerationTask(BaseEngineTask):
             durations["submit"] = round(time.time() - t1, 3)
             if not success:
                 tab_log(page, "Failed to submit image prompt", "error")
-                await actions.dump_inspect(page)
+                await actions.dump_inspect(page, mode="full")
                 return TaskResult(success=False, error="Failed to submit image prompt")
 
             # 4. 生成阶段
@@ -56,15 +56,34 @@ class ImageGenerationTask(BaseEngineTask):
             t2 = time.time()
             success = await actions.wait_for_results(page, timeout_s=119)
             durations["generate"] = round(time.time() - t2, 3)
-            if not success:
-                tab_log(page, f"Timed out waiting for image results after {durations['generate']}s", "error")
-                await actions.dump_inspect(page)
-                return TaskResult(success=False, error="Timed out waiting for image results")
-
+            
+            # 无论 wait_for_results 是否超时，都检查下是否有图片，或者是否有拒绝文本
             urls = await actions.get_generated_urls(page)
             if not urls:
+                # 尝试获取拒绝文本
+                refusal_text = await actions.get_last_response_text(page)
+                if refusal_text:
+                    tab_log(page, f"Gemini refused to generate images: {refusal_text}", "error")
+                    await actions.dump_inspect(page, mode="full")
+                    
+                    # 检查是否是限额拒绝，若是则进入 2h 休眠模式
+                    quota_keywords = ["无法为您生成更多图像", "无法为您创建更多图像", "can't generate more images", "can't create more images"]
+                    if any(k in refusal_text for k in quota_keywords):
+                        from datetime import timedelta
+                        from server.services.objects.exceptions import BrowserStatus
+                        tab.status = BrowserStatus.SLEEP
+                        tab.sleep_until = datetime.now() + timedelta(hours=2)
+                        tab_log(page, f"Rate limit detected. Tab entering SLEEP mode until {tab.sleep_until.strftime('%H:%M:%S')}", "warning")
+                    
+                    return TaskResult(success=False, error=f"Gemini refused: {refusal_text}")
+                
+                if not success:
+                    tab_log(page, f"Timed out waiting for image results after {durations['generate']}s", "error")
+                    await actions.dump_inspect(page, mode="full")
+                    return TaskResult(success=False, error="Timed out waiting for image results")
+                
                 tab_log(page, "No images found in response", "error")
-                await actions.dump_inspect(page)
+                await actions.dump_inspect(page, mode="full")
                 return TaskResult(success=False, error="No images found in response")
 
             # 5. 下载处理阶段
@@ -95,12 +114,17 @@ class ImageGenerationTask(BaseEngineTask):
                 images_info = await actions.download_generated_images(
                     page, remove_watermark=remove_watermark, download_mode=download_mode
                 )
-                durations["download"] = round(time.time() - t3, 3)
+                # 只有当确实成功下载了图片，才记录下载耗时（避免误导排查）
+                if images_info:
+                    durations["download"] = round(time.time() - t3, 3)
 
-            if not images_info:
-                tab_log(page, "Failed to process any generated images", "error")
-                await actions.dump_inspect(page)
-                return TaskResult(success=False, error="Failed to process any generated images")
+                if not images_info:
+                    # 获取最后探测到的图片 URL 数量，用于更精确的报错
+                    urls = await actions.get_generated_urls(page)
+                    error_msg = f"Failed to process any generated images (Found {len(urls)} URLs but all failed)"
+                    tab_log(page, error_msg, "error")
+                    await actions.dump_inspect(page, mode="full")
+                    return TaskResult(success=False, error=error_msg)
             
             return TaskResult(
                 success=True, 
@@ -115,7 +139,7 @@ class ImageGenerationTask(BaseEngineTask):
             tab_log(page, f"Task failed with exception: {str(e)}\n{error_trace}", "error")
             # 异常发生时自动捕获快照
             try:
-                await actions.dump_inspect(page)
+                await actions.dump_inspect(page, mode="full")
             except: pass
             return TaskResult(success=False, error=str(e))
         finally:

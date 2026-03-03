@@ -96,12 +96,21 @@ class TaskCoordinator:
                     tab_log(t.page, f"Background work failed: {e}", "error")
                 finally:
                     try:
+                        # 如果标记了 SLEEP，在此处等待
+                        from server.services.objects.exceptions import BrowserStatus
+                        if t.status == BrowserStatus.SLEEP and t.sleep_until:
+                            wait_seconds = (t.sleep_until - datetime.now()).total_seconds()
+                            if wait_seconds > 0:
+                                tab_log(t.page, f"Tab is in SLEEP mode. Waiting {wait_seconds:.0f}s before reset.")
+                                await asyncio.sleep(wait_seconds)
+                        
                         from ..tasks import actions
                         await actions.reinitialize_page(t.page, model=m)
                     except Exception as e:
                         tab_log(t.page, f"Background rewarm failed: {e}", "error")
                     finally:
                         t.status = BrowserStatus.IDLE
+                        t.sleep_until = None
                         t.last_active_at = datetime.now()
             
             asyncio.create_task(background_chain(tab, model, bg_work))

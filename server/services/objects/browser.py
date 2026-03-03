@@ -42,6 +42,7 @@ class BrowserInstance:
         self._request_times: deque = deque()
 
         self.status = BrowserStatus.CLOSED
+        self.is_enabled = True # 是否启用（行政状态）
         self.launcher: Optional[GeminiLauncher] = None
         self.tabs: List[TabInstance] = []
         
@@ -166,16 +167,31 @@ class BrowserInstance:
         return idles[0]
 
     def to_dict(self) -> Dict:
-        _, rate_info = self.check_rate_limit()
+        allowed, rate_info = self.check_rate_limit()
+        
+        # 导出状态：如果物理状态是 IDLE 但没有空闲 Tab，则对外表现为 BUSY
+        # 这有助于 Admin UI 正确显示负载情况
+        display_status = self.status.value
+        if self.status == BrowserStatus.IDLE:
+            idle_tabs_count = sum(1 for t in self.tabs if t.status == BrowserStatus.IDLE)
+            if idle_tabs_count == 0 and len(self.tabs) > 0:
+                display_status = BrowserStatus.BUSY.value
+            elif not allowed:
+                # 即使有空闲 Tab，如果速率限制到了，也可以视为某种程度的忙碌/锁定
+                # 但目前通常倾向于只看状态
+                pass
+
         return {
             "browser_id": self.browser_id,
-            "status": self.status.value,
+            "status": display_status,
             "total_tasks": self.total_tasks,
             "failed_tasks": self.failed_tasks,
             "total_tabs": len(self.tabs),
             "idle_tabs": sum(1 for t in self.tabs if t.status == BrowserStatus.IDLE),
+            "sleeping_tabs": sum(1 for t in self.tabs if t.status == BrowserStatus.SLEEP),
             "rate_limit": rate_info,
             "account_name": self.account_name,
             "proxy": self.proxy,
             "max_tabs": self.max_tabs,
+            "is_enabled": self.is_enabled,
         }

@@ -59,9 +59,14 @@ class BrowserPool:
                     proxy=config.proxy,
                     headless=config.headless,
                     user_data_dir=config.user_data_dir,
-                    rate_limit=config.rate_limit,
                     rate_window=config.rate_window,
                 )
+                if config.is_enabled is not None:
+                    browser.is_enabled = config.is_enabled
+                
+                # 如果状态记录为 DISABLED，则转换为 IDLE（功能状态与管理状态已分离）
+                if browser.status == BrowserStatus.DISABLED:
+                    browser.status = BrowserStatus.IDLE
                 
                 self.browsers[config.browser_id] = browser
                 
@@ -112,10 +117,9 @@ class BrowserPool:
             if success:
                 success_count += 1
                 print(f"[BrowserPool] Browser {browser_id} started successfully")
-                # 如果是 disabled 的浏览器，启动后标记为 DISABLED（不接受任务调度）
+                # 如果是 disabled 的浏览器，保留其功能状态，仅标记 is_enabled = False
                 if browser_id in disabled_after_start:
-                    self.browsers[browser_id].status = BrowserStatus.DISABLED
-                    print(f"[BrowserPool] Browser {browser_id} marked as DISABLED")
+                    print(f"[BrowserPool] Browser {browser_id} is disabled")
             else:
                 print(
                     f"[BrowserPool] Failed to start browser {browser_id}: {error_msg}"
@@ -212,6 +216,7 @@ class BrowserPool:
                 user_data_dir=user_data_dir,
                 max_tabs=max_tabs,
             )
+            browser.is_enabled = is_enabled
 
             self.browsers[browser_id_str] = browser
 
@@ -246,15 +251,9 @@ class BrowserPool:
             if "rate_window" in updates:
                 browser.rate_window = updates["rate_window"]
             if "is_enabled" in updates:
-                is_enabled = updates["is_enabled"]
-                if not is_enabled:
-                    # 如果禁用，且当前是空闲或错误状态，则设置为 DISABLED
-                    if browser.status in (BrowserStatus.IDLE, BrowserStatus.ERROR):
-                        browser.status = BrowserStatus.DISABLED
-                else:
-                    # 如果重新启用，且当前是 DISABLED 状态，则回退到 IDLE
-                    if browser.status == BrowserStatus.DISABLED:
-                        browser.status = BrowserStatus.IDLE
+                # 只在数据库记录中标记启用/禁用，不修改内存中的 status 状态
+                # 状态指示灯仅反映功能状态（Error, Busy, Idle, Sleep 等）
+                browser.is_enabled = updates["is_enabled"]
 
             # 更新数据库
             try:
@@ -350,15 +349,20 @@ class BrowserPool:
 
     def get_status(self) -> Dict:
         """获取浏览器池状态"""
+        browsers_dicts = [b.to_dict() for b in self.browsers.values()]
+        
         status_count = {}
         for status in BrowserStatus:
-            count = sum(1 for b in self.browsers.values() if b.status == status)
-            status_count[status.value] = count
+            status_count[status.value] = 0
+            
+        for b_dict in browsers_dicts:
+            status = b_dict["status"]
+            status_count[status] = status_count.get(status, 0) + 1
 
         return {
             "total_browsers": len(self.browsers),
             "status_count": status_count,
-            "browsers": [browser.to_dict() for browser in self.browsers.values()],
+            "browsers": browsers_dicts,
             "total_tasks": sum(b.total_tasks for b in self.browsers.values()),
             "failed_tasks": sum(b.failed_tasks for b in self.browsers.values()),
         }

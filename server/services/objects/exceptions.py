@@ -14,6 +14,7 @@ class BrowserStatus(str, Enum):
     LAUNCHING = "launching" # 启动中
     CLOSING = "closing" # 关闭中
     CLOSED = "closed"   # 已关闭
+    SLEEP = "sleep"     # 休眠中 (限额冷却)
 
 
 class RateLimitExceeded(Exception):
