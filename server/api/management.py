@@ -17,7 +17,8 @@ from server.services.scheduler.pool import BrowserPool
 from server.services.tasks.system import ReinitializeTask
 from server.services.tasks import actions
 from server.services.tasks.parser import CommandParser
-from server.utils.logger import get_tab_logger
+from server.utils.logger import get_tab_logger, tab_log
+import traceback
 
 router = APIRouter(
     prefix="/api/admin",
@@ -157,6 +158,8 @@ async def update_browser(browser_id: str, request: UpdateBrowserRequest):
         # 对于 proxy 字段，None 或空字符串都表示删除代理
         if k == "proxy":
             updates[k] = None if (v is None or v == "") else v
+        else:
+            updates[k] = v
 
     if not updates:
         raise HTTPException(status_code=400, detail="No updates provided")
@@ -253,7 +256,7 @@ async def get_config():
 async def update_config(request: UpdateConfigRequest):
     """更新全局配置"""
     # 过滤 None 值
-    updates = {k: v for k, v in request.model_dump().items() if v is not None}
+    updates = {k: v for k, v in request.model_dump(exclude_unset=True).items() if v is not None}
 
     if not updates:
         raise HTTPException(status_code=400, detail="No updates provided")
