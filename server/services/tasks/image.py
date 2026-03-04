@@ -65,6 +65,8 @@ class ImageGenerationTask(BaseEngineTask):
                     background_work=actions.reinitialize_page(page, model=model)
                 )
 
+            tab_log(page, f"Submission successful. Current URL: {page.url}", "info")
+
             # 4. 生成阶段
             tab.activity = "Generating results..."
             t2 = time.time()

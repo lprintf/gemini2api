@@ -95,9 +95,23 @@ class TaskCoordinator:
             tab.failed_tasks += 1
             tab.consecutive_failures += 1
             
+            # 【全局惩罚】：发生未捕获异常时，强制进入 9 分钟冷却（若尚未标记）
+            from server.services.objects.exceptions import BrowserStatus
+            if tab.status != BrowserStatus.SLEEP:
+                tab_log(tab.page, f"Task crashed with exception: {e}. Triggering 9m mandatory punishment.", "error")
+                tab.status = BrowserStatus.SLEEP
+                tab.sleep_until = now + timedelta(minutes=9)
+            
             await self._record_task_failure(task_id, str(e), time.time() - start_time)
             raise e
         finally:
+            # 确保即使是正常返回 result.success 为 False 且没有标记 sleep 的，也给个默认惩罚
+            from server.services.objects.exceptions import BrowserStatus
+            if result and not result.success and tab.status != BrowserStatus.SLEEP:
+                tab_log(tab.page, "Task reported failure without sleep. Triggering default 9m punishment.", "warning")
+                tab.status = BrowserStatus.SLEEP
+                tab.sleep_until = datetime.now() + timedelta(minutes=9)
+
             # 6. 【生命周期管控点】：任务结束，按需执行后台延续任务，最终重置环境
             # Tab 在整个链条完成前保持 BUSY，防止被抢占
             bg_work = result.background_work if result and result.background_work else None
@@ -107,10 +121,17 @@ class TaskCoordinator:
                 try:
                     # 1. 如果标记了 SLEEP，优先在此处等待（保持现场供人工检查）
                     if t.status == BrowserStatus.SLEEP and t.sleep_until:
-                        wait_seconds = (t.sleep_until - datetime.now()).total_seconds()
-                        if wait_seconds > 0:
-                            tab_log(t.page, f"Tab is in SLEEP mode. Waiting {wait_seconds:.0f}s before recovery.")
-                            await asyncio.sleep(wait_seconds)
+                        while True:
+                            now = datetime.now()
+                            wait_seconds = (t.sleep_until - now).total_seconds()
+                            if wait_seconds <= 0:
+                                break
+                            
+                            # 每隔 60s 打印一次活跃日志
+                            tab_log(t.page, f"Tab is in SLEEP mode. {wait_seconds:.0f}s remaining before recovery.")
+                            await asyncio.sleep(min(60, wait_seconds))
+                        
+                        tab_log(t.page, "Sleep period ended. Starting recovery...")
 
                     # 2. 执行后台延续任务 (如强制重排)
                     if work:
