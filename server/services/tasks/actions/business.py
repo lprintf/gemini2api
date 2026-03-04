@@ -205,17 +205,32 @@ async def submit_image_prompt(page: Page, prompt: str, image_paths: List[str] = 
         submit_success = await click_submit(page)
         
         if submit_success:
-            # 动态监测 URL 变化（最多等待 6.9s，每 100ms 检查一次）
-            # 只要 URL 一变就立刻返回，不再白等
+            # 动态监测提交结果（最多等待 6.9s，每 200ms 检查一次）
+            # 信号 1: 停止按钮出现 (代表已经开始生成)
+            # 信号 2: 输入框变空 (代表已经成功提交)
+            # 信号 3: URL 变化 (辅助信号)
             timeout = 6.9
             start_wait = time.time()
             while time.time() - start_wait < timeout:
-                if page.url != old_url:
+                is_active = await page.evaluate("""
+                    () => {
+                        const stopBtn = document.querySelector('.send-button.stop');
+                        const editor = document.querySelector('.ql-editor');
+                        const editorEmpty = !editor || editor.innerText.trim() === '';
+                        return !!stopBtn || editorEmpty;
+                    }
+                """)
+                if is_active:
                     return True
-                await asyncio.sleep(0.1)
+                await asyncio.sleep(0.2)
             
-            # 如果超时仍未变动
-            tab_log(page, f"URL unchanged ({page.url}) after 6.9s of submission. Failing fast.", "warning")
+            # 如果超时仍未观测到上述信号，检查 URL 是否变了但内容没变 (虚假成功)
+            if page.url != old_url:
+                # 虽然 URL 变了，但如果编辑器还是满的且没有 Stop 按钮，极大概率是系统卡了
+                tab_log(page, f"URL changed to {page.url} but editor not empty/no stop button. Failing fast.", "error")
+                return False
+
+            tab_log(page, f"Submission stuck (URL unchanged) after 6.9s. Failing fast.", "warning")
             return False # 视为本次提交失败，交给上层触发后台重排
 
         return submit_success
@@ -254,41 +269,45 @@ async def wait_for_results(page: Page, timeout_s: int = 60):
                 const footer = last.querySelector('.response-footer, response-footer');
                 const isComplete = footer && footer.classList.contains('complete');
 
+                // 2.1 全局信号：停止相应按钮是否存在 (如果存在，说明还在吐字)
+                const globalStopBtn = document.querySelector('.send-button.stop');
+                const isActuallyGenerating = !!globalStopBtn;
+
                 // 获取当前文本长度（排除视障辅助文本）
                 let currentLen = 0;
-                if (mc) {{
+                if (mc) {
                     const clone = mc.cloneNode(true);
                     clone.querySelectorAll('.cdk-visually-hidden').forEach(el => el.remove());
                     currentLen = clone.innerText.trim().length;
-                }}
+                }
 
                 // 3. 稳定性检测逻辑
-                if (!window._gemini_wait_state) {{
-                    window._gemini_wait_state = {{ len: currentLen, ts: Date.now() }};
-                }}
+                if (!window._gemini_wait_state) {
+                    window._gemini_wait_state = { len: currentLen, ts: Date.now() };
+                }
                 
                 const state = window._gemini_wait_state;
-                if (currentLen !== state.len) {{
+                if (currentLen !== state.len) {
                     state.len = currentLen;
                     state.ts = Date.now();
-                }}
+                }
                 
                 const stableTime = Date.now() - state.ts;
-                const isStable = stableTime > 3000; // 无变化 3s 视为稳定
+                const isStable = stableTime > 5000; // 文本无变化时长提升到 5s 提高保险系数
 
                 // 4. 返回判断
-                // 回复完成且不再忙碌 (最理想的终结信号)
-                if (!isBusy && isComplete) {{
+                // 回复完成且不再忙碌 且 全局停止按钮消失 (最强信号组合)
+                if (!isActuallyGenerating && isComplete && !isBusy) {
                     return true;
-                }}
+                }
 
-                // 无图片回退路径：文字长度已稳定 且 UI 不再处于忙碌状态
-                if (!hasImages && currentLen > 10 && isStable && !isBusy) {{
+                // 无图片回退路径：文字长度已经稳定 且 页面上绝对没有“停止”按钮 且 逻辑不忙碌
+                if (!hasImages && currentLen > 10 && isStable && !isActuallyGenerating && !isBusy) {
                     return true;
-                }}
+                }
                 
                 return false;
-            }}
+            }
         """, timeout=timeout_s * 1000)
         
         # 护城河：防止图片刚开始渲染还没拿到达标的 url
