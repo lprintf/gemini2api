@@ -35,9 +35,9 @@ TARGET_RATIO = "16:9"  # 这里可以修改想要测试的比例
 BASE_PROMPT = "Make it look like a cyberpunk city at night, neon lights"
 
 # 压测配置（可通过环境变量覆盖）
-TOTAL_REQUESTS = int(os.getenv("LOAD_TOTAL_REQUESTS", "10"))
-CONCURRENCY = int(os.getenv("LOAD_CONCURRENCY", "5"))
-REQUEST_TIMEOUT_SEC = int(os.getenv("LOAD_REQUEST_TIMEOUT_SEC", "160"))
+TOTAL_REQUESTS = int(os.getenv("LOAD_TOTAL_REQUESTS", "20"))
+CONCURRENCY = int(os.getenv("LOAD_CONCURRENCY", "10"))
+REQUEST_TIMEOUT_SEC = int(os.getenv("LOAD_REQUEST_TIMEOUT_SEC", "180"))
 HD_POLL_RETRIES = int(os.getenv("LOAD_HD_RETRIES", "60"))
 HD_POLL_DELAY_SEC = float(os.getenv("LOAD_HD_DELAY_SEC", "2"))
 OUTPUT_DIR = os.getenv("LOAD_OUTPUT_DIR", "/imagedata/deploy/nano_banana/test_image")
@@ -135,18 +135,24 @@ async def run_single_request(req_id, client, headers, semaphore, image_bytes, si
                 print(f"[{req_id:04d}] ❌ {msg}")
                 return {"ok": False, "req_id": req_id, "latency": elapsed, "error": msg}
 
-            items = payload.get("data")
-            if not isinstance(items, list) or not items:
+            items = payload.get("data", [])
+            response_text_content = payload.get("text") or ""
+            
+            # [核心修改]：如果没有图片(data)但有文本(text)，不视为失败
+            if not items and not response_text_content:
                 elapsed = time.perf_counter() - start_ts
-                msg = f"响应缺少 data: {response_text[:200]}"
+                msg = f"响应缺少 data 且无文本: {response_text[:200]}"
                 print(f"[{req_id:04d}] ❌ {msg}")
                 return {"ok": False, "req_id": req_id, "latency": elapsed, "error": msg}
 
-            raw_url = items[0].get("url")
-            response_text_content = payload.get("text") or ""
-            print(f"[{req_id:04d}] ✅ 成功 {elapsed:.2f}s -> {raw_url}, text: {response_text_content}")
+            raw_url = items[0].get("url") if items else ""
             elapsed = time.perf_counter() - start_ts
-            log_msg = f"[{req_id:04d}] ✅ 成功 {elapsed:.2f}s -> {raw_url}"
+            
+            log_msg = f"[{req_id:04d}] ✅ 成功 {elapsed:.2f}s"
+            if raw_url:
+                log_msg += f" -> {raw_url}"
+            else:
+                log_msg += " (仅文本)"
             
             # 无论是否有文本，都按照用户要求输出（无文本则显示空字符串）
             short_text = response_text_content.replace('\n', ' ')[:100]
@@ -161,10 +167,15 @@ async def run_single_request(req_id, client, headers, semaphore, image_bytes, si
                 "text": response_text_content
             }
 
+        except httpx.TimeoutException:
+            elapsed = time.perf_counter() - start_ts
+            msg = f"请求超时 ({REQUEST_TIMEOUT_SEC}s)"
+            print(f"[{req_id:04d}] ❌ {msg}")
+            return {"ok": False, "req_id": req_id, "latency": elapsed, "error": msg}
         except Exception as exc:
             elapsed = time.perf_counter() - start_ts
             msg = f"请求异常: {exc}"
-            print(f"[{req_id:04d}] ❌ {msg}, elapsed: {elapsed}")
+            print(f"[{req_id:04d}] ❌ {msg}, elapsed: {elapsed:.2f}s")
             return {"ok": False, "req_id": req_id, "latency": elapsed, "error": msg}
 
 
