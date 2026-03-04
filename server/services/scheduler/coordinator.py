@@ -103,27 +103,28 @@ class TaskCoordinator:
             bg_work = result.background_work if result and result.background_work else None
 
             async def background_chain(t, m, work):
+                from server.services.objects.exceptions import BrowserStatus
                 try:
+                    # 1. 如果标记了 SLEEP，优先在此处等待（保持现场供人工检查）
+                    if t.status == BrowserStatus.SLEEP and t.sleep_until:
+                        wait_seconds = (t.sleep_until - datetime.now()).total_seconds()
+                        if wait_seconds > 0:
+                            tab_log(t.page, f"Tab is in SLEEP mode. Waiting {wait_seconds:.0f}s before recovery.")
+                            await asyncio.sleep(wait_seconds)
+
+                    # 2. 执行后台延续任务 (如强制重排)
                     if work:
                         tab_log(t.page, "Running background work...")
                         await work
                         tab_log(t.page, "Background work completed")
                 except Exception as e:
-                    tab_log(t.page, f"Background work failed: {e}", "error")
+                    tab_log(t.page, f"Background chain failed at some stage: {e}", "error")
                 finally:
                     try:
-                        # 如果标记了 SLEEP，在此处等待
-                        from server.services.objects.exceptions import BrowserStatus
-                        if t.status == BrowserStatus.SLEEP and t.sleep_until:
-                            wait_seconds = (t.sleep_until - datetime.now()).total_seconds()
-                            if wait_seconds > 0:
-                                tab_log(t.page, f"Tab is in SLEEP mode. Waiting {wait_seconds:.0f}s before reset.")
-                                await asyncio.sleep(wait_seconds)
-                        
                         from ..tasks import actions
                         await actions.reinitialize_page(t.page, model=m)
                     except Exception as e:
-                        tab_log(t.page, f"Background rewarm failed: {e}", "error")
+                        tab_log(t.page, f"Background final rewarm failed: {e}", "error")
                     finally:
                         t.status = BrowserStatus.IDLE
                         t.sleep_until = None

@@ -54,7 +54,11 @@ class ImageGenerationTask(BaseEngineTask):
                 await actions.dump_inspect(page, mode="full")
                 await actions.dump_html(page)
                 
-                # 直接返回失败，后台发起强制重排
+                # 惩罚：进入 9 分钟冷却，配合 coordinator 保持现场供人工检查
+                tab.status = BrowserStatus.SLEEP
+                tab.sleep_until = datetime.now() + timedelta(minutes=9)
+                
+                # 返回失败，并在冷却结束后执行后台重排
                 return TaskResult(
                     success=False, 
                     error="Failed to submit image prompt",
@@ -112,15 +116,15 @@ class ImageGenerationTask(BaseEngineTask):
                     await actions.dump_inspect(page, mode="full")
                     await actions.dump_html(page)
                     
+                    # 无论有无文字，超时均视为故障，进入 9 分钟冷却惩罚
+                    tab.status = BrowserStatus.SLEEP
+                    tab.sleep_until = datetime.now() + timedelta(minutes=9)
+                    
                     # 只有当超时且完全没出字，才考虑可能是 UI 状态卡死，触发后台重排
                     bg_work = None
                     if not response_text:
-                        tab_log(page, "No response text found after timeout. Triggering background reinitialization...", "warning")
+                        tab_log(page, "No response text found after timeout. Triggering background reinitialization after punishment...", "warning")
                         bg_work = actions.reinitialize_page(page, model=model)
-                    else:
-                        # 如果有字但超时了，可能只是生成慢，进入 9 分钟冷却即可
-                        tab.status = BrowserStatus.SLEEP
-                        tab.sleep_until = datetime.now() + timedelta(minutes=9)
                     
                     return TaskResult(success=False, error="Timed out waiting for results", background_work=bg_work)
                 
