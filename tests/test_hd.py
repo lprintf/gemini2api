@@ -143,19 +143,22 @@ async def run_single_request(req_id, client, headers, semaphore, image_bytes, si
                 return {"ok": False, "req_id": req_id, "latency": elapsed, "error": msg}
 
             raw_url = items[0].get("url")
-            if not raw_url:
-                elapsed = time.perf_counter() - start_ts
-                msg = "响应缺少 url 字段"
-                print(f"[{req_id:04d}] ❌ {msg}")
-                return {"ok": False, "req_id": req_id, "latency": elapsed, "error": msg}
-
+            response_text_content = payload.get("text")
+            
             elapsed = time.perf_counter() - start_ts
-            print(f"[{req_id:04d}] ✅ 成功 {elapsed:.2f}s -> {raw_url}")
+            log_msg = f"[{req_id:04d}] ✅ 成功 {elapsed:.2f}s -> {raw_url}"
+            if response_text_content:
+                # 只打印前 100 个字符
+                short_text = response_text_content.replace('\n', ' ')[:100]
+                log_msg += f" | Text: {short_text}..."
+            
+            print(log_msg)
             return {
                 "ok": True,
                 "req_id": req_id,
                 "latency": elapsed,
                 "url": raw_url,
+                "text": response_text_content
             }
 
         except Exception as exc:
