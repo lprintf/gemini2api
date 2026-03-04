@@ -1,6 +1,6 @@
 import asyncio
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Literal, Optional, Any, Dict
 from .base import BaseEngineTask, TaskResult
@@ -37,6 +37,9 @@ class ImageGenerationTask(BaseEngineTask):
             if not success:
                 tab_log(page, "Environment preparation failed", "error")
                 await actions.dump_inspect(page, mode="full")
+                await actions.dump_html(page)
+                tab.status = BrowserStatus.SLEEP
+                tab.sleep_until = datetime.now() + timedelta(minutes=9)
                 return TaskResult(success=False, error="Environment preparation failed")
 
             # 3. 输入与提交阶段
@@ -49,6 +52,9 @@ class ImageGenerationTask(BaseEngineTask):
             if not success:
                 tab_log(page, "Failed to submit image prompt", "error")
                 await actions.dump_inspect(page, mode="full")
+                await actions.dump_html(page)
+                tab.status = BrowserStatus.SLEEP
+                tab.sleep_until = datetime.now() + timedelta(minutes=9)
                 return TaskResult(success=False, error="Failed to submit image prompt")
 
             # 4. 生成阶段
@@ -65,25 +71,35 @@ class ImageGenerationTask(BaseEngineTask):
                 if refusal_text:
                     tab_log(page, f"Gemini refused to generate images: {refusal_text}", "error")
                     await actions.dump_inspect(page, mode="full")
+                    await actions.dump_html(page)
                     
                     # 检查是否是限额拒绝，若是则进入 2h 休眠模式
                     quota_keywords = ["无法为您生成更多图像", "无法为您创建更多图像", "can't generate more images", "can't create more images"]
                     if any(k in refusal_text for k in quota_keywords):
-                        from datetime import timedelta
-                        from server.services.objects.exceptions import BrowserStatus
                         tab.status = BrowserStatus.SLEEP
                         tab.sleep_until = datetime.now() + timedelta(hours=2)
-                        tab_log(page, f"Rate limit detected. Tab entering SLEEP mode until {tab.sleep_until.strftime('%H:%M:%S')}", "warning")
+                        tab_log(page, f"Quota limit detected. Tab entering SLEEP mode until {tab.sleep_until.strftime('%H:%M:%S')}", "warning")
+                    else:
+                        # 普通拒绝/失败，进入 9 分钟休眠
+                        tab.status = BrowserStatus.SLEEP
+                        tab.sleep_until = datetime.now() + timedelta(minutes=9)
+                        tab_log(page, f"Refusal detected. Tab entering cooldown SLEEP mode until {tab.sleep_until.strftime('%H:%M:%S')}", "warning")
                     
                     return TaskResult(success=False, error=f"Gemini refused: {refusal_text}")
                 
                 if not success:
                     tab_log(page, f"Timed out waiting for image results after {durations['generate']}s", "error")
                     await actions.dump_inspect(page, mode="full")
+                    await actions.dump_html(page)
+                    tab.status = BrowserStatus.SLEEP
+                    tab.sleep_until = datetime.now() + timedelta(minutes=9)
                     return TaskResult(success=False, error="Timed out waiting for image results")
                 
                 tab_log(page, "No images found in response", "error")
                 await actions.dump_inspect(page, mode="full")
+                await actions.dump_html(page)
+                tab.status = BrowserStatus.SLEEP
+                tab.sleep_until = datetime.now() + timedelta(minutes=9)
                 return TaskResult(success=False, error="No images found in response")
 
             # 5. 下载处理阶段
@@ -124,6 +140,9 @@ class ImageGenerationTask(BaseEngineTask):
                     error_msg = f"Failed to process any generated images (Found {len(urls)} URLs but all failed)"
                     tab_log(page, error_msg, "error")
                     await actions.dump_inspect(page, mode="full")
+                    await actions.dump_html(page)
+                    tab.status = BrowserStatus.SLEEP
+                    tab.sleep_until = datetime.now() + timedelta(minutes=9)
                     return TaskResult(success=False, error=error_msg)
             
             return TaskResult(
@@ -140,7 +159,11 @@ class ImageGenerationTask(BaseEngineTask):
             # 异常发生时自动捕获快照
             try:
                 await actions.dump_inspect(page, mode="full")
+                await actions.dump_html(page)
             except: pass
+            
+            tab.status = BrowserStatus.SLEEP
+            tab.sleep_until = datetime.now() + timedelta(minutes=9)
             return TaskResult(success=False, error=str(e))
         finally:
             # 统一计算总耗时并打印已完成阶段的统计
