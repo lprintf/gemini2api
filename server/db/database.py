@@ -61,7 +61,6 @@ class Database:
                 browser_id TEXT UNIQUE NOT NULL,
                 account_name TEXT NOT NULL,
                 proxy TEXT,
-                headless INTEGER DEFAULT 1,
                 user_data_dir TEXT NOT NULL,
                 rate_limit INTEGER DEFAULT 3,
                 rate_window INTEGER DEFAULT 60,
@@ -94,7 +93,6 @@ class Database:
                 server_port INTEGER DEFAULT 8000,
                 min_browsers INTEGER DEFAULT 1,
                 max_browsers INTEGER DEFAULT 10,
-                default_headless INTEGER DEFAULT 1,
                 default_rate_limit INTEGER DEFAULT 3,
                 rate_window_seconds INTEGER DEFAULT 60,
                 lb_strategy TEXT DEFAULT 'least_loaded',
@@ -176,7 +174,7 @@ class Database:
         await self.conn.execute(
             """
             INSERT INTO browsers
-            (browser_id, account_name, proxy, headless, user_data_dir,
+            (browser_id, account_name, proxy, user_data_dir,
              rate_limit, rate_window, is_enabled, auto_start, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
@@ -184,7 +182,6 @@ class Database:
                 config.browser_id,
                 config.account_name,
                 config.proxy,
-                1 if config.headless else 0,
                 config.user_data_dir,
                 config.rate_limit,
                 config.rate_window,
@@ -210,7 +207,7 @@ class Database:
         set_clauses = []
         values = []
         for key, value in updates.items():
-            if key in ("headless", "is_enabled", "auto_start"):
+            if key in ("is_enabled", "auto_start"):
                 value = 1 if value else 0
             set_clauses.append(f"{key} = ?")
             values.append(value)
@@ -250,7 +247,6 @@ class Database:
             browser_id=row["browser_id"],
             account_name=row["account_name"],
             proxy=row["proxy"],
-            headless=bool(row["headless"]),
             user_data_dir=row["user_data_dir"],
             rate_limit=row["rate_limit"],
             rate_window=row["rate_window"],
@@ -442,7 +438,6 @@ class Database:
                     server_port=row["server_port"],
                     min_browsers=row["min_browsers"],
                     max_browsers=row["max_browsers"],
-                    default_headless=bool(row["default_headless"]),
                     default_rate_limit=row["default_rate_limit"],
                     rate_window_seconds=row["rate_window_seconds"],
                     lb_strategy=row["lb_strategy"],
@@ -464,8 +459,6 @@ class Database:
             updates["cors_origins"] = json.dumps(updates["cors_origins"])
 
         # 处理布尔值
-        if "default_headless" in updates:
-            updates["default_headless"] = 1 if updates["default_headless"] else 0
 
         updates["updated_at"] = datetime.now()
 

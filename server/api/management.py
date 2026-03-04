@@ -37,7 +37,6 @@ class CreateBrowserRequest(BaseModel):
     browser_id: Optional[int] = None  # 可选的浏览器 ID，不提供则自动分配
     account_name: Optional[str] = None  # 可选的账号名称，默认等于 ID
     proxy: Optional[str] = None
-    headless: bool = True
     auto_start: bool = True
     max_tabs: int = 3  # 最大标签页数量
 
@@ -47,7 +46,6 @@ class UpdateBrowserRequest(BaseModel):
 
     account_name: Optional[str] = None
     proxy: Optional[str] = None
-    headless: Optional[bool] = None
     rate_limit: Optional[int] = None
     rate_window: Optional[int] = None
     is_enabled: Optional[bool] = None
@@ -72,7 +70,6 @@ class UpdateConfigRequest(BaseModel):
     server_port: Optional[int] = None
     min_browsers: Optional[int] = None
     max_browsers: Optional[int] = None
-    default_headless: Optional[bool] = None
     default_rate_limit: Optional[int] = None
     rate_window_seconds: Optional[int] = None
     lb_strategy: Optional[str] = None
@@ -110,7 +107,6 @@ async def create_browser(request: CreateBrowserRequest):
             browser_id=request.browser_id,
             account_name=request.account_name,
             proxy=request.proxy,
-            headless=request.headless,
             auto_start=request.auto_start,
             max_tabs=request.max_tabs,
         )

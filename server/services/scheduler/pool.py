@@ -57,7 +57,6 @@ class BrowserPool:
                     browser_id=config.browser_id,
                     account_name=config.account_name,
                     proxy=config.proxy,
-                    headless=config.headless,
                     user_data_dir=config.user_data_dir,
                     rate_window=config.rate_window,
                 )
@@ -189,7 +188,6 @@ class BrowserPool:
                     browser_id=browser_id_str,
                     account_name=account_name,
                     proxy=proxy,
-                    headless=headless,
                     user_data_dir=user_data_dir,
                     rate_limit=self.browser_rate_limit,
                     rate_window=self.browser_rate_window,
@@ -210,7 +208,6 @@ class BrowserPool:
                 browser_id=browser_id_str,
                 account_name=account_name,
                 proxy=proxy,
-                headless=headless,
                 rate_limit=self.browser_rate_limit,
                 rate_window=self.browser_rate_window,
                 user_data_dir=user_data_dir,
@@ -244,8 +241,6 @@ class BrowserPool:
                 browser.account_name = updates["account_name"]
             if "proxy" in updates:
                 browser.proxy = updates["proxy"]
-            if "headless" in updates:
-                browser.headless = updates["headless"]
             if "rate_limit" in updates:
                 browser.rate_limit = updates["rate_limit"]
             if "rate_window" in updates:

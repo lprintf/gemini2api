@@ -758,12 +758,6 @@
                                 placeholder="Leave blank to keep current">
                         </div>
                     </div>
-                    <div class="form-group">
-                        <div class="checkbox-group">
-                            <input type="checkbox" id="cfgDefaultHeadless">
-                            <label for="cfgDefaultHeadless" style="margin-bottom: 0;">Default Headless Mode</label>
-                        </div>
-                    </div>
                     <button type="submit" class="btn btn-primary btn-lg">Save Configuration</button>
                 </form>
             </div>
@@ -818,12 +812,6 @@
                 </div>
                 <div class="form-group">
                     <div class="checkbox-group">
-                        <input type="checkbox" id="newHeadless" checked>
-                        <label for="newHeadless" style="margin-bottom: 0;">Headless Mode</label>
-                    </div>
-                </div>
-                <div class="form-group">
-                    <div class="checkbox-group">
                         <input type="checkbox" id="newAutoStart" checked>
                         <label for="newAutoStart" style="margin-bottom: 0;">Auto Start</label>
                     </div>
@@ -858,12 +846,6 @@
                 <div class="form-group">
                     <label>Rate Window (seconds)</label>
                     <input type="number" class="form-control" id="editRateWindow" min="1">
-                </div>
-                <div class="form-group">
-                    <div class="checkbox-group">
-                        <input type="checkbox" id="editHeadless">
-                        <label for="editHeadless" style="margin-bottom: 0;">Headless Mode</label>
-                    </div>
                 </div>
                 <div class="form-group">
                     <div class="checkbox-group">
@@ -1083,7 +1065,6 @@
             e.preventDefault();
             try {
                 const data = {
-                    headless: document.getElementById('newHeadless').checked,
                     auto_start: document.getElementById('newAutoStart').checked,
                 };
 
@@ -1117,7 +1098,6 @@
             document.getElementById('editProxy').value = browser.proxy || '';
             document.getElementById('editRateLimit').value = browser.rate_limit.limit;
             document.getElementById('editRateWindow').value = browser.rate_limit.window_seconds;
-            document.getElementById('editHeadless').checked = browser.headless;
             document.getElementById('editAutoStart').checked = true;
 
             showModal('editBrowserModal');
@@ -1132,7 +1112,6 @@
                     proxy: document.getElementById('editProxy').value || null,
                     rate_limit: parseInt(document.getElementById('editRateLimit').value),
                     rate_window: parseInt(document.getElementById('editRateWindow').value),
-                    headless: document.getElementById('editHeadless').checked,
                     auto_start: document.getElementById('editAutoStart').checked,
                 };
 
@@ -1300,7 +1279,6 @@
                 document.getElementById('cfgLbStrategy').value = data.lb_strategy;
                 document.getElementById('cfgLogLevel').value = data.log_level;
                 document.getElementById('cfgAdminUsername').value = data.admin_username;
-                document.getElementById('cfgDefaultHeadless').checked = data.default_headless;
             } catch (e) {
                 showToast('Failed to load config: ' + e.message, 'error');
             }
@@ -1319,7 +1297,6 @@
                     lb_strategy: document.getElementById('cfgLbStrategy').value,
                     log_level: document.getElementById('cfgLogLevel').value,
                     admin_username: document.getElementById('cfgAdminUsername').value,
-                    default_headless: document.getElementById('cfgDefaultHeadless').checked,
                 };
 
                 const password = document.getElementById('cfgAdminPassword').value;

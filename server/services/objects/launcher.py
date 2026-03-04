@@ -19,7 +19,6 @@ DEFAULT_PERMISSIONS = ["clipboard-read", "clipboard-write"]
 
 BASE_ARGS = [
     "--no-sandbox",
-    "--headless=new",
 ]
 
 def get_launch_args() -> List[str]:
@@ -74,7 +73,7 @@ class GeminiLauncher:
             print(f"代理 URL 解析失败: {e}")
             return None
 
-    async def launch(self, timeout: int = 60000, headless: bool = True) -> Page:
+    async def launch(self, timeout: int = 60000) -> Page:
         """启动浏览器并访问 Gemini"""
         if not self.user_data_dir.exists():
             self.user_data_dir.mkdir(parents=True, exist_ok=True)
@@ -87,7 +86,6 @@ class GeminiLauncher:
 
         self.context = await self.playwright.chromium.launch_persistent_context(
             str(self.user_data_dir),
-            headless=headless,
             viewport=DEFAULT_VIEWPORT,
             args=launch_args,
             permissions=DEFAULT_PERMISSIONS,

@@ -15,7 +15,6 @@ class BrowserConfig(BaseModel):
     browser_id: str
     account_name: str
     proxy: Optional[str] = None
-    headless: bool = True
     user_data_dir: str
     rate_limit: int = 2
     rate_window: int = 50
@@ -34,7 +33,6 @@ class BrowserConfigCreate(BaseModel):
     browser_id: Optional[int] = None  # 可选，自动分配
     account_name: Optional[str] = None  # 可选，默认等于 browser_id
     proxy: Optional[str] = None
-    headless: bool = True
     auto_start: bool = True
 
 
@@ -43,7 +41,6 @@ class BrowserConfigUpdate(BaseModel):
 
     account_name: Optional[str] = None
     proxy: Optional[str] = None
-    headless: Optional[bool] = None
     rate_limit: Optional[int] = None
     rate_window: Optional[int] = None
     is_enabled: Optional[bool] = None
@@ -79,7 +76,6 @@ class GlobalConfig(BaseModel):
     # Browser Pool
     min_browsers: int = 1
     max_browsers: int = 10
-    default_headless: bool = True
     # Rate Limit
     default_rate_limit: int = 3
     rate_window_seconds: int = 60
@@ -105,7 +101,6 @@ class GlobalConfigUpdate(BaseModel):
     server_port: Optional[int] = None
     min_browsers: Optional[int] = None
     max_browsers: Optional[int] = None
-    default_headless: Optional[bool] = None
     default_rate_limit: Optional[int] = None
     rate_window_seconds: Optional[int] = None
     lb_strategy: Optional[str] = None
@@ -148,7 +143,6 @@ class BrowserStatus(BaseModel):
     browser_id: str
     account_name: str
     proxy: Optional[str] = None
-    headless: bool = True
     status: str  # idle/busy/launching/closing/error/closed
     user_data_dir: str
     is_enabled: bool = True

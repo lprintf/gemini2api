@@ -27,7 +27,7 @@ class BrowserPoolConfig(BaseModel):
     max_browsers: int = 10
     idle_timeout: int = 300  # 秒
     health_check_interval: int = 60  # 秒
-    default_headless: bool = True
+    download_workers: int = 2
 
 
 class RateLimitConfig(BaseModel):
@@ -76,7 +76,6 @@ def apply_env_overrides(config: Config) -> Config:
         "SERVER_PORT": ("server", "port", int),
         "MAX_BROWSERS": ("browser_pool", "max_browsers", int),
         "MIN_BROWSERS": ("browser_pool", "min_browsers", int),
-        "DEFAULT_HEADLESS": ("browser_pool", "default_headless", lambda x: x.lower() == "true"),
         "RATE_LIMIT": ("rate_limit", "default_limit", int),
         "RATE_WINDOW": ("rate_limit", "window_seconds", int),
         "LB_STRATEGY": ("load_balancer", "strategy", str),
@@ -110,7 +109,6 @@ def config_from_global(global_config: GlobalConfig) -> Config:
         browser_pool=BrowserPoolConfig(
             min_browsers=global_config.min_browsers,
             max_browsers=global_config.max_browsers,
-            default_headless=global_config.default_headless,
         ),
         rate_limit=RateLimitConfig(
             default_limit=global_config.default_rate_limit,

@@ -23,7 +23,6 @@ class BrowserInstance:
         browser_id: str,
         account_name: str,
         proxy: Optional[str] = None,
-        headless: bool = True,
         user_data_dir: Optional[str] = None,
         rate_limit: int = 3,
         rate_window: int = 60,
@@ -32,7 +31,6 @@ class BrowserInstance:
         self.browser_id = browser_id
         self.account_name = account_name
         self.proxy = proxy
-        self.headless = headless
         self.user_data_dir = user_data_dir or f"data/browser_data/{browser_id}"
         self.max_tabs = max_tabs
 
@@ -83,7 +81,7 @@ class BrowserInstance:
                 proxy=self.proxy,
                 user_data_dir=self.user_data_dir,
             )
-            page0 = await self.launcher.launch(headless=self.headless)
+            page0 = await self.launcher.launch()
 
             # 2. 标签页初始化函数 (封装内部逻辑，避免依赖外部 Task)
             async def init_tab_resource(tab_id: int, page: Page, model: str) -> TabInstance:
