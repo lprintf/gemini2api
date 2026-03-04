@@ -335,62 +335,73 @@ async def get_generated_urls(page: Page, max_wait_s: int = 12) -> List[str]:
 
 async def download_hd_image(page: Page, img_url: str, remove_wm: bool = True, max_attempts: int = 9):
     """下载高清图片 (精准 Hover 下载版，纯内存处理)"""
-    img_element = None
-    try:
-        img_element = await page.evaluate_handle("""
-            (url) => {
-                const containers = document.querySelectorAll('model-response, response-container, .model-response');
-                if (containers.length === 0) return null;
-                const last = containers[containers.length - 1];
-                return Array.from(last.querySelectorAll('img')).find(i => i.src === url);
-            }
-        """, img_url)
-        img_element = img_element.as_element()
-    except: pass
-    
-    if img_element:
-        for attempt in range(max_attempts):
-            is_last = (attempt == max_attempts - 1)
+    for attempt in range(max_attempts):
+        is_last = (attempt == max_attempts - 1)
+        try:
+            # 强化：每次尝试前都重新获取一次句柄，防止 DOM 变动导致之前的 handle 失效
+            img_element = await page.evaluate_handle("""
+                (url) => {
+                    const containers = document.querySelectorAll('model-response, response-container, .model-response');
+                    if (containers.length === 0) return null;
+                    const last = containers[containers.length - 1];
+                    // 模糊匹配：优先全匹配，其次匹配不带查询参数的部分
+                    return Array.from(last.querySelectorAll('img')).find(i => i.src === url)
+                        || Array.from(last.querySelectorAll('img')).find(i => i.src.split('=')[0] === url.split('=')[0]);
+                }
+            """, img_url)
+            img_element = img_element.as_element()
+            
+            if not img_element:
+                # 如果没找到句柄，尝试刷新一次 URL 列表（针对容器彻底刷新的情况）
+                tab_log(page, f"Image handle lost, refreshing URLs (attempt {attempt+1})...")
+                new_urls = await get_generated_urls(page, max_wait_s=3)
+                if new_urls and img_url not in new_urls:
+                    # 如果旧 URL 消失了，尝试用新列表里的最新一个 URL（通常是同位置的）
+                    # 这里的逻辑仅作为一种概率性的拯救，因为 img_url 是外部传入的
+                    img_url = new_urls[0] 
+                if is_last: break
+                continue
+
+            tab_log(page, f"Hovering over image (attempt {attempt + 1}/{max_attempts})...")
+            await img_element.scroll_into_view_if_needed()
             try:
-                tab_log(page, f"Hovering over image (attempt {attempt + 1}/{max_attempts})...")
-                await img_element.scroll_into_view_if_needed()
-                try:
-                    await img_element.hover(timeout=3000)
-                except:
-                    await img_element.dispatch_event("mouseenter")
-                
-                combined_selector = ', '.join([
-                    'button[aria-label*="Download"]',
-                    'button[aria-label*="下载"]',
-                    '.download-button',
-                    'button:has(mat-icon:has-text("download"))'
-                ])
-                try:
-                    download_btn = await page.wait_for_selector(combined_selector, timeout=3000, state="visible")
-                    if download_btn:
-                        tab_log(page, "Download button found")
-                except Exception:
-                    download_btn = None
+                await img_element.hover(timeout=3000)
+            except:
+                await img_element.dispatch_event("mouseenter")
+            
+            combined_selector = ', '.join([
+                'button[aria-label*="Download"]',
+                'button[aria-label*="下载"]',
+                '.download-button',
+                'button:has(mat-icon:has-text("download"))'
+            ])
+            try:
+                download_btn = await page.wait_for_selector(combined_selector, timeout=3000, state="visible")
                 if download_btn:
-                    t_dl_start = time.time()
-                    async with page.expect_download(timeout=60000) as download_info:
-                        await download_btn.click()
-                    download = await download_info.value
-                    path = await download.path()
-                    dl_time = round(time.time() - t_dl_start, 3)
-                    if path:
-                        buf = BytesIO(Path(path).read_bytes())
-                        success, img_bytes, img_hash, p_stats = await _process_image(buf, remove_wm)
-                        if success:
-                            p_stats["dl_time"] = dl_time
-                            p_stats["mode"] = "hd"
-                        return success, img_bytes, img_hash, p_stats
-                if not is_last: continue
-            except Exception as e:
-                if is_last:
-                    tab_log(page, f"HD download failed after {max_attempts} attempts: {e}", "error")
-                else: 
-                    tab_log(page, f"Hover attempt {attempt+1} failed ({type(e).__name__}), retrying...", "warning")
+                    tab_log(page, "Download button found")
+            except Exception:
+                download_btn = None
+            if download_btn:
+                t_dl_start = time.time()
+                async with page.expect_download(timeout=60000) as download_info:
+                    await download_btn.click()
+                download = await download_info.value
+                path = await download.path()
+                dl_time = round(time.time() - t_dl_start, 3)
+                if path:
+                    buf = BytesIO(Path(path).read_bytes())
+                    success, img_bytes, img_hash, p_stats = await _process_image(buf, remove_wm)
+                    if success:
+                        p_stats["dl_time"] = dl_time
+                        p_stats["mode"] = "hd"
+                    return success, img_bytes, img_hash, p_stats
+            if not is_last: continue
+        except Exception as e:
+            if is_last:
+                tab_log(page, f"HD download failed after {max_attempts} attempts: {e}", "error")
+            else: 
+                tab_log(page, f"Hover attempt {attempt+1} failed ({type(e).__name__}), retrying...", "warning")
+                await asyncio.sleep(0.5)
         
     tab_log(page, "Falling back to direct request.", "warning")
     success, img_bytes, h, stats = await download_q_image(page, img_url, remove_wm)
