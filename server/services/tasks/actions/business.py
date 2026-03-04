@@ -210,11 +210,14 @@ async def wait_for_results(page: Page, timeout_s: int = 60):
     等待结果生成完成
     策略：
       - 检测到图片立即返回（成功路径）
-      - 回复完成（isComplete && !isBusy）时返回，无论有无图片
-      - 仅当回复完成、无图片、且有大段文本时才视为拒绝/纯文本回复
-      - 不再因为 hasSignificantText 就提前退出（防止图文混排时误判）
+      - 回复完成（isComplete && !isBusy）时返回
+      - 仅在回复无图片、且文字字数维持稳定（3秒无变化）时才视为结束
+      - 彻底移除单一的 hasSignificantText 长度判断，改为“动静态结合”判断
     """
     try:
+        # 清除之前的状态（如果有）
+        await page.evaluate("window._gemini_wait_state = null")
+        
         await page.wait_for_function(f"""
             () => {{
                 const containers = document.querySelectorAll('model-response, response-container, .model-response');
@@ -226,24 +229,44 @@ async def wait_for_results(page: Page, timeout_s: int = 60):
                 const hasImages = imgs.some(i => i.src.includes('googleusercontent') && !i.src.includes('{_AVATAR_PATTERN}'));
                 if (hasImages) return true;
 
-                // 2. 检查回复是否已完成
+                // 2. 状态提取
                 const mc = last.querySelector('message-content');
                 const isBusy = (last.getAttribute('aria-busy') === 'true') || (mc && mc.getAttribute('aria-busy') === 'true');
                 
                 const footer = last.querySelector('.response-footer, response-footer');
                 const isComplete = footer && footer.classList.contains('complete');
 
-                // 3. 仅在回复已完成且无图片时，才检查文本（拒绝/配额场景）
-                if (!isBusy && isComplete) {{
-                    return true;  // 回复完成，后续由调用方判断有无图片
-                }}
-
-                // 4. 即使回复还没完成，如果已经出现了大段拒绝文本且不再忙碌，也可以提前返回
-                //    但必须确认没有图片（防止图文混排的误判）
-                if (!isBusy && !hasImages && mc) {{
+                // 获取当前文本长度（排除视障辅助文本）
+                let currentLen = 0;
+                if (mc) {{
                     const clone = mc.cloneNode(true);
                     clone.querySelectorAll('.cdk-visually-hidden').forEach(el => el.remove());
-                    if (clone.innerText.trim().length > 20) return true;
+                    currentLen = clone.innerText.trim().length;
+                }}
+
+                // 3. 稳定性检测逻辑
+                if (!window._gemini_wait_state) {{
+                    window._gemini_wait_state = {{ len: currentLen, ts: Date.now() }};
+                }}
+                
+                const state = window._gemini_wait_state;
+                if (currentLen !== state.len) {{
+                    state.len = currentLen;
+                    state.ts = Date.now();
+                }}
+                
+                const stableTime = Date.now() - state.ts;
+                const isStable = stableTime > 3000; // 3秒无变化视为稳定
+
+                // 4. 返回判断
+                // 回复完成且不再忙碌
+                if (!isBusy && isComplete) {{
+                    return true;
+                }}
+
+                // 无图片，且文字长度已稳定（由短间隔对比得出）
+                if (!hasImages && currentLen > 10 && isStable) {{
+                    return true;
                 }}
                 
                 return false;
