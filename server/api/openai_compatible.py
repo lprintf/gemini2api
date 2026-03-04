@@ -66,6 +66,7 @@ class ImageEditResponse(BaseModel):
 
     created: int
     data: list[ImageData]
+    text: Optional[str] = None  # Gemini 回复的文字描述（图文混排时存在）
 
 
 class TaskResponse(BaseModel):
@@ -246,7 +247,8 @@ async def create_image_edit(
                     image_data = base64.b64encode(f.read()).decode()
                 data.append(ImageData(b64_json=image_data))
 
-        return ImageEditResponse(created=created, data=data)
+        response_text = result.get("text")
+        return ImageEditResponse(created=created, data=data, text=response_text)
 
     except HTTPException:
         raise

@@ -208,7 +208,11 @@ async def submit_image_prompt(page: Page, prompt: str, image_paths: List[str] = 
 async def wait_for_results(page: Page, timeout_s: int = 60):
     """
     等待结果生成完成
-    优化：探测到回答容器变为“非忙碌”或“已完成”状态时即刻返回，不强制等图片
+    策略：
+      - 检测到图片立即返回（成功路径）
+      - 回复完成（isComplete && !isBusy）时返回，无论有无图片
+      - 仅当回复完成、无图片、且有大段文本时才视为拒绝/纯文本回复
+      - 不再因为 hasSignificantText 就提前退出（防止图文混排时误判）
     """
     try:
         await page.wait_for_function(f"""
@@ -222,35 +226,31 @@ async def wait_for_results(page: Page, timeout_s: int = 60):
                 const hasImages = imgs.some(i => i.src.includes('googleusercontent') && !i.src.includes('{_AVATAR_PATTERN}'));
                 if (hasImages) return true;
 
-                // 2. 失败/停顿路径：检测到回答已结束，或出现大量文本 (通常暗示拒绝文案)
-                // 检查最后回复及其内容的 busy 状态
+                // 2. 检查回复是否已完成
                 const mc = last.querySelector('message-content');
                 const isBusy = (last.getAttribute('aria-busy') === 'true') || (mc && mc.getAttribute('aria-busy') === 'true');
                 
                 const footer = last.querySelector('.response-footer, response-footer');
                 const isComplete = footer && footer.classList.contains('complete');
 
-                // 尝试抓取文本（排除被隐藏的结构性元素如 "Gemini 说"）
-                let hasSignificantText = false;
-                if (mc) {{
-                    const clone = mc.cloneNode(true);
-                    const hidden = clone.querySelectorAll('.cdk-visually-hidden');
-                    hidden.forEach(el => el.remove());
-                    // 如果存在超过20个字符的可见文本，通常意味着遇到了配额或审查等拒绝话术
-                    hasSignificantText = clone.innerText.trim().length > 20;
+                // 3. 仅在回复已完成且无图片时，才检查文本（拒绝/配额场景）
+                if (!isBusy && isComplete) {{
+                    return true;  // 回复完成，后续由调用方判断有无图片
                 }}
 
-                // 如果不再忙碌且出现了完成标记，或者虽然还在生成/加载，但配额拒绝文本已经明确输出了
-                if ((!isBusy && isComplete) || hasSignificantText) {{
-                    return true; 
+                // 4. 即使回复还没完成，如果已经出现了大段拒绝文本且不再忙碌，也可以提前返回
+                //    但必须确认没有图片（防止图文混排的误判）
+                if (!isBusy && !hasImages && mc) {{
+                    const clone = mc.cloneNode(true);
+                    clone.querySelectorAll('.cdk-visually-hidden').forEach(el => el.remove());
+                    if (clone.innerText.trim().length > 20) return true;
                 }}
                 
                 return false;
             }}
         """, timeout=timeout_s * 1000)
         
-        # 护城河：防止图片刚开始渲染还没拿到达标的 url。
-        # 如果是因为出现了 rejection 文本而退出，这 1.5s 也就是小代价。
+        # 护城河：防止图片刚开始渲染还没拿到达标的 url
         await asyncio.sleep(1.5)
         return True
     except:

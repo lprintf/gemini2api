@@ -74,7 +74,11 @@ class ImageGenerationTask(BaseEngineTask):
                     await actions.dump_html(page)
                     
                     # 检查是否是限额拒绝，若是则进入 2h 休眠模式
-                    quota_keywords = ["无法为您生成更多图像", "无法为您创建更多图像", "can't generate more images", "can't create more images"]
+                    quota_keywords = [
+                        "无法为您生成更多图像", "无法为您创建更多图像",
+                        "can't generate more images", "can't create more images",
+                        "come back tomorrow", "can still find images from the web",
+                    ]
                     if any(k in refusal_text for k in quota_keywords):
                         tab.status = BrowserStatus.SLEEP
                         tab.sleep_until = datetime.now() + timedelta(hours=2)
@@ -145,9 +149,16 @@ class ImageGenerationTask(BaseEngineTask):
                     tab.sleep_until = datetime.now() + timedelta(minutes=9)
                     return TaskResult(success=False, error=error_msg)
             
+            # 获取回复中的文字（图文混排场景）
+            response_text = await actions.get_last_response_text(page)
+            result_data = {"images": images_info, "date": datetime.now().strftime("%Y%m%d")}
+            if response_text:
+                result_data["text"] = response_text
+                tab_log(page, f"Mixed response: {len(images_info)} images + text ({len(response_text)} chars)")
+
             return TaskResult(
                 success=True, 
-                data={"images": images_info, "date": datetime.now().strftime("%Y%m%d")},
+                data=result_data,
                 metadata={"model": model, "prompt": prompt, "download_mode": download_mode},
                 background_work=background_work
             )
