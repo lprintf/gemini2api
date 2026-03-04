@@ -783,7 +783,7 @@ async def reinitialize_tab(browser_id: str, tab_id: int):
 
     try:
         from server.services.tasks import actions
-        success = await actions.reinitialize_page(tab.page, model=tab.preferred_model)
+        success = await actions.reinitialize_page(tab.page, model=tab.model)
         
         # 更新状态
         from server.services.objects.exceptions import BrowserStatus

@@ -10,12 +10,12 @@ from .exceptions import BrowserStatus
 class TabInstance:
     """标签页实例 - 仅作为状态容器"""
 
-    def __init__(self, tab_id: int, browser_id: str, preferred_model: str = "Fast"):
+    def __init__(self, tab_id: int, browser_id: str, model: str = "Fast"):
         self.tab_id = tab_id
         self.browser_id = browser_id
         self.page: Any = None  # Playwright Page 对象
         self.status = BrowserStatus.LAUNCHING
-        self.preferred_model = preferred_model
+        self.model = model
         
         self.current_task_id: Optional[str] = None
         self.total_tasks = 0
@@ -35,7 +35,7 @@ class TabInstance:
         return {
             "tab_id": self.tab_id,
             "browser_id": self.browser_id,
-            "preferred_model": self.preferred_model,
+            "model": self.model,
             "status": self.status.value,
             "total_tasks": self.total_tasks,
             "failed_tasks": self.failed_tasks,

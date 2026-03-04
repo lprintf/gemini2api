@@ -163,7 +163,7 @@ class BrowserInstance:
         
         # 优先匹配模型
         if preferred_model:
-            match = [t for t in idles if t.preferred_model == preferred_model]
+            match = [t for t in idles if t.model == preferred_model]
             if match: return match[0]
             
         return idles[0]
@@ -196,4 +196,5 @@ class BrowserInstance:
             "proxy": self.proxy,
             "max_tabs": self.max_tabs,
             "is_enabled": self.is_enabled,
+            "tabs": [t.to_dict() for t in self.tabs]
         }
