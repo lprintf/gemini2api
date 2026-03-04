@@ -222,7 +222,7 @@ async def wait_for_results(page: Page, timeout_s: int = 60):
                 const hasImages = imgs.some(i => i.src.includes('googleusercontent') && !i.src.includes('{_AVATAR_PATTERN}'));
                 if (hasImages) return true;
 
-                // 2. 失败/停顿路径：检测到回答已结束
+                // 2. 失败/停顿路径：检测到回答已结束，或出现大量文本 (通常暗示拒绝文案)
                 // 检查最后回复及其内容的 busy 状态
                 const mc = last.querySelector('message-content');
                 const isBusy = (last.getAttribute('aria-busy') === 'true') || (mc && mc.getAttribute('aria-busy') === 'true');
@@ -230,8 +230,18 @@ async def wait_for_results(page: Page, timeout_s: int = 60):
                 const footer = last.querySelector('.response-footer, response-footer');
                 const isComplete = footer && footer.classList.contains('complete');
 
-                // 如果不再忙碌，且已经出现了完成标记，或者已经不再忙碌一段时间（由外层 loop 控制）
-                if (!isBusy && isComplete) {{
+                // 尝试抓取文本（排除被隐藏的结构性元素如 "Gemini 说"）
+                let hasSignificantText = false;
+                if (mc) {{
+                    const clone = mc.cloneNode(true);
+                    const hidden = clone.querySelectorAll('.cdk-visually-hidden');
+                    hidden.forEach(el => el.remove());
+                    // 如果存在超过20个字符的可见文本，通常意味着遇到了配额或审查等拒绝话术
+                    hasSignificantText = clone.innerText.trim().length > 20;
+                }}
+
+                // 如果不再忙碌且出现了完成标记，或者虽然还在生成/加载，但配额拒绝文本已经明确输出了
+                if ((!isBusy && isComplete) || hasSignificantText) {{
                     return true; 
                 }}
                 
@@ -239,7 +249,8 @@ async def wait_for_results(page: Page, timeout_s: int = 60):
             }}
         """, timeout=timeout_s * 1000)
         
-        # 护城河：如果是刚 complete，可能 DOM 还没更新完，额外等 1.5s 给渲染留时间
+        # 护城河：防止图片刚开始渲染还没拿到达标的 url。
+        # 如果是因为出现了 rejection 文本而退出，这 1.5s 也就是小代价。
         await asyncio.sleep(1.5)
         return True
     except:
