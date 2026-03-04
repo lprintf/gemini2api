@@ -256,7 +256,7 @@ async def wait_for_results(page: Page, timeout_s: int = 60):
                 }}
                 
                 const stableTime = Date.now() - state.ts;
-                const isStable = stableTime > 3000; // 3秒无变化视为稳定
+                const isStable = stableTime > 1900; // 无变化视为稳定
 
                 // 4. 返回判断
                 // 回复完成且不再忙碌
