@@ -200,7 +200,18 @@ async def submit_image_prompt(page: Page, prompt: str, image_paths: List[str] = 
             except:
                 tab_log(page, f"Warning: Image count sync timeout (curr={await get_uploaded_image_count(page)}, expected={target_count})", "warning")
 
-        return await click_submit(page)
+        # [针对 7-1 [0017] 优化]：检测提交后的 URL 变动
+        old_url = page.url
+        submit_success = await click_submit(page)
+        
+        if submit_success:
+            # 等待 3s 观察 URL 是否变化（通常提交后会跳转到 /app/xxxx）
+            await asyncio.sleep(3.0)
+            if page.url == old_url:
+                tab_log(page, f"URL unchanged ({page.url}) after 3s of submission. Failing fast.", "warning")
+                return False # 视为本次提交失败，交给上层触发后台重排
+
+        return submit_success
     except Exception as e:
         tab_log(page, f"submit_image_prompt error: {e}", "error")
         return False

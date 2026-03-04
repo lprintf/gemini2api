@@ -50,12 +50,16 @@ class ImageGenerationTask(BaseEngineTask):
             )
             durations["submit"] = round(time.time() - t1, 3)
             if not success:
-                tab_log(page, "Failed to submit image prompt", "error")
+                tab_log(page, "Failed to submit image prompt (possible stuck UI)", "error")
                 await actions.dump_inspect(page, mode="full")
                 await actions.dump_html(page)
-                tab.status = BrowserStatus.SLEEP
-                tab.sleep_until = datetime.now() + timedelta(minutes=9)
-                return TaskResult(success=False, error="Failed to submit image prompt")
+                
+                # 直接返回失败，后台发起强制重排
+                return TaskResult(
+                    success=False, 
+                    error="Failed to submit image prompt",
+                    background_work=actions.reinitialize_page(page, model=model)
+                )
 
             # 4. 生成阶段
             tab.activity = "Generating results..."
@@ -107,9 +111,18 @@ class ImageGenerationTask(BaseEngineTask):
                     tab_log(page, f"Timed out waiting for results after {durations['generate']}s", "error")
                     await actions.dump_inspect(page, mode="full")
                     await actions.dump_html(page)
-                    tab.status = BrowserStatus.SLEEP
-                    tab.sleep_until = datetime.now() + timedelta(minutes=9)
-                    return TaskResult(success=False, error="Timed out waiting for results")
+                    
+                    # 只有当超时且完全没出字，才考虑可能是 UI 状态卡死，触发后台重排
+                    bg_work = None
+                    if not response_text:
+                        tab_log(page, "No response text found after timeout. Triggering background reinitialization...", "warning")
+                        bg_work = actions.reinitialize_page(page, model=model)
+                    else:
+                        # 如果有字但超时了，可能只是生成慢，进入 9 分钟冷却即可
+                        tab.status = BrowserStatus.SLEEP
+                        tab.sleep_until = datetime.now() + timedelta(minutes=9)
+                    
+                    return TaskResult(success=False, error="Timed out waiting for results", background_work=bg_work)
                 
                 # 理论上不会走到这里（因为 wait_for_results 返回 True 代表有图或有稳定文字）
                 return TaskResult(success=False, error="No results found (no images and no text)")
