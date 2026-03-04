@@ -124,7 +124,7 @@ async def run_single_request(req_id, client, headers, semaphore, image_bytes, si
             if response.status_code != 200:
                 elapsed = time.perf_counter() - start_ts
                 msg = f"接口失败 HTTP {response.status_code}: {response_text[:200]}"
-                print(f"[{req_id:04d}] ❌ {msg}")
+                print(f"[{req_id:04d}] ❌ {msg}, elapsed: {elapsed:.2f}s")
                 return {"ok": False, "req_id": req_id, "latency": elapsed, "error": msg}
 
             try:
@@ -132,7 +132,7 @@ async def run_single_request(req_id, client, headers, semaphore, image_bytes, si
             except json.JSONDecodeError as exc:
                 elapsed = time.perf_counter() - start_ts
                 msg = f"JSON 解析失败: {exc}"
-                print(f"[{req_id:04d}] ❌ {msg}")
+                print(f"[{req_id:04d}] ❌ {msg}, elapsed: {elapsed:.2f}s")
                 return {"ok": False, "req_id": req_id, "latency": elapsed, "error": msg}
 
             items = payload.get("data", [])
@@ -142,7 +142,7 @@ async def run_single_request(req_id, client, headers, semaphore, image_bytes, si
             if not items and not response_text_content:
                 elapsed = time.perf_counter() - start_ts
                 msg = f"响应缺少 data 且无文本: {response_text[:200]}"
-                print(f"[{req_id:04d}] ❌ {msg}")
+                print(f"[{req_id:04d}] ❌ {msg}, elapsed: {elapsed:.2f}s")
                 return {"ok": False, "req_id": req_id, "latency": elapsed, "error": msg}
 
             raw_url = items[0].get("url") if items else ""
@@ -170,7 +170,7 @@ async def run_single_request(req_id, client, headers, semaphore, image_bytes, si
         except httpx.TimeoutException:
             elapsed = time.perf_counter() - start_ts
             msg = f"请求超时 ({REQUEST_TIMEOUT_SEC}s)"
-            print(f"[{req_id:04d}] ❌ {msg}")
+            print(f"[{req_id:04d}] ❌ {msg}, elapsed: {elapsed:.2f}s")
             return {"ok": False, "req_id": req_id, "latency": elapsed, "error": msg}
         except Exception as exc:
             elapsed = time.perf_counter() - start_ts

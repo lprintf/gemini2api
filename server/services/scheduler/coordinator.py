@@ -1,7 +1,7 @@
 import asyncio
 import uuid
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Optional, Any, Dict
 from server.db.database import get_db
 from server.utils.logger import tab_log
@@ -87,7 +87,7 @@ class TaskCoordinator:
                 "duration": time.time() - start_time
             }
 
-        except Exception as e:
+        except BaseException as e:
             now = datetime.now()
             tab.last_active_at = now
             browser.last_active_at = now
@@ -95,10 +95,10 @@ class TaskCoordinator:
             tab.failed_tasks += 1
             tab.consecutive_failures += 1
             
-            # 【全局惩罚】：发生未捕获异常时，强制进入 9 分钟冷却（若尚未标记）
+            # 【全局惩罚】：发生故障或被取消时，强制进入 9 分钟冷却（若尚未标记）
             from server.services.objects.exceptions import BrowserStatus
             if tab.status != BrowserStatus.SLEEP:
-                tab_log(tab.page, f"Task crashed with exception: {e}. Triggering 9m mandatory punishment.", "error")
+                tab_log(tab.page, f"Task failed or cancelled: {e}. Triggering 9m mandatory punishment.", "error")
                 tab.status = BrowserStatus.SLEEP
                 tab.sleep_until = now + timedelta(minutes=9)
             

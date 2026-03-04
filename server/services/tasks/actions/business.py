@@ -205,11 +205,18 @@ async def submit_image_prompt(page: Page, prompt: str, image_paths: List[str] = 
         submit_success = await click_submit(page)
         
         if submit_success:
-            # 等待 3s 观察 URL 是否变化（通常提交后会跳转到 /app/xxxx）
-            await asyncio.sleep(3.0)
-            if page.url == old_url:
-                tab_log(page, f"URL unchanged ({page.url}) after 3s of submission. Failing fast.", "warning")
-                return False # 视为本次提交失败，交给上层触发后台重排
+            # 动态监测 URL 变化（最多等待 6.9s，每 100ms 检查一次）
+            # 只要 URL 一变就立刻返回，不再白等
+            timeout = 6.9
+            start_wait = time.time()
+            while time.time() - start_wait < timeout:
+                if page.url != old_url:
+                    return True
+                await asyncio.sleep(0.1)
+            
+            # 如果超时仍未变动
+            tab_log(page, f"URL unchanged ({page.url}) after 6.9s of submission. Failing fast.", "warning")
+            return False # 视为本次提交失败，交给上层触发后台重排
 
         return submit_success
     except Exception as e:
@@ -267,16 +274,16 @@ async def wait_for_results(page: Page, timeout_s: int = 60):
                 }}
                 
                 const stableTime = Date.now() - state.ts;
-                const isStable = stableTime > 1900; // 无变化视为稳定
+                const isStable = stableTime > 3000; // 无变化 3s 视为稳定
 
                 // 4. 返回判断
-                // 回复完成且不再忙碌
+                // 回复完成且不再忙碌 (最理想的终结信号)
                 if (!isBusy && isComplete) {{
                     return true;
                 }}
 
-                // 无图片，且文字长度已稳定（由短间隔对比得出）
-                if (!hasImages && currentLen > 10 && isStable) {{
+                // 无图片回退路径：文字长度已稳定 且 UI 不再处于忙碌状态
+                if (!hasImages && currentLen > 10 && isStable && !isBusy) {{
                     return true;
                 }}
                 
