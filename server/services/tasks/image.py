@@ -60,7 +60,7 @@ class ImageGenerationTask(BaseEngineTask):
             # 4. 生成阶段
             tab.activity = "Generating images..."
             t2 = time.time()
-            success = await actions.wait_for_results(page, timeout_s=119)
+            success = await actions.wait_for_results(page, timeout_s=119 if model != "Fast" else 69)
             durations["generate"] = round(time.time() - t2, 3)
             
             # 无论 wait_for_results 是否超时，都检查下是否有图片，或者是否有拒绝文本
