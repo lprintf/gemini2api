@@ -54,15 +54,21 @@ async def dump_inspect(page: Page, mode: str = "basic") -> bool:
         return False
 
 async def dump_html(page: Page) -> bool:
-    """[Debug] 保存当前页面源码到 data/debug 目录"""
+    """[Debug] 保存当前页面源码到 data/debug 目录，文件名包含 browser-tab 标识"""
     try:
         html = await page.content()
         date_str = datetime.now().strftime("%Y%m%d")
         time_str = datetime.now().strftime("%H%M%S")
         
+        # 尝试提取 browser_id 和 tab_id 前缀
+        prefix = ""
+        logger = getattr(page, "_logger", None)
+        if logger and logger.name.startswith("tab."):
+            prefix = logger.name[4:] + "-" # e.g. "138-1-"
+            
         debug_dir = DATA_DIR / "debug" / date_str
         debug_dir.mkdir(parents=True, exist_ok=True)
-        file_path = debug_dir / f"{time_str}.html"
+        file_path = debug_dir / f"{prefix}{time_str}.html"
         file_path.write_text(html, encoding="utf-8")
         
         tab_log(page, f"HTML Source saved: {file_path}")
