@@ -61,10 +61,18 @@ class TaskCoordinator:
             result = await engine_task.run(tab)
             
             # 统计
+            now = datetime.now()
+            tab.last_active_at = now
+            browser.last_active_at = now
+            
             if result.success:
                 browser.total_tasks += 1
+                tab.total_tasks += 1
+                tab.consecutive_failures = 0
             else:
                 browser.failed_tasks += 1
+                tab.failed_tasks += 1
+                tab.consecutive_failures += 1
 
             if not result.success:
                 error_msg = result.error or "Unknown engine error"
@@ -79,6 +87,13 @@ class TaskCoordinator:
             }
 
         except Exception as e:
+            now = datetime.now()
+            tab.last_active_at = now
+            browser.last_active_at = now
+            browser.failed_tasks += 1
+            tab.failed_tasks += 1
+            tab.consecutive_failures += 1
+            
             await self._record_task_failure(task_id, str(e), time.time() - start_time)
             raise e
         finally:

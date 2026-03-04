@@ -781,9 +781,16 @@ async def reinitialize_tab(browser_id: str, tab_id: int):
         )
 
     try:
-        result = await browser.run_task(ReinitializeTask(model=tab.preferred_model))
+        from server.services.tasks import actions
+        success = await actions.reinitialize_page(tab.page, model=tab.preferred_model)
+        
+        # 更新状态
+        from server.services.objects.exceptions import BrowserStatus
+        tab.status = BrowserStatus.IDLE if success else BrowserStatus.ERROR
+        tab.last_active_at = datetime.now()
+
         return {
-            "success": result.success,
+            "success": success,
             "browser_id": browser_id,
             "tab_id": tab_id,
             "status": tab.status.value,
