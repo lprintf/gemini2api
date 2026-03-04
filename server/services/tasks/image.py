@@ -58,58 +58,63 @@ class ImageGenerationTask(BaseEngineTask):
                 return TaskResult(success=False, error="Failed to submit image prompt")
 
             # 4. 生成阶段
-            tab.activity = "Generating images..."
+            tab.activity = "Generating results..."
             t2 = time.time()
-            success = await actions.wait_for_results(page, timeout_s=119 if model != "Fast" else 69)
+            # wait_for_results 会在大约 3 秒文本无变化或检测到图片时返回
+            generation_success = await actions.wait_for_results(page, timeout_s=119 if model != "Fast" else 69)
             durations["generate"] = round(time.time() - t2, 3)
             
-            # 无论 wait_for_results 是否超时，都检查下是否有图片，或者是否有拒绝文本
+            # 第一优先级：获取文本（可能包含 Gemini 的成功描述或拒绝理由）
+            response_text = await actions.get_last_response_text(page)
+            
+            # 第二优先级：尝试提取图片 URL
+            # 如果文本已稳定但图片还没出来，get_generated_urls 会等待最多 12s
             urls = await actions.get_generated_urls(page)
+            
             if not urls:
-                # 尝试获取拒绝文本
-                refusal_text = await actions.get_last_response_text(page)
-                if refusal_text:
-                    tab_log(page, f"Gemini refused to generate images: {refusal_text}", "error")
-                    await actions.dump_inspect(page, mode="full")
-                    await actions.dump_html(page)
-                    
+                # 情况 A：没有任何图片，我们需要根据文本判断是“拒绝”还是“仅文字成功”
+                if response_text:
                     # 检查是否是限额拒绝，若是则进入 2h 休眠模式
                     quota_keywords = [
                         "无法为您生成更多图像", "无法为您创建更多图像",
                         "can't generate more images", "can't create more images",
                         "come back tomorrow", "can still find images from the web",
                     ]
-                    if any(k in refusal_text for k in quota_keywords):
+                    if any(k in response_text for k in quota_keywords):
+                        tab_log(page, f"Quota limit detected: {response_text}", "warning")
                         tab.status = BrowserStatus.SLEEP
                         tab.sleep_until = datetime.now() + timedelta(hours=2)
-                        tab_log(page, f"Quota limit detected. Tab entering SLEEP mode until {tab.sleep_until.strftime('%H:%M:%S')}", "warning")
-                    else:
-                        # 普通拒绝/失败，进入 9 分钟休眠
-                        tab.status = BrowserStatus.SLEEP
-                        tab.sleep_until = datetime.now() + timedelta(minutes=9)
-                        tab_log(page, f"Refusal detected. Tab entering cooldown SLEEP mode until {tab.sleep_until.strftime('%H:%M:%S')}", "warning")
+                        return TaskResult(success=False, error=f"Gemini quota exceeded: {response_text}")
                     
-                    return TaskResult(success=False, error=f"Gemini refused: {refusal_text}")
+                    # 是否是其它类型的拒绝（如安全策略）
+                    # 如果文本明显像是描述（例如包含 "Here is", "I have"), 则不视为拒绝
+                    # 常规拒绝识别：由于用户要求“不要依赖文本内容”，除了确定的限额，其它的只要有字就算成功
+                    tab_log(page, f"No images found, but text response received: {response_text[:100]}...", "info")
+                    return TaskResult(
+                        success=True, 
+                        data={"images": [], "text": response_text},
+                        error=None
+                    )
                 
-                if not success:
-                    tab_log(page, f"Timed out waiting for image results after {durations['generate']}s", "error")
+                # 情况 B：无图片也无文本，或者 wait_for_results 彻底超时
+                if not generation_success:
+                    tab_log(page, f"Timed out waiting for results after {durations['generate']}s", "error")
                     await actions.dump_inspect(page, mode="full")
                     await actions.dump_html(page)
                     tab.status = BrowserStatus.SLEEP
                     tab.sleep_until = datetime.now() + timedelta(minutes=9)
-                    return TaskResult(success=False, error="Timed out waiting for image results")
+                    return TaskResult(success=False, error="Timed out waiting for results")
                 
-                tab_log(page, "No images found in response", "error")
-                await actions.dump_inspect(page, mode="full")
-                await actions.dump_html(page)
-                tab.status = BrowserStatus.SLEEP
-                tab.sleep_until = datetime.now() + timedelta(minutes=9)
-                return TaskResult(success=False, error="No images found in response")
+                # 理论上不会走到这里（因为 wait_for_results 返回 True 代表有图或有稳定文字）
+                return TaskResult(success=False, error="No results found (no images and no text)")
 
-            # 5. 下载处理阶段
+            # 5. 下载处理阶段 (已有图片链接)
             tab.activity = "Downloading & Processing"
             t3 = time.time()
             background_work = None
+            
+            # 记录发现的图片及附属文本
+            tab_log(page, f"Found {len(urls)} images. Response text: {response_text[:50]}...")
 
             if download_mode == "both":
                 # both 模式：先同步下载预览图（客户端等这个），HD 下载作为后台任务
@@ -149,8 +154,7 @@ class ImageGenerationTask(BaseEngineTask):
                     tab.sleep_until = datetime.now() + timedelta(minutes=9)
                     return TaskResult(success=False, error=error_msg)
             
-            # 获取回复中的文字（图文混排场景）
-            response_text = await actions.get_last_response_text(page)
+            # 汇总结果数据（包含图文混排场景）
             result_data = {"images": images_info, "date": datetime.now().strftime("%Y%m%d")}
             if response_text:
                 result_data["text"] = response_text

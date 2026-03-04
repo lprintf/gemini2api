@@ -305,7 +305,7 @@ async def get_last_response_text(page: Page) -> str:
     except:
         return ""
 
-async def get_generated_urls(page: Page, max_wait_s: int = 5) -> List[str]:
+async def get_generated_urls(page: Page, max_wait_s: int = 12) -> List[str]:
     """获取生成的图片 URL 列表 (带有短时间的重试逻辑，防止加载延迟)"""
     start_time = time.time()
     while time.time() - start_time < max_wait_s:
