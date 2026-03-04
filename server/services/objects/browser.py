@@ -42,7 +42,15 @@ class BrowserInstance:
         self.status = BrowserStatus.CLOSED
         self.is_enabled = True # 是否启用（行政状态）
         self.launcher: Optional[GeminiLauncher] = None
+        
+        # 提前初始化标签页占位符，确保启动前在 UI 中可见
         self.tabs: List[TabInstance] = []
+        fast_count = self.max_tabs // 2
+        for i in range(self.max_tabs):
+            model = "Fast" if i < fast_count else "Pro"
+            tab = TabInstance(i, self.browser_id, model)
+            tab.status = BrowserStatus.CLOSED
+            self.tabs.append(tab)
         
         # 统计信息
         self.created_at = datetime.now()
@@ -83,24 +91,23 @@ class BrowserInstance:
             )
             page0 = await self.launcher.launch()
 
-            # 2. 标签页初始化函数 (封装内部逻辑，避免依赖外部 Task)
-            async def init_tab_resource(tab_id: int, page: Page, model: str) -> TabInstance:
+            # 2. 标签页绑定与初始化函数
+            async def bind_and_init_tab(tab: TabInstance, page: Page):
                 from server.utils.logger import get_tab_logger
-                tab = TabInstance(tab_id, self.browser_id, model)
                 tab.page = page
                 
-                # 挂载日志和账号上下文，确保启动阶段的预检日志也能写入对应的 tab 文件
-                tab.page._logger = get_tab_logger(self.browser_id, tab_id)
+                # 挂载日志和账号上下文
+                tab.page._logger = get_tab_logger(self.browser_id, tab.tab_id)
                 tab.page._account_name = self.account_name
                 
-                # 直接调用 Action 原子步进行环境准备
-                success = await actions.reinitialize_page(page, model=model)
+                # 执行环境准备
+                tab.status = BrowserStatus.LAUNCHING
+                success = await actions.reinitialize_page(page, model=tab.model)
                 tab.status = BrowserStatus.IDLE if success else BrowserStatus.ERROR
-                return tab
 
-            # 3. 预热 Tab 0
-            tab0 = await init_tab_resource(0, page0, "Fast")
-            self.tabs = [tab0]
+            # 3. 绑定并预热已经预置的 Tab 0
+            tab0 = self.tabs[0]
+            await bind_and_init_tab(tab0, page0)
 
             # 4. 如果 Tab 0 没登录/初始化失败，不启动副标签页
             if tab0.status == BrowserStatus.ERROR:
@@ -111,21 +118,18 @@ class BrowserInstance:
             # 5. 并行启动其它 Tab
             if self.max_tabs > 1:
 
-                fast_count = self.max_tabs // 2
-                
-                async def create_new_tab(tab_id: int) -> TabInstance:
-                    model = "Fast" if tab_id < fast_count else "Pro"
-                    new_page = await self.launcher.context.new_page()
-                    return await init_tab_resource(tab_id, new_page, model)
+                async def setup_tab(tab: TabInstance) -> bool:
+                    try:
+                        new_page = await self.launcher.context.new_page()
+                        await bind_and_init_tab(tab, new_page)
+                        return True
+                    except Exception as e:
+                        tab.status = BrowserStatus.ERROR
+                        print(f"[Browser {self.browser_id}] Init Tab {tab.tab_id} Fail: {e}")
+                        return False
 
-                init_tasks = [create_new_tab(i) for i in range(1, self.max_tabs)]
-                other_tabs = await asyncio.gather(*init_tasks, return_exceptions=True)
-                
-                for t in other_tabs:
-                    if isinstance(t, TabInstance):
-                        self.tabs.append(t)
-                    else:
-                        print(f"[Browser {self.browser_id}] Init Tab Fail: {t}")
+                init_tasks = [setup_tab(self.tabs[i]) for i in range(1, self.max_tabs)]
+                await asyncio.gather(*init_tasks)
 
             self.status = BrowserStatus.IDLE
             self.last_active_at = datetime.now()
