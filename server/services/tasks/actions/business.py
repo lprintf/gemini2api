@@ -238,6 +238,9 @@ async def wait_for_results(page: Page, timeout_s: int = 60):
                 return false;
             }}
         """, timeout=timeout_s * 1000)
+        
+        # 护城河：如果是刚 complete，可能 DOM 还没更新完，额外等 1.5s 给渲染留时间
+        await asyncio.sleep(1.5)
         return True
     except:
         return False
@@ -251,6 +254,10 @@ async def get_last_response_text(page: Page) -> str:
                 if (containers.length === 0) return "";
                 const last = containers[containers.length - 1];
                 
+                // 移除视觉隐藏的结构化文本 (如 "Gemini 说")
+                const hidden = last.querySelectorAll('.cdk-visually-hidden');
+                hidden.forEach(el => el.remove());
+
                 // 优先从 message-content 获取，避免混入头像等杂质
                 const mc = last.querySelector('message-content, .message-content, .model-response-text');
                 if (mc) return mc.innerText;
@@ -264,19 +271,33 @@ async def get_last_response_text(page: Page) -> str:
     except:
         return ""
 
-async def get_generated_urls(page: Page) -> List[str]:
-    """获取生成的图片 URL 列表 (锁定最后一个回复容器)"""
-    return await page.evaluate(f"""
-        () => {{
-            const containers = document.querySelectorAll('model-response, response-container, .model-response');
-            if (containers.length === 0) return [];
-            const last = containers[containers.length - 1];
-            const urls = Array.from(last.querySelectorAll('img'))
-                .map(i => i.src)
-                .filter(src => src && src.includes('googleusercontent') && !src.includes('{_AVATAR_PATTERN}'));
-            return [...new Set(urls)];
-        }}
-    """)
+async def get_generated_urls(page: Page, max_wait_s: int = 5) -> List[str]:
+    """获取生成的图片 URL 列表 (带有短时间的重试逻辑，防止加载延迟)"""
+    start_time = time.time()
+    while time.time() - start_time < max_wait_s:
+        urls = await page.evaluate(f"""
+            () => {{
+                const containers = document.querySelectorAll('model-response, response-container, .model-response');
+                if (containers.length === 0) return [];
+                const last = containers[containers.length - 1];
+                const urls = Array.from(last.querySelectorAll('img'))
+                    .map(i => i.src)
+                    .filter(src => src && src.includes('googleusercontent') && !src.includes('{_AVATAR_PATTERN}'));
+                return [...new Set(urls)];
+            }}
+        """)
+        if urls:
+            return urls
+        
+        # 如果还没发现 googleusercontent，但发现了 .image-button，说明还在加载中，继续等
+        has_btn = await page.query_selector('.image-button, .image-preview')
+        if not has_btn:
+            # 如果连按钮都没发现，可能真的没有图片，但也等一下
+            pass
+            
+        await asyncio.sleep(0.5)
+        
+    return []
 
 async def download_hd_image(page: Page, img_url: str, remove_wm: bool = True, max_attempts: int = 9):
     """下载高清图片 (精准 Hover 下载版，纯内存处理)"""

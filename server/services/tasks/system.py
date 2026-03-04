@@ -1,3 +1,4 @@
+from typing import Any
 from datetime import datetime, timedelta
 from playwright.async_api import Page
 from .base import BaseEngineTask, TaskResult
