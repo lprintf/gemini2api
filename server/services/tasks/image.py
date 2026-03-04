@@ -90,6 +90,12 @@ class ImageGenerationTask(BaseEngineTask):
                     # 如果文本明显像是描述（例如包含 "Here is", "I have"), 则不视为拒绝
                     # 常规拒绝识别：由于用户要求“不要依赖文本内容”，除了确定的限额，其它的只要有字就算成功
                     tab_log(page, f"No images found, but text response received: {response_text[:100]}...", "info")
+                    
+                    # 虽然返回成功（符合用户“返回文本”的需求），但由于没出图，可能触发了某种软拦截或账号疲劳
+                    # 进入 SLEEP 状态以冷却标签页，防止持续无图
+                    tab.status = BrowserStatus.SLEEP
+                    tab.sleep_until = datetime.now() + timedelta(minutes=9)
+                    
                     return TaskResult(
                         success=True, 
                         data={"images": [], "text": response_text},
@@ -139,25 +145,27 @@ class ImageGenerationTask(BaseEngineTask):
                 images_info = await actions.download_generated_images(
                     page, remove_watermark=remove_watermark, download_mode=download_mode
                 )
-                # 只有当确实成功下载了图片，才记录下载耗时（避免误导排查）
-                if images_info:
-                    durations["download"] = round(time.time() - t3, 3)
+                durations["download"] = round(time.time() - t3, 3)
 
-                if not images_info:
-                    # 获取最后探测到的图片 URL 数量，用于更精确的报错
-                    urls = await actions.get_generated_urls(page)
-                    error_msg = f"Failed to process any generated images (Found {len(urls)} URLs but all failed)"
-                    tab_log(page, error_msg, "error")
-                    await actions.dump_inspect(page, mode="full")
-                    await actions.dump_html(page)
-                    tab.status = BrowserStatus.SLEEP
-                    tab.sleep_until = datetime.now() + timedelta(minutes=9)
-                    return TaskResult(success=False, error=error_msg)
+            # 统一校验：如果没有下载到任何图片信息，则视为失败（除非上面 Situation A 已提前返回）
+            if not images_info:
+                # 获取最后探测到的图片 URL 数量，用于更精确的报错
+                urls = await actions.get_generated_urls(page)
+                error_msg = f"Failed to process any generated images (Found {len(urls)} URLs but all failed)"
+                tab_log(page, error_msg, "error")
+                await actions.dump_inspect(page, mode="full")
+                await actions.dump_html(page)
+                tab.status = BrowserStatus.SLEEP
+                tab.sleep_until = datetime.now() + timedelta(minutes=9)
+                return TaskResult(success=False, error=error_msg)
             
             # 汇总结果数据（包含图文混排场景）
-            result_data = {"images": images_info, "date": datetime.now().strftime("%Y%m%d")}
+            result_data = {
+                "images": images_info, 
+                "date": datetime.now().strftime("%Y%m%d"),
+                "text": response_text or "" # 确保即使为空也不是 None
+            }
             if response_text:
-                result_data["text"] = response_text
                 tab_log(page, f"Mixed response: {len(images_info)} images + text ({len(response_text)} chars)")
 
             return TaskResult(

@@ -143,14 +143,14 @@ async def run_single_request(req_id, client, headers, semaphore, image_bytes, si
                 return {"ok": False, "req_id": req_id, "latency": elapsed, "error": msg}
 
             raw_url = items[0].get("url")
-            response_text_content = payload.get("text")
-            
+            response_text_content = payload.get("text") or ""
+            print(f"[{req_id:04d}] ✅ 成功 {elapsed:.2f}s -> {raw_url}, text: {response_text_content}")
             elapsed = time.perf_counter() - start_ts
             log_msg = f"[{req_id:04d}] ✅ 成功 {elapsed:.2f}s -> {raw_url}"
-            if response_text_content:
-                # 只打印前 100 个字符
-                short_text = response_text_content.replace('\n', ' ')[:100]
-                log_msg += f" | Text: {short_text}..."
+            
+            # 无论是否有文本，都按照用户要求输出（无文本则显示空字符串）
+            short_text = response_text_content.replace('\n', ' ')[:100]
+            log_msg += f" | Text: {short_text}..."
             
             print(log_msg)
             return {

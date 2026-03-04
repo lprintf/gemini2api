@@ -83,6 +83,7 @@ class TaskCoordinator:
                 "success": True,
                 "task_id": task_id,
                 "images": result.data.get("images", []),
+                "text": result.data.get("text"),
                 "duration": time.time() - start_time
             }
 
