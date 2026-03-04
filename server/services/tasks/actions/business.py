@@ -275,39 +275,39 @@ async def wait_for_results(page: Page, timeout_s: int = 60):
 
                 // 获取当前文本长度（排除视障辅助文本）
                 let currentLen = 0;
-                if (mc) {
+                if (mc) {{
                     const clone = mc.cloneNode(true);
                     clone.querySelectorAll('.cdk-visually-hidden').forEach(el => el.remove());
                     currentLen = clone.innerText.trim().length;
-                }
+                }}
 
                 // 3. 稳定性检测逻辑
-                if (!window._gemini_wait_state) {
-                    window._gemini_wait_state = { len: currentLen, ts: Date.now() };
-                }
+                if (!window._gemini_wait_state) {{
+                    window._gemini_wait_state = {{ len: currentLen, ts: Date.now() }};
+                }}
                 
                 const state = window._gemini_wait_state;
-                if (currentLen !== state.len) {
+                if (currentLen !== state.len) {{
                     state.len = currentLen;
                     state.ts = Date.now();
-                }
+                }}
                 
                 const stableTime = Date.now() - state.ts;
                 const isStable = stableTime > 5000; // 文本无变化时长提升到 5s 提高保险系数
 
                 // 4. 返回判断
                 // 回复完成且不再忙碌 且 全局停止按钮消失 (最强信号组合)
-                if (!isActuallyGenerating && isComplete && !isBusy) {
+                if (!isActuallyGenerating && isComplete && !isBusy) {{
                     return true;
-                }
+                }}
 
                 // 无图片回退路径：文字长度已经稳定 且 页面上绝对没有“停止”按钮 且 逻辑不忙碌
-                if (!hasImages && currentLen > 10 && isStable && !isActuallyGenerating && !isBusy) {
+                if (!hasImages && currentLen > 10 && isStable && !isActuallyGenerating && !isBusy) {{
                     return true;
-                }
+                }}
                 
                 return false;
-            }
+            }}
         """, timeout=timeout_s * 1000)
         
         # 护城河：防止图片刚开始渲染还没拿到达标的 url
