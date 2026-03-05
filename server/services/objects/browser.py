@@ -155,15 +155,15 @@ class BrowserInstance:
         """获取忙碌标签页数量"""
         return sum(1 for t in self.tabs if t.status == BrowserStatus.BUSY)
 
-    def get_available_tab(self, preferred_model: Optional[str] = None) -> Optional[TabInstance]:
+    def get_available_tab(self, model: Optional[str] = None) -> Optional[TabInstance]:
         """寻找可用标签页"""
         # 只要是 IDLE 状态的都可以被 Scheduler 调度
         idles = [t for t in self.tabs if t.status == BrowserStatus.IDLE]
         if not idles: return None
         
         # 优先匹配模型
-        if preferred_model:
-            match = [t for t in idles if t.model == preferred_model]
+        if model:
+            match = [t for t in idles if t.model == model]
             if match: return match[0]
             
         return idles[0]

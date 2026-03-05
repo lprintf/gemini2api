@@ -483,12 +483,12 @@ async def test_playwright_upload(
         raise HTTPException(status_code=400, detail="No valid images")
 
     # 获取可用浏览器 (指定 Fast 优先，因为测试上传不需要高性能模型)
-    browser = await browser_pool.get_available_browser(preferred_model="Fast")
+    browser = await browser_pool.get_available_browser(model="Fast")
     if browser is None:
         raise HTTPException(status_code=503, detail="No available browsers")
 
     # 获取空闲标签页
-    tab = browser.get_available_tab(preferred_model="Fast")
+    tab = browser.get_available_tab(model="Fast")
     if tab is None:
         raise HTTPException(status_code=503, detail="No available tabs")
 

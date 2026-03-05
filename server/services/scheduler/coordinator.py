@@ -33,12 +33,12 @@ class TaskCoordinator:
         
         # 1. 获取可用浏览器
         from ..objects.exceptions import NoAvailableBrowsers
-        browser = await self.pool.get_available_browser(preferred_model=model)
+        browser = await self.pool.get_available_browser(model=model)
         if not browser:
             raise NoAvailableBrowsers()
 
         # 2. 从浏览器租借一个具体的 Tab (物理资源)
-        tab = browser.get_available_tab(preferred_model=model)
+        tab = browser.get_available_tab(model=model)
         if not tab:
             # 理论上 pool.get_available_browser 已经确保了有可用 tab
             raise RuntimeError(f"Browser {browser.browser_id} has no available tabs")

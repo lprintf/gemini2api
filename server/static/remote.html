@@ -695,7 +695,7 @@
                         Tab ${t.tab_id} 
                         ${t.status === 'busy' && t.activity ? `<small style="opacity:0.7">(${escapeHtml(t.activity)})</small>` : ''}
                         ${t.status === 'sleep' ? `<small style="opacity:0.7; color: #ff6b6b"> (Sleep until ${formatTime(t.sleep_until)})</small>` : ''}
-                        <span class="model-badge">${t.preferred_model}</span>
+                        <span class="model-badge">${t.model}</span>
                     </li>
                 `).join('');
 

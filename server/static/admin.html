@@ -1168,7 +1168,7 @@
                     <tr>
                         <td><strong>${t.browser_id}</strong></td>
                         <td>Tab ${t.tab_id}</td>
-                        <td><span class="status-badge ${t.preferred_model === 'Pro' ? 'status-processing' : 'status-completed'}">${t.preferred_model}</span></td>
+                        <td><span class="status-badge ${t.model === 'Pro' ? 'status-processing' : 'status-completed'}">${t.model}</span></td>
                         <td>
                             <span class="status-badge status-${t.status}">
                                 ${t.status === 'busy' ? escapeHtml(t.activity || 'Busy') : (t.status === 'sleep' ? 'Sleep until ' + formatTime(t.sleep_until) : t.status)}

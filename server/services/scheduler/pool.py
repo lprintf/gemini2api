@@ -58,6 +58,7 @@ class BrowserPool:
                     account_name=config.account_name,
                     proxy=config.proxy,
                     user_data_dir=config.user_data_dir,
+                    rate_limit=config.rate_limit,
                     rate_window=config.rate_window,
                 )
                 if config.is_enabled is not None:
@@ -312,7 +313,7 @@ class BrowserPool:
         asyncio.create_task(browser.close())
 
     async def get_available_browser(
-        self, preferred_model: Optional[str] = None
+        self, model: Optional[str] = None
     ) -> Optional[BrowserInstance]:
         """
         获取可用的浏览器（负载均衡）
@@ -322,7 +323,7 @@ class BrowserPool:
         available = [
             b for b in self.browsers.values()
             if b.status == BrowserStatus.IDLE
-            and b.get_available_tab(preferred_model) is not None
+            and b.get_available_tab(model) is not None
         ]
 
         if not available:
@@ -331,7 +332,7 @@ class BrowserPool:
         def sort_key(b: BrowserInstance):
             idle_tabs = sum(1 for t in b.tabs if t.status == BrowserStatus.IDLE)
             _, rate_info = b.check_rate_limit()
-            tab = b.get_available_tab(preferred_model)
+            tab = b.get_available_tab(model)
             tab_tasks = tab.total_tasks if tab else float("inf")
             return (-idle_tabs, -rate_info["remaining"], b.failed_tasks, tab_tasks)
 
