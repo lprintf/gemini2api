@@ -71,7 +71,11 @@ class ImageGenerationTask(BaseEngineTask):
             tab.activity = "Generating results..."
             t2 = time.time()
             # wait_for_results 会在大约 3 秒文本无变化或检测到图片时返回
-            generation_success = await actions.wait_for_results(page, timeout_s=139 if model != "Fast" else 69)
+            generation_success = await actions.wait_for_results(
+                page, 
+                timeout_s=139 if model != "Fast" else 69,
+                original_prompt=prompt
+            )
             durations["generate"] = round(time.time() - t2, 3)
             
             # 第一优先级：获取文本（可能包含 Gemini 的成功描述或拒绝理由）

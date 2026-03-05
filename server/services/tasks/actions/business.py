@@ -200,42 +200,61 @@ async def submit_image_prompt(page: Page, prompt: str, image_paths: List[str] = 
             except:
                 tab_log(page, f"Warning: Image count sync timeout (curr={await get_uploaded_image_count(page)}, expected={target_count})", "warning")
 
+        # 记录提交前的容器数量 (model-response)
+        initial_count = await page.evaluate("() => document.querySelectorAll('model-response, response-container, .model-response').length")
+        
         # [针对 7-1 [0017] 优化]：检测提交后的 URL 变动
-        old_url = page.url
         submit_success = await click_submit(page)
         
         if submit_success:
-            # 动态监测提交结果（最多等待 6.9s，每 200ms 检查一次）
-            # 信号 1: 停止按钮出现 (代表已经开始生成)
-            # 信号 2: 输入框变空 (代表已经成功提交)
-            # 信号 3: URL 变化 (辅助信号)
+            # 动态监测提交结果（最多等待 6.9s）
             timeout = 6.9
             start_wait = time.time()
+            happy_counter = 0  # 信号稳定性计数器
+            
             while time.time() - start_wait < timeout:
-                signal = await page.evaluate("""
+                state = await page.evaluate("""
                     () => {
                         const stopBtn = document.querySelector('.send-button.stop');
                         const editor = document.querySelector('.ql-editor.new-input-ui');
+                        const count = document.querySelectorAll('model-response, response-container, .model-response').length;
                         const editorTrulyEmpty = editor && editor.innerText.trim() === '' && !editor.querySelector('img');
                         
-                        // 信号1: 停止按钮出现 且 编辑器已清空 -> 最强确认
-                        if (stopBtn && editorTrulyEmpty) return 'stop_and_empty';
+                        let signal = null;
+                        if (stopBtn && editorTrulyEmpty) signal = 'stop_and_empty';
+                        else if (editorTrulyEmpty) signal = 'editor_empty';
+                        else if (stopBtn) signal = 'stop_only';
                         
-                        // 信号2: 仅编辑器清空
-                        if (editorTrulyEmpty) return 'editor_empty';
-                        
-                        // 信号3: 仅 stop 按钮 (编辑器可能延迟清空)
-                        if (stopBtn) return 'stop_only';
-                        
-                        return null;
+                        return { signal, count };
                     }
                 """)
-                if signal:
-                    tab_log(page, f"Submission signal detected: {signal}")
+                
+                signal = state['signal']
+                current_count = state['count']
+                
+                # 判定 1: 容器数量增加 -> 绝对成功
+                if current_count > initial_count:
+                    tab_log(page, f"Submission confirmed: Container count increased ({initial_count} -> {current_count})")
                     return True
+                
+                # 判定 2: 信号稳定性检测 (需连续 3 次检测到成功信号，约 600ms)
+                # 这能有效过滤由于 UI 重绘导致的瞬间 editor_empty 假象
+                if signal in ('stop_and_empty', 'editor_empty'):
+                    happy_counter += 1
+                    if happy_counter >= 3:
+                        tab_log(page, f"Submission confirmed: Stable signal detected ({signal})")
+                        return True
+                else:
+                    happy_counter = 0
+                
+                # 判定 3: 只有 stop 按钮且持续超过 4s，也视为成功 (有些模式下编辑器清空很慢)
+                if signal == 'stop_only' and (time.time() - start_wait > 4.0):
+                    tab_log(page, "Submission confirmed: Persistent stop button detected.")
+                    return True
+
                 await asyncio.sleep(0.2)
             
-            tab_log(page, f"Submission stuck (no signal) after {timeout}s. Failing fast.", "warning")
+            tab_log(page, f"Submission stuck (no stable signal/container increase) after {timeout}s. Failing fast.", "warning")
             return False # 视为本次提交失败，交给上层触发后台重排
 
         return submit_success
@@ -243,7 +262,7 @@ async def submit_image_prompt(page: Page, prompt: str, image_paths: List[str] = 
         tab_log(page, f"submit_image_prompt error: {e}", "error")
         return False
 
-async def wait_for_results(page: Page, timeout_s: int = 60):
+async def wait_for_results(page: Page, timeout_s: int = 60, original_prompt: str = ""):
     """
     等待结果生成完成
     策略：
@@ -254,10 +273,23 @@ async def wait_for_results(page: Page, timeout_s: int = 60):
     """
     try:
         # 清除之前的状态（如果有）
-        await page.evaluate("window._gemini_wait_state = null")
+        await page.evaluate("() => { window._gemini_wait_state = null; window._gemini_reverted = false; }")
+        
+        # 取 Prompt 前 50 位作为回退匹配特征
+        prompt_prefix = original_prompt.strip()[:50]
         
         await page.wait_for_function(f"""
-            () => {{
+            (prefix) => {{
+                // 0. [严格回退检测] 如果编辑器里重新出现了刚才发送的提示词，说明提交被静默拒绝并回退
+                const editor = document.querySelector('.ql-editor.new-input-ui');
+                if (editor && prefix && editor.innerText.length > 10) {{
+                    const currentText = editor.innerText.trim();
+                    if (currentText.includes(prefix)) {{
+                        window._gemini_reverted = true;
+                        return true; 
+                    }}
+                }}
+
                 const containers = document.querySelectorAll('model-response, response-container, .model-response');
                 if (containers.length === 0) return false;
                 const last = containers[containers.length - 1];
@@ -313,8 +345,14 @@ async def wait_for_results(page: Page, timeout_s: int = 60):
                 
                 return false;
             }}
-        """, timeout=timeout_s * 1000)
+        """, arg=prompt_prefix, timeout=timeout_s * 1000)
         
+        # 检查是否因为"编辑器内容回退"而提前退出
+        reverted = await page.evaluate("window._gemini_reverted === true")
+        if reverted:
+            tab_log(page, "Editor content revert detected: Gemini silently rejected the prompt. Failing fast.", "warning")
+            return False
+
         # 护城河：防止图片刚开始渲染还没拿到达标的 url
         await asyncio.sleep(1.5)
         return True
