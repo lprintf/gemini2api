@@ -212,24 +212,34 @@ async def submit_image_prompt(page: Page, prompt: str, image_paths: List[str] = 
             timeout = 6.9
             start_wait = time.time()
             while time.time() - start_wait < timeout:
-                is_active = await page.evaluate("""
+                signal = await page.evaluate("""
                     () => {
                         const stopBtn = document.querySelector('.send-button.stop');
                         const editor = document.querySelector('.ql-editor.new-input-ui');
                         
-                        // 信号1: 停止按钮出现 (正在生成) -> 必成
-                        if (stopBtn) return true;
+                        // 信号1: 停止按钮出现 (正在生成)
+                        if (stopBtn) return 'stop_btn';
                         
                         // 信号2: 输入框变空 (存在编辑器，且无文本无图片)
                         // 注意：严禁使用 !editor 否则 UI 重新挂载期间会误报
                         const editorTrulyEmpty = editor && editor.innerText.trim() === '' && !editor.querySelector('img');
-                        if (editorTrulyEmpty) return true;
+                        if (editorTrulyEmpty) return 'editor_empty';
                         
-                        return false;
+                        return null;
                     }
                 """)
-                if is_active:
-                    return True
+                if signal:
+                    tab_log(page, f"Submission signal detected: {signal}")
+                    if signal == 'stop_btn':
+                        # stop 按钮出现不代表最终成功，再等最多 2s 确认 URL 变化（有对话 ID）
+                        for _ in range(10):
+                            await asyncio.sleep(0.2)
+                            if page.url != old_url:
+                                return True
+                        # URL 没变 -> Gemini 闪了一下 stop 按钮但没真正接受
+                        tab_log(page, f"Stop button appeared but URL unchanged ({page.url}). False positive, failing fast.", "warning")
+                        return False
+                    return True  # editor_empty -> 确定成功
                 await asyncio.sleep(0.2)
             
             # 如果超时仍未观测到上述信号，检查 URL 是否变了但内容没变 (虚假成功)
@@ -261,6 +271,14 @@ async def wait_for_results(page: Page, timeout_s: int = 60):
         
         await page.wait_for_function(f"""
             () => {{
+                // [快速失败] 编辑器回退检测：如果主输入框又出现了文本，说明 Gemini 静默失败并回退了 UI
+                const mainEditor = document.querySelector('.ql-editor.new-input-ui');
+                if (mainEditor && mainEditor.innerText.trim().length > 0) {{
+                    // 标记为"编辑器回退"（wait_for_results 返回后由调用方检查）
+                    window._gemini_editor_reverted = true;
+                    return true;  // 立刻退出等待
+                }}
+
                 const containers = document.querySelectorAll('model-response, response-container, .model-response');
                 if (containers.length === 0) return false;
                 const last = containers[containers.length - 1];
@@ -309,7 +327,7 @@ async def wait_for_results(page: Page, timeout_s: int = 60):
                     return true;
                 }}
 
-                // 无图片回退路径：文字长度已经稳定 且 页面上绝对没有“停止”按钮 且 逻辑不忙碌
+                // 无图片回退路径：文字长度已经稳定 且 页面上绝对没有"停止"按钮 且 逻辑不忙碌
                 if (!hasImages && currentLen > 10 && isStable && !isActuallyGenerating && !isBusy) {{
                     return true;
                 }}
@@ -318,6 +336,13 @@ async def wait_for_results(page: Page, timeout_s: int = 60):
             }}
         """, timeout=timeout_s * 1000)
         
+        # 检查是否因为"编辑器回退"而提前退出
+        editor_reverted = await page.evaluate("window._gemini_editor_reverted === true")
+        if editor_reverted:
+            tab_log(page, "Editor revert detected: Gemini silently failed and reverted UI. Failing fast.", "warning")
+            await page.evaluate("window._gemini_editor_reverted = false")
+            return False
+
         # 护城河：防止图片刚开始渲染还没拿到达标的 url
         await asyncio.sleep(1.5)
         return True
