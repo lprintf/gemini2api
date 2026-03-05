@@ -3,7 +3,7 @@ Pydantic models for database entities
 """
 
 from datetime import datetime
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -138,6 +138,7 @@ class TaskStats(BaseModel):
     today_completed: int = 0
     today_failed: int = 0
     avg_duration: Optional[float] = None
+    error_stats: Dict[str, int] = Field(default_factory=dict)
 
 
 class BrowserStatus(BaseModel):

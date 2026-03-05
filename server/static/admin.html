@@ -541,13 +541,22 @@
             </div>
 
             <div class="card">
-                <div class="card-title">Task Statistics</div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                    <div class="card-title" style="margin-bottom: 0;">Task Statistics</div>
+                    <button class="btn btn-danger" onclick="resetAllStats()">Reset All Stats & Logs</button>
+                </div>
                 <div class="stats-grid">
                     <div><strong>Total Tasks:</strong> <span id="statTotalTasks">0</span></div>
                     <div><strong>Completed:</strong> <span id="statCompleted">0</span></div>
                     <div><strong>Failed:</strong> <span id="statFailed">0</span></div>
+                    <div><strong>Success Rate:</strong> <span id="statSuccessRate">-%</span></div>
                     <div><strong>Avg Duration:</strong> <span id="statAvgDuration">-</span></div>
                 </div>
+            </div>
+
+            <div class="card" id="errorStatsCard" style="display: none;">
+                <div class="card-title">Error Distribution (Top 10)</div>
+                <div id="errorStatsList" class="log-list"></div>
             </div>
 
             <div class="card">
@@ -660,7 +669,10 @@
         <!-- Tasks Tab -->
         <div id="tasks" class="tab-content">
             <div class="card">
-                <div class="card-title">Task History</div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                    <div class="card-title" style="margin-bottom: 0;">Task History</div>
+                    <button class="btn btn-danger" onclick="resetAllStats()">Reset Stats & Logs</button>
+                </div>
                 <div class="filter-bar">
                     <select id="taskStatusFilter" onchange="loadTasks()">
                         <option value="">All Status</option>
@@ -930,8 +942,31 @@
                 document.getElementById('statTotalTasks').textContent = data.tasks.total_tasks;
                 document.getElementById('statCompleted').textContent = data.tasks.completed_tasks;
                 document.getElementById('statFailed').textContent = data.tasks.failed_tasks;
+
+                const totalFinished = data.tasks.completed_tasks + data.tasks.failed_tasks;
+                const successRate = totalFinished > 0
+                    ? (data.tasks.completed_tasks / totalFinished * 100).toFixed(1) + '%'
+                    : '-%';
+                document.getElementById('statSuccessRate').textContent = successRate;
+
                 document.getElementById('statAvgDuration').textContent = data.tasks.avg_duration
                     ? data.tasks.avg_duration.toFixed(2) + 's' : '-';
+
+                // 错误统计
+                const errorStats = data.tasks.error_stats || {};
+                const errorEntries = Object.entries(errorStats);
+                if (errorEntries.length > 0) {
+                    document.getElementById('errorStatsCard').style.display = 'block';
+                    const errorHtml = errorEntries.map(([msg, count]) => `
+                        <div class="log-item" style="display: flex; justify-content: space-between;">
+                            <span style="color: #d9534f; font-weight: 500;">${escapeHtml(msg)}</span>
+                            <span class="status-badge status-failed">${count}</span>
+                        </div>
+                    `).join('');
+                    document.getElementById('errorStatsList').innerHTML = errorHtml;
+                } else {
+                    document.getElementById('errorStatsCard').style.display = 'none';
+                }
 
                 const logsHtml = data.recent_logs.map(log => `
                     <div class="log-item">
@@ -1394,6 +1429,32 @@
             const div = document.createElement('div');
             div.textContent = str;
             return div.innerHTML;
+        }
+
+        async function resetAllStats() {
+            if (!confirm('确定要重置所有任务统计并清空今日日志/调试文件吗？此操作不可恢复。')) {
+                return;
+            }
+
+            try {
+                // 1. 重置任务统计
+                const taskRes = await fetch('/api/admin/tasks/reset', { method: 'DELETE' });
+                const taskData = await taskRes.json();
+
+                // 2. 清理今日日志
+                const logRes = await fetch('/api/admin/logs/today', { method: 'DELETE' });
+                const logData = await logRes.json();
+
+                if (taskData.success && logData.success) {
+                    showToast('重置成功：统计已归零，今日日志已清空', 'success');
+                    refreshCurrentTab();
+                } else {
+                    showToast('重置部分失败，请检查后端日志', 'error');
+                    console.error('Reset results:', { taskData, logData });
+                }
+            } catch (err) {
+                showToast('重置请求失败: ' + err.message, 'error');
+            }
         }
 
         // Close modals on backdrop click

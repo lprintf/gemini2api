@@ -377,6 +377,34 @@ async def clear_old_logs(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.delete("/tasks/reset")
+async def reset_task_stats():
+    """重置所有任务统计 (清空 tasks 表)"""
+    try:
+        db = get_db()
+        deleted_count = await db.clear_tasks()
+        return {"success": True, "message": f"Cleared {deleted_count} tasks"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/logs/today")
+async def clear_today_logs():
+    """清理今日日志和调试文件 (调用 tests/clean.py 逻辑)"""
+    try:
+        import subprocess
+        # 我们可以直接在后端调用 clean.py 产生的逻辑，或者直接运行脚本
+        # 考虑到 clean.py 已经写好，直接调用它最方便
+        script_path = "/app/tests/clean.py"
+        result = subprocess.run(["python3", script_path], capture_output=True, text=True)
+        if result.returncode == 0:
+            return {"success": True, "output": result.stdout}
+        else:
+            raise Exception(f"Cleanup script failed: {result.stderr}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ==================== 统计信息 ====================
 
 

@@ -364,6 +364,12 @@ class Database:
             rows = await cursor.fetchall()
             return [self._row_to_task(row) for row in rows]
 
+    async def clear_tasks(self):
+        """清空所有任务记录"""
+        async with self.conn.execute("DELETE FROM tasks") as cursor:
+            await self.conn.commit()
+            return cursor.rowcount
+
     async def get_task_stats(self) -> TaskStats:
         """获取任务统计"""
         today = date.today().isoformat()
@@ -395,6 +401,26 @@ class Database:
         ) as cursor:
             today_row = await cursor.fetchone()
 
+        # 错误类型统计
+        error_stats = {}
+        async with self.conn.execute(
+            """
+            SELECT error_message, COUNT(*) as count
+            FROM tasks
+            WHERE status = 'failed' AND error_message IS NOT NULL
+            GROUP BY error_message
+            ORDER BY count DESC
+            LIMIT 10
+            """
+        ) as cursor:
+            rows = await cursor.fetchall()
+            for r in rows:
+                msg = r["error_message"] or "Unknown Error"
+                # 截断过长的错误消息
+                if len(msg) > 100:
+                    msg = msg[:97] + "..."
+                error_stats[msg] = r["count"]
+
         return TaskStats(
             total_tasks=row["total"] or 0,
             completed_tasks=row["completed"] or 0,
@@ -405,6 +431,7 @@ class Database:
             today_tasks=today_row["today_total"] or 0,
             today_completed=today_row["today_completed"] or 0,
             today_failed=today_row["today_failed"] or 0,
+            error_stats=error_stats,
         )
 
     def _row_to_task(self, row: aiosqlite.Row) -> TaskRecord:
