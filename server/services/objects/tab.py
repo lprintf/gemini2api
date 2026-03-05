@@ -36,6 +36,7 @@ class TabInstance:
             "tab_id": self.tab_id,
             "browser_id": self.browser_id,
             "model": self.model,
+            "preferred_model": self.model,  # 向后兼容前端
             "status": self.status.value,
             "total_tasks": self.total_tasks,
             "failed_tasks": self.failed_tasks,
