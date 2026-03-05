@@ -91,9 +91,13 @@ async def upload_image(page: Page, image_path: str, selector: str = _SELECTORS["
 async def get_uploaded_image_count(page: Page) -> int:
     """原子动作：获取当前输入框中已物理存在的图片预览数量"""
     try:
-        # 使用 blob 图片作为可靠的计数依据（确保图片实际已加载）
+        # 稳健计数：结合 blob 特征和 preview 容器特征
         count = await page.evaluate("""
-            () => document.querySelectorAll('img[src*="blob:"]').length
+            () => {
+                const blobs = document.querySelectorAll('img[src*="blob:"]').length;
+                const previews = document.querySelectorAll('.image-preview').length;
+                return Math.max(blobs, previews);
+            }
         """)
         return int(count or 0)
     except:
