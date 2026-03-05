@@ -2,6 +2,7 @@ import asyncio
 import httpx
 import json
 import os
+import random
 import time
 from io import BytesIO
 from urllib.parse import urlparse
@@ -35,13 +36,14 @@ TARGET_RATIO = "16:9"  # 这里可以修改想要测试的比例
 BASE_PROMPT = "Make it look like a cyberpunk city at night, neon lights"
 
 # 压测配置（可通过环境变量覆盖）
-TOTAL_REQUESTS = int(os.getenv("LOAD_TOTAL_REQUESTS", "20"))
-CONCURRENCY = int(os.getenv("LOAD_CONCURRENCY", "10"))
+TOTAL_REQUESTS = int(os.getenv("LOAD_TOTAL_REQUESTS", "12"))
+CONCURRENCY = int(os.getenv("LOAD_CONCURRENCY", "12"))
 REQUEST_TIMEOUT_SEC = int(os.getenv("LOAD_REQUEST_TIMEOUT_SEC", "180"))
 HD_POLL_RETRIES = int(os.getenv("LOAD_HD_RETRIES", "60"))
 HD_POLL_DELAY_SEC = float(os.getenv("LOAD_HD_DELAY_SEC", "2"))
 OUTPUT_DIR = os.getenv("LOAD_OUTPUT_DIR", "/imagedata/deploy/nano_banana/test_image")
 SAVE_PADDED_INPUT = os.getenv("LOAD_SAVE_PADDED_INPUT", "1") == "1"
+MODEL_RATIO = os.getenv("LOAD_MODEL_RATIO", "gemini-pro:2,gemini-flash:1")
 # =======================================
 
 
@@ -98,11 +100,30 @@ def pad_image_to_ratio(img: Image.Image, ratio_str: str) -> Image.Image:
     return new_img
 
 
-def build_request_params(image_bytes: bytes, req_id: int, size: str):
+def parse_model_ratio(ratio_str: str):
+    """解析模型比例字符串，如 'gemini-pro:8,gemini-flash:2'"""
+    models = []
+    for part in ratio_str.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        if ":" in part:
+            try:
+                model, weight = part.split(":")
+                models.extend([model.strip()] * int(weight))
+            except ValueError:
+                models.append(part.strip())
+        else:
+            models.append(part.strip())
+    # 如果解析失败，默认使用 gemini-pro
+    return models if models else ["gemini-pro"]
+
+
+def build_request_params(image_bytes: bytes, req_id: int, size: str, model: str):
     prompt = f"{BASE_PROMPT}, aspect ratio {TARGET_RATIO}, load-test request {req_id}"
     data = {
         "prompt": prompt,
-        "model": "gemini-pro",
+        "model": model,
         "n": "1",
         "size": size,
         "aspect_ratio": TARGET_RATIO,
@@ -113,17 +134,17 @@ def build_request_params(image_bytes: bytes, req_id: int, size: str):
     return data, files
 
 
-async def run_single_request(req_id, client, headers, semaphore, image_bytes, size):
+async def run_single_request(req_id, client, headers, semaphore, image_bytes, size, model):
     async with semaphore:
         start_ts = time.perf_counter()
         request_url = f"{BASE_URL}{ENDPOINT}"
         try:
-            data, files = build_request_params(image_bytes, req_id, size)
+            data, files = build_request_params(image_bytes, req_id, size, model)
             response = await client.post(request_url, data=data, files=files, headers=headers)
             response_text = response.text
             if response.status_code != 200:
                 elapsed = time.perf_counter() - start_ts
-                msg = f"接口失败 HTTP {response.status_code}: {response_text[:200]}"
+                msg = f"接口失败 HTTP {response.status_code} ({model}): {response_text[:200]}"
                 print(f"[{req_id:04d}] ❌ {msg}, elapsed: {elapsed:.2f}s")
                 return {"ok": False, "req_id": req_id, "latency": elapsed, "error": msg}
 
@@ -148,7 +169,7 @@ async def run_single_request(req_id, client, headers, semaphore, image_bytes, si
             raw_url = items[0].get("url") if items else ""
             elapsed = time.perf_counter() - start_ts
             
-            log_msg = f"[{req_id:04d}] ✅ 成功 {elapsed:.2f}s"
+            log_msg = f"[{req_id:04d}] ✅ 成功 ({model}) {elapsed:.2f}s"
             if raw_url:
                 log_msg += f" -> {raw_url}"
             else:
@@ -223,11 +244,12 @@ async def run_load_test():
     limits = httpx.Limits(max_connections=CONCURRENCY * 2, max_keepalive_connections=CONCURRENCY)
     timeout = httpx.Timeout(REQUEST_TIMEOUT_SEC)
 
+    models_pool = parse_model_ratio(MODEL_RATIO)
     started = time.perf_counter()
     async with httpx.AsyncClient(limits=limits, timeout=timeout, verify=False) as client:
         tasks = [
             asyncio.create_task(
-                run_single_request(i + 1, client, headers, semaphore, image_bytes, size)
+                run_single_request(i + 1, client, headers, semaphore, image_bytes, size, random.choice(models_pool))
             )
             for i in range(TOTAL_REQUESTS)
         ]
