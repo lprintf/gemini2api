@@ -14,7 +14,7 @@ from playwright.async_api import BrowserContext, Page, async_playwright
 # =============================================================================
 
 DEFAULT_VIEWPORT = {"width": 820, "height": 1180}  # 模拟手机浏览器尺寸
-DEFAULT_TIMEOUT = 60000  # 60 秒
+DEFAULT_TIMEOUT = 180000  # 180 秒
 DEFAULT_PERMISSIONS = ["clipboard-read", "clipboard-write"]
 
 BASE_ARGS = [
@@ -73,7 +73,7 @@ class GeminiLauncher:
             print(f"代理 URL 解析失败: {e}")
             return None
 
-    async def launch(self, timeout: int = 60000) -> Page:
+    async def launch(self, timeout: int = 180000) -> Page:
         """启动浏览器并访问 Gemini"""
         if not self.user_data_dir.exists():
             self.user_data_dir.mkdir(parents=True, exist_ok=True)
