@@ -105,11 +105,14 @@ class BrowserPool:
             except Exception as e:
                 return (browser.browser_id, False, str(e))
 
-        print(f"[BrowserPool] Starting {len(browsers_to_start)} browsers in background...")
-        start_time = time.time()
+        async def start_with_delay(b, delay):
+            if delay > 0:
+                await asyncio.sleep(delay)
+            return await start_browser_safe(b)
 
+        # 并行但错开启动 (每 1.5s 启动一个，但启动过程是并行的)
         results = await asyncio.gather(
-            *[start_browser_safe(b) for b in browsers_to_start]
+            *[start_with_delay(b, i * 1.5) for i, b in enumerate(browsers_to_start)]
         )
 
         # 处理启动结果
