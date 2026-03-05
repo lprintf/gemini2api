@@ -215,7 +215,7 @@ async def submit_image_prompt(page: Page, prompt: str, image_paths: List[str] = 
                 is_active = await page.evaluate("""
                     () => {
                         const stopBtn = document.querySelector('.send-button.stop');
-                        const editor = document.querySelector('.ql-editor');
+                        const editor = document.querySelector('.ql-editor.new-input-ui');
                         
                         // 信号1: 停止按钮出现 (正在生成) -> 必成
                         if (stopBtn) return true;
