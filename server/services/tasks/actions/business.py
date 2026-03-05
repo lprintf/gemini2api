@@ -171,7 +171,7 @@ async def click_submit(page: Page, selectors: List[str] = _SELECTORS["submit_btn
                     const loaders = document.querySelector('.image-preview.loading, .progress-spinner, mat-progress-bar');
                     return !loaders;
                 }
-            """, timeout=10000)
+            """, timeout=9000)
     except Exception as e:
         tab_log(page, f"click_submit sync wait finished or failed: {e}", "warning")
 
@@ -194,14 +194,9 @@ async def submit_image_prompt(page: Page, prompt: str, image_paths: List[str] = 
         if target_count > 0:
             tab_log(page, f"Waiting for image count to reach {target_count}...")
             try:
-                # 稳健同步：利用 Math.max(blobs, previews) 逻辑
                 await page.wait_for_function(f"""
-                    (count) => {{
-                        const blobs = document.querySelectorAll('img[src*="blob:"]').length;
-                        const previews = document.querySelectorAll('.image-preview').length;
-                        return Math.max(blobs, previews) >= count;
-                    }}
-                """, arg=target_count, timeout=15000)
+                    (count) => document.querySelectorAll('img[src*="blob:"]').length >= count
+                """, arg=target_count, timeout=39000)
             except:
                 tab_log(page, f"Warning: Image count sync timeout (curr={await get_uploaded_image_count(page)}, expected={target_count})", "warning")
 
@@ -221,8 +216,16 @@ async def submit_image_prompt(page: Page, prompt: str, image_paths: List[str] = 
                     () => {
                         const stopBtn = document.querySelector('.send-button.stop');
                         const editor = document.querySelector('.ql-editor');
-                        const editorEmpty = !editor || editor.innerText.trim() === '';
-                        return !!stopBtn || editorEmpty;
+                        
+                        // 信号1: 停止按钮出现 (正在生成) -> 必成
+                        if (stopBtn) return true;
+                        
+                        // 信号2: 输入框变空 (存在编辑器，且无文本无图片)
+                        // 注意：严禁使用 !editor 否则 UI 重新挂载期间会误报
+                        const editorTrulyEmpty = editor && editor.innerText.trim() === '' && !editor.querySelector('img');
+                        if (editorTrulyEmpty) return true;
+                        
+                        return false;
                     }
                 """)
                 if is_active:
