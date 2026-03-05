@@ -237,6 +237,7 @@ async def run_load_test():
     success = [x for x in results if x["ok"]]
     failed = [x for x in results if not x["ok"]]
     success_latency = sorted([x["latency"] for x in success])
+    failed_latency = sorted([x["latency"] for x in failed])
 
     print("\n================ 压测结果 ================")
     print(f"总请求: {TOTAL_REQUESTS}")
@@ -249,14 +250,18 @@ async def run_load_test():
         avg = sum(success_latency) / len(success_latency)
         p50 = percentile(success_latency, 0.50)
         p95 = percentile(success_latency, 0.95)
-        print(f"成功请求平均延迟: {avg:.2f}s")
-        print(f"P50 延迟: {p50:.2f}s")
-        print(f"P95 延迟: {p95:.2f}s")
+        print(f"\n[成功请求] 平均延迟: {avg:.2f}s, P50: {p50:.2f}s, P95: {p95:.2f}s")
+ 
+    if failed_latency:
+        avg = sum(failed_latency) / len(failed_latency)
+        p50 = percentile(failed_latency, 0.50)
+        p95 = percentile(failed_latency, 0.95)
+        print(f"[失败请求] 平均延迟: {avg:.2f}s, P50: {p50:.2f}s, P95: {p95:.2f}s")
 
     if failed:
-        print("失败示例（最多 5 条）:")
-        for item in failed[:5]:
-            print(f"  - req#{item['req_id']}: {item['error']}")
+        print("\n失败示例 (前 10 条):")
+        for item in failed[:10]:
+            print(f"  - req#{item['req_id']}: {item['error']} (elapsed: {item['latency']:.2f}s)")
 
     print("=========================================")
 

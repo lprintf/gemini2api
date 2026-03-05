@@ -171,7 +171,7 @@ async def click_submit(page: Page, selectors: List[str] = _SELECTORS["submit_btn
                     const loaders = document.querySelector('.image-preview.loading, .progress-spinner, mat-progress-bar');
                     return !loaders;
                 }
-            """, timeout=9000)
+            """, timeout=4900)
     except Exception as e:
         tab_log(page, f"click_submit sync wait finished or failed: {e}", "warning")
 
@@ -196,7 +196,7 @@ async def submit_image_prompt(page: Page, prompt: str, image_paths: List[str] = 
             try:
                 await page.wait_for_function(f"""
                     (count) => document.querySelectorAll('img[src*="blob:"]').length >= count
-                """, arg=target_count, timeout=39000)
+                """, arg=target_count, timeout=29000)
             except:
                 tab_log(page, f"Warning: Image count sync timeout (curr={await get_uploaded_image_count(page)}, expected={target_count})", "warning")
 
