@@ -60,6 +60,7 @@ class BrowserPool:
                     user_data_dir=config.user_data_dir,
                     rate_limit=config.rate_limit,
                     rate_window=config.rate_window,
+                    max_tabs=config.max_tabs,
                 )
                 if config.is_enabled is not None:
                     browser.is_enabled = config.is_enabled
@@ -250,6 +251,11 @@ class BrowserPool:
                 # 只在数据库记录中标记启用/禁用，不修改内存中的 status 状态
                 # 状态指示灯仅反映功能状态（Error, Busy, Idle, Sleep 等）
                 browser.is_enabled = updates["is_enabled"]
+            if "max_tabs" in updates:
+                new_max = int(updates["max_tabs"])
+                if new_max > 0:
+                    browser.max_tabs = new_max
+                    browser._ensure_tabs()
 
             # 更新数据库
             try:

@@ -51,6 +51,7 @@ class UpdateBrowserRequest(BaseModel):
     rate_window: Optional[int] = None
     is_enabled: Optional[bool] = None
     auto_start: Optional[bool] = None
+    max_tabs: Optional[int] = None
 
 
 class BrowserResponse(BaseModel):

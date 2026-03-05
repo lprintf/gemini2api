@@ -43,16 +43,15 @@ class BrowserInstance:
         self.is_enabled = True # 是否启用（行政状态）
         self.launcher: Optional[GeminiLauncher] = None
         
-        # 提前初始化标签页占位符，确保启动前在 UI 中可见
-        self.tabs: List[TabInstance] = []
-        fast_count = self.max_tabs // 2
-        for i in range(self.max_tabs):
-            model = "Fast" if i < fast_count else "Pro"
-            tab = TabInstance(i, self.browser_id, model)
-            tab.status = BrowserStatus.CLOSED
-            self.tabs.append(tab)
-        
         # 统计信息
+        self.created_at = datetime.now()
+        self.last_active_at: Optional[datetime] = None
+        self.total_tasks = 0
+        self.failed_tasks = 0
+        
+        # 确保标签页占位符已初始化
+        self.tabs: List[TabInstance] = []
+        self._ensure_tabs()
         self.created_at = datetime.now()
         self.last_active_at: Optional[datetime] = None
         self.total_tasks = 0
@@ -76,6 +75,27 @@ class BrowserInstance:
 
     def record_request(self):
         self._request_times.append(time.time())
+
+    def _ensure_tabs(self):
+        """确保内部标签页占位符已根据 max_tabs 初始化（非破坏性）"""
+        current_count = len(self.tabs)
+        if current_count == self.max_tabs:
+            return
+            
+        if current_count < self.max_tabs:
+            # 补齐缺少的数量
+            fast_count = self.max_tabs // 2
+            for i in range(current_count, self.max_tabs):
+                model = "Fast" if i < fast_count else "Pro"
+                tab = TabInstance(i, self.browser_id, model)
+                tab.status = BrowserStatus.CLOSED
+                tab.activity = "Closed"
+                self.tabs.append(tab)
+        else:
+            # 数量超出，截断（通常发生在管理员调小了 max_tabs）
+            # 注意：这可能会强制关闭正在运行的标签页
+            print(f"[Browser {self.browser_id}] Warning: Truncating tabs from {current_count} to {self.max_tabs}")
+            self.tabs = self.tabs[:self.max_tabs]
 
     async def launch(self):
         """核心启动逻辑：初始化物理浏览器并并行预热标签页"""
@@ -146,7 +166,14 @@ class BrowserInstance:
         try:
             if self.launcher:
                 await self.launcher.close()
-            self.tabs = []
+                self.launcher = None
+                
+            # 重置所有标签页状态，但不删除对象（防止 launch 时的 IndexError）
+            for tab in self.tabs:
+                tab.page = None
+                tab.status = BrowserStatus.CLOSED
+                tab.activity = "Closed"
+                
             self.status = BrowserStatus.CLOSED
         except:
             self.status = BrowserStatus.ERROR

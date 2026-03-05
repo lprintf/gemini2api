@@ -66,6 +66,7 @@ class Database:
                 rate_window INTEGER DEFAULT 60,
                 is_enabled INTEGER DEFAULT 1,
                 auto_start INTEGER DEFAULT 1,
+                max_tabs INTEGER DEFAULT 3,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
@@ -132,6 +133,17 @@ class Database:
                 await self.conn.execute("INSERT INTO global_config (id) VALUES (1)")
                 await self.conn.commit()
 
+        # 迁移：为旧数据库增加 max_tabs 列
+        try:
+            async with self.conn.execute("PRAGMA table_info(browsers)") as cursor:
+                rows = await cursor.fetchall()
+                columns = [row["name"] for row in rows]
+                if "max_tabs" not in columns:
+                    await self.conn.execute("ALTER TABLE browsers ADD COLUMN max_tabs INTEGER DEFAULT 3")
+                    await self.conn.commit()
+        except Exception as e:
+            print(f"Migration error (max_tabs): {e}")
+
     # ==================== Browser CRUD ====================
 
     async def get_browser(self, browser_id: str) -> Optional[BrowserConfig]:
@@ -175,7 +187,7 @@ class Database:
             """
             INSERT INTO browsers
             (browser_id, account_name, proxy, user_data_dir,
-             rate_limit, rate_window, is_enabled, auto_start, created_at, updated_at)
+             rate_limit, rate_window, is_enabled, auto_start, max_tabs, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
@@ -187,6 +199,7 @@ class Database:
                 config.rate_window,
                 1 if config.is_enabled else 0,
                 1 if config.auto_start else 0,
+                config.max_tabs,
                 now,
                 now,
             ),
@@ -252,6 +265,7 @@ class Database:
             rate_window=row["rate_window"],
             is_enabled=bool(row["is_enabled"]),
             auto_start=bool(row["auto_start"]),
+            max_tabs=row["max_tabs"] if "max_tabs" in row.keys() else 3,
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         )

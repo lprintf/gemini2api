@@ -20,6 +20,7 @@ class BrowserConfig(BaseModel):
     rate_window: int = 50
     is_enabled: bool = True
     auto_start: bool = True
+    max_tabs: int = 3
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -34,6 +35,7 @@ class BrowserConfigCreate(BaseModel):
     account_name: Optional[str] = None  # 可选，默认等于 browser_id
     proxy: Optional[str] = None
     auto_start: bool = True
+    max_tabs: int = 3
 
 
 class BrowserConfigUpdate(BaseModel):
@@ -45,6 +47,7 @@ class BrowserConfigUpdate(BaseModel):
     rate_window: Optional[int] = None
     is_enabled: Optional[bool] = None
     auto_start: Optional[bool] = None
+    max_tabs: Optional[int] = None
 
 
 class TaskRecord(BaseModel):
