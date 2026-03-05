@@ -1,3 +1,4 @@
+import asyncio
 from typing import Any, Dict, Optional
 from playwright.async_api import Page
 from pydantic import BaseModel
@@ -19,8 +20,15 @@ from ..objects.exceptions import BrowserStatus
 
 class BaseEngineTask:
     """Gemini 引擎任务基类"""
-    def __init__(self, **kwargs):
+    def __init__(self, is_disconnected: Optional[Any] = None, **kwargs):
         self.payload = kwargs
+        self.is_disconnected = is_disconnected
+
+    async def _check_disconnected(self):
+        """Check if client has disconnected"""
+        if self.is_disconnected and callable(self.is_disconnected):
+            if await self.is_disconnected():
+                raise asyncio.CancelledError("Client disconnected")
 
     async def run(self, tab: Any) -> TaskResult:
         """任务执行逻辑（由子类实现）"""

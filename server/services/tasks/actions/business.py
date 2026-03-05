@@ -6,7 +6,7 @@ import traceback
 from datetime import datetime
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from PIL import Image
 from playwright.async_api import Page
 from server.utils.logger import tab_log, DATA_DIR
@@ -413,10 +413,14 @@ async def get_generated_urls(page: Page, max_wait_s: int = 12) -> List[str]:
         
     return []
 
-async def download_hd_image(page: Page, img_url: str, remove_wm: bool = True, max_attempts: int = 9):
-    """下载高清图片 (精准 Hover 下载版，纯内存处理)"""
+async def download_hd_image(page: Page, img_url: str, remove_wm: bool = True, max_attempts: int = 4, is_disconnected: Optional[Any] = None):
+    """下载高清图片 (精准 Hover 下载版，带 Snackbar 错误检测和快速失败)"""
     for attempt in range(max_attempts):
         is_last = (attempt == max_attempts - 1)
+        # Check disconnection at the start of each retry
+        if is_disconnected and callable(is_disconnected) and await is_disconnected():
+            raise asyncio.CancelledError("Client disconnected during HD download loop")
+            
         try:
             # 强化：每次尝试前都重新获取一次句柄，防止 DOM 变动导致之前的 handle 失效
             img_element = await page.evaluate_handle("""
@@ -436,8 +440,6 @@ async def download_hd_image(page: Page, img_url: str, remove_wm: bool = True, ma
                 tab_log(page, f"Image handle lost, refreshing URLs (attempt {attempt+1})...")
                 new_urls = await get_generated_urls(page, max_wait_s=3)
                 if new_urls and img_url not in new_urls:
-                    # 如果旧 URL 消失了，尝试用新列表里的最新一个 URL（通常是同位置的）
-                    # 这里的逻辑仅作为一种概率性的拯救，因为 img_url 是外部传入的
                     img_url = new_urls[0] 
                 if is_last: break
                 continue
@@ -457,30 +459,65 @@ async def download_hd_image(page: Page, img_url: str, remove_wm: bool = True, ma
             ])
             try:
                 download_btn = await page.wait_for_selector(combined_selector, timeout=3000, state="visible")
-                if download_btn:
-                    tab_log(page, "Download button found")
             except Exception:
                 download_btn = None
+
             if download_btn:
                 t_dl_start = time.time()
-                async with page.expect_download(timeout=60000) as download_info:
-                    await download_btn.click()
-                download = await download_info.value
-                path = await download.path()
-                dl_time = round(time.time() - t_dl_start, 3)
-                if path:
-                    buf = BytesIO(Path(path).read_bytes())
-                    success, img_bytes, img_hash, p_stats = await _process_image(buf, remove_wm)
-                    if success:
-                        p_stats["dl_time"] = dl_time
-                        p_stats["mode"] = "hd"
-                    return success, img_bytes, img_hash, p_stats
+                try:
+                    async with page.expect_download(timeout=19000) as download_info:
+                        tab_log(page, "Attempting forced click on download button...")
+                        await download_btn.click(force=True)
+                        
+                        # 核心优化：在点击后的前 2 秒内高频监测 Snackbar，实现“秒级”快速失败
+                        # 这不需要等到 expect_download 超时
+                        for _ in range(4): # 0.5s * 4 = 2s
+                            error_toast = await page.query_selector('mat-snack-bar-container, .snack-bar, m-snackbar')
+                            if error_toast:
+                                toast_text = await error_toast.inner_text()
+                                if any(k in toast_text for k in ["无法下载", "can't download", "无法保存", "error"]):
+                                    tab_log(page, f"UI Error Toast detected: {toast_text.strip()}. Aborting wait.", "warning")
+                                    # 注意：这里不能简单 continue，因为 expect_download 还在运行
+                                    # 我们通过这种方式尽早跳出本次下载尝试
+                                    raise TimeoutError("Fast-fail due to UI Error Toast")
+                            await asyncio.sleep(0.5)
+
+                        tab_log(page, "Download button clicked, waiting for event...")
+
+                    download = await download_info.value
+                    dl_url = str(download.url) # 转换为字符串确保安全
+                    tab_log(page, f"Download event captured: {download.suggested_filename} | URL: {dl_url[:80]}...")
+                    
+                    if dl_url.startswith("blob:null"):
+                        tab_log(page, f"Warning: Detected blob:null URL ({dl_url}). Gemini context might be isolated.", "error")
+
+                    failure = await download.failure() # 日志显示这是个协程，必须 await
+                    if failure:
+                        tab_log(page, f"Download failure reported by browser: {failure}", "error")
+                        continue
+                        
+                    path = await download.path()
+                    dl_time = round(time.time() - t_dl_start, 3)
+                    if path:
+                        buf = BytesIO(Path(path).read_bytes())
+                        success, img_bytes, img_hash, p_stats = await _process_image(buf, remove_wm)
+                        if success:
+                            p_stats["dl_time"] = dl_time
+                            p_stats["mode"] = "hd"
+                            p_stats["hd_url"] = dl_url
+                        return success, img_bytes, img_hash, p_stats
+                except Exception as e:
+                    if "Fast-fail" in str(e):
+                        tab_log(page, f"Attempt {attempt+1} aborted early: {e}")
+                    else:
+                        tab_log(page, f"HD wait_for_download exception (attempt {attempt+1}): {str(e)}")
+            
             if not is_last: continue
         except Exception as e:
             if is_last:
-                tab_log(page, f"HD download failed after {max_attempts} attempts: {e}", "error")
+                tab_log(page, f"HD download critical failure: {e}", "error")
             else: 
-                tab_log(page, f"Hover attempt {attempt+1} failed ({type(e).__name__}), retrying...", "warning")
+                tab_log(page, f"Attempt {attempt+1} failed, retrying...", "warning")
                 await asyncio.sleep(0.5)
         
     tab_log(page, "Falling back to direct request.", "warning")
@@ -489,10 +526,13 @@ async def download_hd_image(page: Page, img_url: str, remove_wm: bool = True, ma
         stats["mode"] = "hd_fallback_q"
     return success, img_bytes, h, stats
 
-async def download_q_image(page: Page, img_url: str, remove_wm: bool = True):
+async def download_q_image(page: Page, img_url: str, remove_wm: bool = True, is_disconnected: Optional[Any] = None):
     """通过 URL 直接请求下载预览图 (纯内存处理)"""
     stats = {}
     try:
+        if is_disconnected and callable(is_disconnected) and await is_disconnected():
+            raise asyncio.CancelledError("Client disconnected during Q download")
+            
         t_dl_start = time.time()
         response = await page.request.get(img_url)
         dl_time = round(time.time() - t_dl_start, 3)
@@ -509,7 +549,7 @@ async def download_q_image(page: Page, img_url: str, remove_wm: bool = True):
         stats["error"] = msg
     return False, None, None, stats
 
-async def download_generated_images(page: Page, remove_watermark: bool = True, download_mode: str = "preview") -> List[Dict[str, Any]]:
+async def download_generated_images(page: Page, remove_watermark: bool = True, download_mode: str = "preview", is_disconnected: Optional[Any] = None) -> List[Dict[str, Any]]:
     """获取所有生成的图片 URL 并下载处理（纯内存，直接用 hash 文件名落盘）"""
     urls = await get_generated_urls(page)
     if not urls: return []
@@ -520,10 +560,13 @@ async def download_generated_images(page: Page, remove_watermark: bool = True, d
     date_str = datetime.now().strftime("%Y%m%d")
     for i, url in enumerate(urls):
         try:
+            if is_disconnected and callable(is_disconnected) and await is_disconnected():
+                raise asyncio.CancelledError("Client disconnected during batch download")
+
             if download_mode == "hd":
-                success, img_bytes, img_hash, stats = await download_hd_image(page, url, remove_wm=remove_watermark)
+                success, img_bytes, img_hash, stats = await download_hd_image(page, url, remove_wm=remove_watermark, is_disconnected=is_disconnected)
             else:
-                success, img_bytes, img_hash, stats = await download_q_image(page, url, remove_wm=remove_watermark)
+                success, img_bytes, img_hash, stats = await download_q_image(page, url, remove_wm=remove_watermark, is_disconnected=is_disconnected)
             
             if success and img_hash and img_bytes:
                 save_dir = output_base / ("hd" if download_mode == "hd" else "q") / date_str

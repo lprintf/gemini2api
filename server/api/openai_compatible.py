@@ -222,7 +222,8 @@ async def create_image_edit(
             input_images=[str(p) for p in input_paths],
             model=gemini_model,
             download_mode=download_mode,
-            task_id=task_id
+            task_id=task_id,
+            is_disconnected=request.is_disconnected
         )
 
         if not result_data.get("success"):

@@ -30,6 +30,7 @@ class ImageGenerationTask(BaseEngineTask):
 
         try:
             # 2. 准备阶段
+            await self._check_disconnected()
             tab.activity = "Preparing environment"
             t0 = time.time()
             success = await actions.prepare_environment(page, model=model)
@@ -43,6 +44,7 @@ class ImageGenerationTask(BaseEngineTask):
                 return TaskResult(success=False, error="Environment preparation failed")
 
             # 3. 输入与提交阶段
+            await self._check_disconnected()
             tab.activity = "Uploading and submitting"
             t1 = time.time()
             success = await actions.submit_image_prompt(
@@ -68,6 +70,7 @@ class ImageGenerationTask(BaseEngineTask):
             tab_log(page, f"Submission successful. Current URL: {page.url}", "info")
 
             # 4. 生成阶段
+            await self._check_disconnected()
             tab.activity = "Generating results..."
             t2 = time.time()
             # wait_for_results 会在大约 3 秒文本无变化或检测到图片时返回
@@ -145,6 +148,7 @@ class ImageGenerationTask(BaseEngineTask):
                 return TaskResult(success=False, error="No results found (no images and no text)")
 
             # 5. 下载处理阶段 (已有图片链接)
+            await self._check_disconnected()
             tab.activity = "Downloading & Processing"
             t3 = time.time()
             background_work = None

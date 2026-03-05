@@ -20,7 +20,8 @@ class TaskCoordinator:
         model: str = "Fast",
         download_mode: str = "preview", # preview, hd, both
         remove_watermark: bool = True,
-        task_id: Optional[str] = None
+        task_id: Optional[str] = None,
+        is_disconnected: Optional[Any] = None # Optional callable to check client state
     ) -> Dict[str, Any]:
         """执行图片生成/编辑完整流程 (生命周期受控于此)"""
         from ..tasks.image import ImageGenerationTask
@@ -49,7 +50,8 @@ class TaskCoordinator:
             input_images=input_images,
             model=model,
             download_mode=download_mode,
-            remove_watermark=remove_watermark
+            remove_watermark=remove_watermark,
+            is_disconnected=is_disconnected
         )
 
         # 4. 【生命周期管控点】：开始执行，标记资源忙碌
