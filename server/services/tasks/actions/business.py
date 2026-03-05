@@ -218,39 +218,21 @@ async def submit_image_prompt(page: Page, prompt: str, image_paths: List[str] = 
                         const editor = document.querySelector('.ql-editor.new-input-ui');
                         const editorTrulyEmpty = editor && editor.innerText.trim() === '' && !editor.querySelector('img');
                         
-                        // 信号1: 停止按钮出现 且 编辑器已清空 -> 确认成功
+                        // 信号1: 停止按钮出现 且 编辑器已清空 -> 最强确认
                         if (stopBtn && editorTrulyEmpty) return 'stop_and_empty';
                         
-                        // 信号2: 仅编辑器清空 (无需 stop 按钮)
+                        // 信号2: 仅编辑器清空
                         if (editorTrulyEmpty) return 'editor_empty';
                         
-                        // 信号3: 仅 stop 按钮 (编辑器还有内容) -> 可疑，继续等
+                        // 信号3: 仅 stop 按钮 (编辑器可能延迟清空)
                         if (stopBtn) return 'stop_only';
                         
                         return null;
                     }
                 """)
                 if signal:
-                    if signal in ('stop_and_empty', 'editor_empty'):
-                        tab_log(page, f"Submission signal detected: {signal}")
-                        return True
-                    # stop_only: stop 按钮出现但编辑器没清空 -> 再等一会看编辑器是否会清空
-                    if signal == 'stop_only':
-                        tab_log(page, "Stop button detected but editor not empty yet, waiting for editor to clear...")
-                        for _ in range(15):  # 再等最多 3s
-                            await asyncio.sleep(0.2)
-                            editor_empty = await page.evaluate("""
-                                () => {
-                                    const editor = document.querySelector('.ql-editor.new-input-ui');
-                                    return editor && editor.innerText.trim() === '' && !editor.querySelector('img');
-                                }
-                            """)
-                            if editor_empty:
-                                tab_log(page, "Editor cleared after stop button. Submission confirmed.")
-                                return True
-                        # 3s 后编辑器还没清空 -> 假信号
-                        tab_log(page, "Stop button appeared but editor never cleared. False positive, failing fast.", "warning")
-                        return False
+                    tab_log(page, f"Submission signal detected: {signal}")
+                    return True
                 await asyncio.sleep(0.2)
             
             tab_log(page, f"Submission stuck (no signal) after {timeout}s. Failing fast.", "warning")
@@ -276,14 +258,6 @@ async def wait_for_results(page: Page, timeout_s: int = 60):
         
         await page.wait_for_function(f"""
             () => {{
-                // [快速失败] 编辑器回退检测：如果主输入框又出现了文本，说明 Gemini 静默失败并回退了 UI
-                const mainEditor = document.querySelector('.ql-editor.new-input-ui');
-                if (mainEditor && mainEditor.innerText.trim().length > 0) {{
-                    // 标记为"编辑器回退"（wait_for_results 返回后由调用方检查）
-                    window._gemini_editor_reverted = true;
-                    return true;  // 立刻退出等待
-                }}
-
                 const containers = document.querySelectorAll('model-response, response-container, .model-response');
                 if (containers.length === 0) return false;
                 const last = containers[containers.length - 1];
@@ -341,13 +315,6 @@ async def wait_for_results(page: Page, timeout_s: int = 60):
             }}
         """, timeout=timeout_s * 1000)
         
-        # 检查是否因为"编辑器回退"而提前退出
-        editor_reverted = await page.evaluate("window._gemini_editor_reverted === true")
-        if editor_reverted:
-            tab_log(page, "Editor revert detected: Gemini silently failed and reverted UI. Failing fast.", "warning")
-            await page.evaluate("window._gemini_editor_reverted = false")
-            return False
-
         # 护城河：防止图片刚开始渲染还没拿到达标的 url
         await asyncio.sleep(1.5)
         return True

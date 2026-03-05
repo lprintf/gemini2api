@@ -131,6 +131,9 @@ class ImageGenerationTask(BaseEngineTask):
                     return TaskResult(success=False, error="Timed out waiting for results", background_work=bg_work)
                 
                 # 理论上不会走到这里（因为 wait_for_results 返回 True 代表有图或有稳定文字）
+                tab_log(page, "Unexpected: wait_for_results returned True but no images/text found", "error")
+                await actions.dump_inspect(page, mode="full")
+                await actions.dump_html(page)
                 return TaskResult(success=False, error="No results found (no images and no text)")
 
             # 5. 下载处理阶段 (已有图片链接)
