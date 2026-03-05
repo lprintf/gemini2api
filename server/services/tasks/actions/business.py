@@ -216,39 +216,44 @@ async def submit_image_prompt(page: Page, prompt: str, image_paths: List[str] = 
                     () => {
                         const stopBtn = document.querySelector('.send-button.stop');
                         const editor = document.querySelector('.ql-editor.new-input-ui');
-                        
-                        // 信号1: 停止按钮出现 (正在生成)
-                        if (stopBtn) return 'stop_btn';
-                        
-                        // 信号2: 输入框变空 (存在编辑器，且无文本无图片)
-                        // 注意：严禁使用 !editor 否则 UI 重新挂载期间会误报
                         const editorTrulyEmpty = editor && editor.innerText.trim() === '' && !editor.querySelector('img');
+                        
+                        // 信号1: 停止按钮出现 且 编辑器已清空 -> 确认成功
+                        if (stopBtn && editorTrulyEmpty) return 'stop_and_empty';
+                        
+                        // 信号2: 仅编辑器清空 (无需 stop 按钮)
                         if (editorTrulyEmpty) return 'editor_empty';
+                        
+                        // 信号3: 仅 stop 按钮 (编辑器还有内容) -> 可疑，继续等
+                        if (stopBtn) return 'stop_only';
                         
                         return null;
                     }
                 """)
                 if signal:
-                    tab_log(page, f"Submission signal detected: {signal}")
-                    if signal == 'stop_btn':
-                        # stop 按钮出现不代表最终成功，再等最多 2s 确认 URL 变化（有对话 ID）
-                        for _ in range(10):
+                    if signal in ('stop_and_empty', 'editor_empty'):
+                        tab_log(page, f"Submission signal detected: {signal}")
+                        return True
+                    # stop_only: stop 按钮出现但编辑器没清空 -> 再等一会看编辑器是否会清空
+                    if signal == 'stop_only':
+                        tab_log(page, "Stop button detected but editor not empty yet, waiting for editor to clear...")
+                        for _ in range(15):  # 再等最多 3s
                             await asyncio.sleep(0.2)
-                            if page.url != old_url:
+                            editor_empty = await page.evaluate("""
+                                () => {
+                                    const editor = document.querySelector('.ql-editor.new-input-ui');
+                                    return editor && editor.innerText.trim() === '' && !editor.querySelector('img');
+                                }
+                            """)
+                            if editor_empty:
+                                tab_log(page, "Editor cleared after stop button. Submission confirmed.")
                                 return True
-                        # URL 没变 -> Gemini 闪了一下 stop 按钮但没真正接受
-                        tab_log(page, f"Stop button appeared but URL unchanged ({page.url}). False positive, failing fast.", "warning")
+                        # 3s 后编辑器还没清空 -> 假信号
+                        tab_log(page, "Stop button appeared but editor never cleared. False positive, failing fast.", "warning")
                         return False
-                    return True  # editor_empty -> 确定成功
                 await asyncio.sleep(0.2)
             
-            # 如果超时仍未观测到上述信号，检查 URL 是否变了但内容没变 (虚假成功)
-            if page.url != old_url:
-                # 虽然 URL 变了，但如果编辑器还是满的且没有 Stop 按钮，极大概率是系统卡了
-                tab_log(page, f"URL changed to {page.url} but editor not empty/no stop button. Failing fast.", "error")
-                return False
-
-            tab_log(page, f"Submission stuck (URL unchanged) after 6.9s. Failing fast.", "warning")
+            tab_log(page, f"Submission stuck (no signal) after {timeout}s. Failing fast.", "warning")
             return False # 视为本次提交失败，交给上层触发后台重排
 
         return submit_success
