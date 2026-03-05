@@ -118,21 +118,25 @@ class ImageGenerationTask(BaseEngineTask):
                 
                 # 情况 B：无图片也无文本，或者 wait_for_results 彻底超时
                 if not generation_success:
-                    tab_log(page, f"Timed out waiting for results after {durations['generate']}s", "error")
+                    # 检查是否因为"编辑器内容回退"而提前退出
+                    reverted = await page.evaluate("window._gemini_reverted === true")
+                    err_msg = "Silent rejection detected (Editor reverted)" if reverted else "Timed out waiting for results"
+                    
+                    tab_log(page, f"{err_msg} after {durations['generate']}s", "error")
                     await actions.dump_inspect(page, mode="full")
                     await actions.dump_html(page)
                     
-                    # 无论有无文字，超时均视为故障，进入 9 分钟冷却惩罚
+                    # 无论有无文字，均视为故障，进入 9 分钟冷却惩罚
                     tab.status = BrowserStatus.SLEEP
                     tab.sleep_until = datetime.now() + timedelta(minutes=9)
                     
-                    # 只有当超时且完全没出字，才考虑可能是 UI 状态卡死，触发后台重排
+                    # 只有当彻底没出字，才考虑可能是 UI 状态卡死，触发后台重排
                     bg_work = None
                     if not response_text:
-                        tab_log(page, "No response text found after timeout. Triggering background reinitialization after punishment...", "warning")
+                        tab_log(page, f"No response text found after {err_msg.lower()}. Triggering background reinitialization...", "warning")
                         bg_work = actions.reinitialize_page(page, model=model)
                     
-                    return TaskResult(success=False, error="Timed out waiting for results", background_work=bg_work)
+                    return TaskResult(success=False, error=err_msg, background_work=bg_work)
                 
                 # 理论上不会走到这里（因为 wait_for_results 返回 True 代表有图或有稳定文字）
                 tab_log(page, "Unexpected: wait_for_results returned True but no images/text found", "error")
