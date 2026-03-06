@@ -103,11 +103,8 @@ class BrowserPool:
         async def start_browser_safe(browser: BrowserInstance) -> tuple[str, bool, str]:
             """安全启动单个浏览器，返回 (browser_id, success, error_msg)"""
             try:
-                await browser.launch()
-                # 浏览器启动成功后，立即将其下的可用 Tab 放回队列（实现即插即用，且自然打乱顺序）
-                for tab in browser.tabs:
-                    if tab.status == BrowserStatus.IDLE:
-                        await self.release_tab(tab)
+                # 传入 release_tab 作为回调，使标签页一旦就绪（即使物理浏览器还没完全启动完其它标签）就立刻入队
+                await browser.launch(on_tab_ready=self.release_tab)
                 return (browser.browser_id, True, "")
             except Exception as e:
                 return (browser.browser_id, False, str(e))
@@ -127,7 +124,8 @@ class BrowserPool:
                 await asyncio.sleep(delay)
             browser_id, success, error_msg = await start_browser_safe(b)
             if success:
-                print(f"[BrowserPool] Browser {browser_id} started and tabs queued.")
+                # 状态已由 BrowserInstance 内部的 Tab 实时上报，此处仅记录浏览器核心就绪
+                pass 
                 if browser_id in disabled_after_start:
                     print(f"[BrowserPool] Browser {browser_id} is disabled.")
             else:
@@ -135,7 +133,7 @@ class BrowserPool:
                 await db.add_log("ERROR", f"Failed to load browser {browser_id}: {error_msg}", browser_id)
 
         for i, b in enumerate(browsers_to_start):
-            task = asyncio.create_task(run_startup_sequence(b, i * random.uniform(0.5, 2.5)))
+            task = asyncio.create_task(run_startup_sequence(b, i * random.uniform(0.0, 2.0)))
             self._startup_tasks.append(task)
 
         print(f"[BrowserPool] Initiated background startup for {len(browsers_to_start)} browsers.")
@@ -218,7 +216,7 @@ class BrowserPool:
 
             if auto_start:
                 # 异步启动，不阻塞 API
-                asyncio.create_task(browser.launch())
+                asyncio.create_task(browser.launch(on_tab_ready=self.release_tab))
 
             print(
                 f"[BrowserPool] Created browser {browser_id_str} (account: {account_name}, tabs: {max_tabs}, dir: {user_data_dir})"

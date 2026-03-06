@@ -75,7 +75,7 @@ class BrowserInstance:
             print(f"[Browser {self.browser_id}] Warning: Truncating tabs from {current_count} to {self.max_tabs}")
             self.tabs = self.tabs[:self.max_tabs]
 
-    async def launch(self):
+    async def launch(self, on_tab_ready: Optional[Any] = None):
         """核心启动逻辑：初始化物理浏览器并并行预热标签页"""
         print(f"[Browser {self.browser_id}] Starting Resource...")
         self.status = BrowserStatus.LAUNCHING
@@ -102,6 +102,11 @@ class BrowserInstance:
                 tab.status = BrowserStatus.LAUNCHING
                 success = await actions.reinitialize_page(page, model=tab.model)
                 tab.status = BrowserStatus.IDLE if success else BrowserStatus.ERROR
+                
+                # 如果初始化成功且提供了回调，立即通知（实现即时入队）
+                if success and on_tab_ready:
+                    await on_tab_ready(tab)
+                    print(f"[Browser {self.browser_id}] Tab {tab.tab_id} ({tab.model}) ready and queued.")
 
             # 3. 绑定并预热已经预置的 Tab 0
             tab0 = self.tabs[0]
@@ -117,7 +122,7 @@ class BrowserInstance:
             if self.max_tabs > 1:
 
                 async def setup_tab(tab: TabInstance) -> bool:
-                    await asyncio.sleep(random.uniform(0.5, 2.5))
+                    await asyncio.sleep(random.uniform(0.0, 5.0))
                     try:
                         new_page = await self.launcher.context.new_page()
                         await bind_and_init_tab(tab, new_page)
