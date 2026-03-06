@@ -49,9 +49,9 @@ class TaskCoordinator:
         await db.create_task(task_record)
         
         try:
-            # 1. 获取可用 Tab (设置 10s 超时，超时抛出 NoAvailableBrowsers 触发 429)
-            from ..objects.exceptions import NoAvailableBrowsers
-            tab = await self.pool.acquire_tab(model=model, timeout=10.0)
+            # 1. 获取可用 Tab (设置 0s 超时，即立即失败触发 429)
+            from ..objects.exceptions import NoAvailableBrowsers, NoAvailableTabs
+            tab = await self.pool.acquire_tab(model=model, timeout=0.0)
             browser = self.pool.get_browser(tab.browser_id)
             if not browser:
                 raise RuntimeError(f"Browser {tab.browser_id} for acquired tab not found")
