@@ -1,7 +1,7 @@
 """浏览器池管理器"""
 
 import asyncio
-
+import random
 import time
 from datetime import datetime
 from typing import Dict, Optional
@@ -20,16 +20,18 @@ class BrowserPool:
         self,
         min_browsers: int = 1,
         max_browsers: int = 20,
-        browser_rate_limit: int = 3,  # 每个浏览器的速率限制
-        browser_rate_window: int = 60,  # 速率限制时间窗口
     ):
         self.browsers: Dict[str, BrowserInstance] = {}
         self.min_browsers = min_browsers
         self.max_browsers = max_browsers
-        self.browser_rate_limit = browser_rate_limit
-        self.browser_rate_window = browser_rate_window
         self._lock = asyncio.Lock()
         self._next_id = 0  # 自增 ID 计数器
+        
+        # O(1) 调度队列: 模型 -> 异步队列 (存储 TabInstance)
+        self._idle_queues = {
+            "Fast": asyncio.Queue(),
+            "Pro": asyncio.Queue()
+        }
 
     async def load_from_db(self):
         """从数据库加载所有浏览器配置（后台并行启动自动启动的浏览器）"""
@@ -58,8 +60,6 @@ class BrowserPool:
                     account_name=config.account_name,
                     proxy=config.proxy,
                     user_data_dir=config.user_data_dir,
-                    rate_limit=config.rate_limit,
-                    rate_window=config.rate_window,
                     max_tabs=config.max_tabs,
                 )
                 if config.is_enabled is not None:
@@ -82,6 +82,9 @@ class BrowserPool:
                     browser.status = BrowserStatus.CLOSED
 
             print(f"[BrowserPool] {len(auto_start_browsers)} browsers marked for auto-start")
+
+            # 随机打乱启动顺序，防止每次重启都是固定几个 ID 的浏览器先入队
+            random.shuffle(auto_start_browsers)
 
             # 后台并行启动需要自动启动的浏览器
             if auto_start_browsers:
@@ -110,9 +113,10 @@ class BrowserPool:
                 await asyncio.sleep(delay)
             return await start_browser_safe(b)
 
-        # 并行但错开启动 (每 1.5s 启动一个，但启动过程是并行的)
+        start_time = time.time()
+        # 并行但随机错开启动 (平均 1.5s 启动一个，带有抖动，且启动过程是并行的)
         results = await asyncio.gather(
-            *[start_with_delay(b, i * 1.5) for i, b in enumerate(browsers_to_start)]
+            *[start_with_delay(b, i * random.uniform(0.5, 2.5)) for i, b in enumerate(browsers_to_start)]
         )
 
         # 处理启动结果
@@ -144,6 +148,17 @@ class BrowserPool:
             "INFO",
             f"Browser pool loaded {success_count}/{len(browsers_to_start)} browsers in {elapsed:.2f}s",
         )
+
+        # 收集所有初始化成功、且状态为 IDLE 的 Tab
+        all_ready_tabs = []
+        for browser in browsers_to_start:
+            if browser.status != BrowserStatus.ERROR:
+                for tab in browser.tabs:
+                    if tab.status == BrowserStatus.IDLE:
+                        all_ready_tabs.append(tab)
+        
+        for tab in all_ready_tabs:
+            await self.release_tab(tab)
 
 
 
@@ -194,8 +209,6 @@ class BrowserPool:
                     account_name=account_name,
                     proxy=proxy,
                     user_data_dir=user_data_dir,
-                    rate_limit=self.browser_rate_limit,
-                    rate_window=self.browser_rate_window,
                     is_enabled=is_enabled,
                     auto_start=auto_start,
                 )
@@ -213,8 +226,6 @@ class BrowserPool:
                 browser_id=browser_id_str,
                 account_name=account_name,
                 proxy=proxy,
-                rate_limit=self.browser_rate_limit,
-                rate_window=self.browser_rate_window,
                 user_data_dir=user_data_dir,
                 max_tabs=max_tabs,
             )
@@ -230,6 +241,25 @@ class BrowserPool:
                 f"[BrowserPool] Created browser {browser_id_str} (account: {account_name}, tabs: {max_tabs}, dir: {user_data_dir})"
             )
             return browser_id_str
+            
+    async def acquire_tab(self, model: str = "Fast") -> "TabInstance":
+        """O(1) 获取一个可用标签页"""
+        if model not in self._idle_queues:
+            model = "Fast" # 默认回退
+            
+        # 阻塞等待直至队列中有可用资源
+        tab = await self._idle_queues[model].get()
+        return tab
+
+    async def release_tab(self, tab: "TabInstance"):
+        """将标签页还回对应模型的空闲队列"""
+        await asyncio.sleep(random.randint(50, 300))
+        if tab.status != BrowserStatus.IDLE:
+            # 如果不是 IDLE 状态（如处于 SLEEP），则不进入队列
+            return
+
+        # 放入队尾，实现 FIFO 天然轮换
+        await self._idle_queues[tab.model].put(tab)
 
     async def update_browser(
         self, browser_id: str, updates: Dict
@@ -246,10 +276,6 @@ class BrowserPool:
                 browser.account_name = updates["account_name"]
             if "proxy" in updates:
                 browser.proxy = updates["proxy"]
-            if "rate_limit" in updates:
-                browser.rate_limit = updates["rate_limit"]
-            if "rate_window" in updates:
-                browser.rate_window = updates["rate_window"]
             if "is_enabled" in updates:
                 # 只在数据库记录中标记启用/禁用，不修改内存中的 status 状态
                 # 状态指示灯仅反映功能状态（Error, Busy, Idle, Sleep 等）
@@ -320,33 +346,6 @@ class BrowserPool:
 
         # 异步关闭，不阻塞 API
         asyncio.create_task(browser.close())
-
-    async def get_available_browser(
-        self, model: Optional[str] = None
-    ) -> Optional[BrowserInstance]:
-        """
-        获取可用的浏览器（负载均衡）
-
-        排序优先级：空闲Tab多 > rate_limit剩余多 > 失败少 > 任务轻
-        """
-        available = [
-            b for b in self.browsers.values()
-            if b.status == BrowserStatus.IDLE
-            and b.get_available_tab(model) is not None
-        ]
-
-        if not available:
-            return None
-
-        def sort_key(b: BrowserInstance):
-            idle_tabs = sum(1 for t in b.tabs if t.status == BrowserStatus.IDLE)
-            _, rate_info = b.check_rate_limit()
-            tab = b.get_available_tab(model)
-            tab_tasks = tab.total_tasks if tab else float("inf")
-            return (-idle_tabs, -rate_info["remaining"], b.failed_tasks, tab_tasks)
-
-        available.sort(key=sort_key)
-        return available[0]
 
     def get_browser(self, browser_id: str) -> Optional[BrowserInstance]:
         """获取指定浏览器"""

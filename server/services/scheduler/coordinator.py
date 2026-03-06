@@ -49,17 +49,11 @@ class TaskCoordinator:
         await db.create_task(task_record)
         
         try:
-            # 1. 获取可用浏览器
-            from ..objects.exceptions import NoAvailableBrowsers
-            browser = await self.pool.get_available_browser(model=model)
+            # 1. O(1) 获取可用 Tab (资源抢占在 acquire_tab 内部由 Queue 保证)
+            tab = await self.pool.acquire_tab(model=model)
+            browser = self.pool.get_browser(tab.browser_id)
             if not browser:
-                raise NoAvailableBrowsers()
-
-            # 2. 从浏览器租借一个具体的 Tab (物理资源)
-            tab = browser.get_available_tab(model=model)
-            if not tab:
-                # 理论上 pool.get_available_browser 已经确保了有可用 tab
-                raise RuntimeError(f"Browser {browser.browser_id} has no available tabs")
+                raise RuntimeError(f"Browser {tab.browser_id} for acquired tab not found")
 
             # 3. 准备执行细节
             engine_task = ImageGenerationTask(
@@ -72,7 +66,7 @@ class TaskCoordinator:
             )
 
             # 4. 【生命周期管控点】：开始执行，标记资源忙碌
-            browser.record_request()
+            # 注意：此处不再显式 record_request，依靠 FIFO 天然轮换
             tab.status = BrowserStatus.BUSY
             
             # 5. 注入 TabInstance 到业务 Task 中运行
@@ -197,6 +191,8 @@ class TaskCoordinator:
                             t.status = BrowserStatus.IDLE
                             t.sleep_until = None
                             t.last_active_at = datetime.now()
+                            # 7. 【生命周期管控点】：重回队列，供下次分配
+                            await self.pool.release_tab(t)
                 
                 asyncio.create_task(background_chain(tab, model, bg_work))
 

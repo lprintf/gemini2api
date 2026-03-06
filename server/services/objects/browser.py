@@ -34,11 +34,6 @@ class BrowserInstance:
         self.user_data_dir = user_data_dir or f"data/browser_data/{browser_id}"
         self.max_tabs = max_tabs
 
-        # 速率限制
-        self.rate_limit = rate_limit
-        self.rate_window = rate_window
-        self._request_times: deque = deque()
-
         self.status = BrowserStatus.CLOSED
         self.is_enabled = True # 是否启用（行政状态）
         self.launcher: Optional[GeminiLauncher] = None
@@ -57,24 +52,6 @@ class BrowserInstance:
         self.total_tasks = 0
         self.failed_tasks = 0
 
-    def check_rate_limit(self) -> tuple[bool, Dict]:
-        """检查速率限制"""
-        current_time = time.time()
-        while self._request_times and self._request_times[0] < current_time - self.rate_window:
-            self._request_times.popleft()
-        
-        remaining = self.rate_limit - len(self._request_times)
-        allowed = remaining > 0
-        info = {
-            "limit": self.rate_limit,
-            "remaining": max(0, remaining),
-            "reset": int(current_time + self.rate_window) if not allowed else None,
-            "window_seconds": self.rate_window,
-        }
-        return allowed, info
-
-    def record_request(self):
-        self._request_times.append(time.time())
 
     def _ensure_tabs(self):
         """确保内部标签页占位符已根据 max_tabs 初始化（非破坏性）"""
@@ -182,33 +159,13 @@ class BrowserInstance:
         """获取忙碌标签页数量"""
         return sum(1 for t in self.tabs if t.status == BrowserStatus.BUSY)
 
-    def get_available_tab(self, model: Optional[str] = None) -> Optional[TabInstance]:
-        """寻找可用标签页"""
-        # 只要是 IDLE 状态的都可以被 Scheduler 调度
-        idles = [t for t in self.tabs if t.status == BrowserStatus.IDLE]
-        if not idles: return None
-        
-        # 优先匹配模型
-        if model:
-            match = [t for t in idles if t.model == model]
-            if match: return match[0]
-            
-        return idles[0]
-
     def to_dict(self) -> Dict:
-        allowed, rate_info = self.check_rate_limit()
-        
         # 导出状态：如果物理状态是 IDLE 但没有空闲 Tab，则对外表现为 BUSY
-        # 这有助于 Admin UI 正确显示负载情况
         display_status = self.status.value
         if self.status == BrowserStatus.IDLE:
             idle_tabs_count = sum(1 for t in self.tabs if t.status == BrowserStatus.IDLE)
             if idle_tabs_count == 0 and len(self.tabs) > 0:
                 display_status = BrowserStatus.BUSY.value
-            elif not allowed:
-                # 即使有空闲 Tab，如果速率限制到了，也可以视为某种程度的忙碌/锁定
-                # 但目前通常倾向于只看状态
-                pass
 
         return {
             "browser_id": self.browser_id,
@@ -218,7 +175,7 @@ class BrowserInstance:
             "total_tabs": len(self.tabs),
             "idle_tabs": sum(1 for t in self.tabs if t.status == BrowserStatus.IDLE),
             "sleeping_tabs": sum(1 for t in self.tabs if t.status == BrowserStatus.SLEEP),
-            "rate_limit": rate_info,
+            "rate_limit": {"remaining": 999, "limit": 999}, # 兼容性占位
             "account_name": self.account_name,
             "proxy": self.proxy,
             "max_tabs": self.max_tabs,

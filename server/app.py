@@ -46,10 +46,8 @@ async def lifespan(app: FastAPI):
     browser_pool = BrowserPool(
         min_browsers=config.browser_pool.min_browsers,
         max_browsers=config.browser_pool.max_browsers,
-        browser_rate_limit=config.rate_limit.default_limit,
-        browser_rate_window=config.rate_limit.window_seconds,
     )
-    print(f"Browser pool initialized (max: {config.browser_pool.max_browsers}, rate_limit: {config.rate_limit.default_limit}/{config.rate_limit.window_seconds}s per browser)")
+    print(f"Browser pool initialized (max: {config.browser_pool.max_browsers})")
 
     # 从数据库加载已保存的浏览器配置
     print("Loading browsers from database...")
