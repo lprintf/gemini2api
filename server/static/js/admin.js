@@ -400,6 +400,7 @@ async function loadTasks() {
             <tr>
                 <td><code>${t.task_id.substring(0, 8)}...</code></td>
                 <td>${t.browser_id || '-'}</td>
+                <td>${t.tab_id || '-'}</td>
                 <td title="${escapeHtml(t.prompt)}">${truncate(t.prompt, 50)}</td>
                 <td><span class="status-badge status-${t.status}">${t.status}</span></td>
                 <td>${t.duration ? t.duration.toFixed(2) + 's' : '-'}</td>

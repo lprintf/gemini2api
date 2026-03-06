@@ -56,6 +56,12 @@ class TaskCoordinator:
             if not browser:
                 raise RuntimeError(f"Browser {tab.browser_id} for acquired tab not found")
 
+            # 2. 立即更新数据库记录，记录分配的资源
+            await db.update_task(task_id, {
+                "browser_id": tab.browser_id,
+                "tab_id": tab.tab_id
+            })
+
             # 3. 准备执行细节
             engine_task = ImageGenerationTask(
                 prompt=prompt,
@@ -94,9 +100,7 @@ class TaskCoordinator:
                     "status": "failed",
                     "error_message": error_msg,
                     "duration": duration,
-                    "completed_at": datetime.now(),
-                    "browser_id": browser.browser_id if browser else None,
-                    "tab_id": tab.tab_id if tab else None
+                    "completed_at": datetime.now()
                 })
                 return {"success": False, "error": error_msg}
 
@@ -109,9 +113,7 @@ class TaskCoordinator:
                 "status": "completed",
                 "result_paths": result_paths,
                 "duration": duration,
-                "completed_at": datetime.now(),
-                "browser_id": browser.browser_id,
-                "tab_id": tab.tab_id
+                "completed_at": datetime.now()
             })
 
             return {
@@ -147,9 +149,7 @@ class TaskCoordinator:
                 "status": "failed",
                 "error_message": str(e),
                 "duration": duration,
-                "completed_at": datetime.now(),
-                "browser_id": browser.browser_id if browser else None,
-                "tab_id": tab.tab_id if tab else None
+                "completed_at": datetime.now()
             })
             raise e
         finally:
