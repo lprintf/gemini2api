@@ -52,6 +52,7 @@ class TaskRecord(BaseModel):
     id: Optional[int] = None
     task_id: str
     browser_id: Optional[str] = None
+    tab_id: Optional[str] = None
     prompt: str
     model: str = "Fast"
     input_image: Optional[str] = None

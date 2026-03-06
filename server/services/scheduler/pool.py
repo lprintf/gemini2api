@@ -104,6 +104,10 @@ class BrowserPool:
             """安全启动单个浏览器，返回 (browser_id, success, error_msg)"""
             try:
                 await browser.launch()
+                # 浏览器启动成功后，立即将其下的可用 Tab 放回队列（实现即插即用，且自然打乱顺序）
+                for tab in browser.tabs:
+                    if tab.status == BrowserStatus.IDLE:
+                        await self.release_tab(tab)
                 return (browser.browser_id, True, "")
             except Exception as e:
                 return (browser.browser_id, False, str(e))
@@ -114,51 +118,30 @@ class BrowserPool:
             return await start_browser_safe(b)
 
         start_time = time.time()
-        # 并行但随机错开启动 (平均 1.5s 启动一个，带有抖动，且启动过程是并行的)
-        results = await asyncio.gather(
-            *[start_with_delay(b, i * random.uniform(0.5, 2.5)) for i, b in enumerate(browsers_to_start)]
-        )
-
-        # 处理启动结果
-        success_count = 0
-        for browser_id, success, error_msg in results:
-            if success:
-                success_count += 1
-                print(f"[BrowserPool] Browser {browser_id} started successfully")
-                # 如果是 disabled 的浏览器，保留其功能状态，仅标记 is_enabled = False
-                if browser_id in disabled_after_start:
-                    print(f"[BrowserPool] Browser {browser_id} is disabled")
-            else:
-                print(
-                    f"[BrowserPool] Failed to start browser {browser_id}: {error_msg}"
-                )
-                await db.add_log(
-                    "ERROR",
-                    f"Failed to load browser {browser_id}: {error_msg}",
-                    browser_id,
-                )
-
-        elapsed = time.time() - start_time
-        print(
-            f"[BrowserPool] Background startup completed: {success_count}/{len(browsers_to_start)} "
-            f"browsers in {elapsed:.2f}s"
-        )
-
-        await db.add_log(
-            "INFO",
-            f"Browser pool loaded {success_count}/{len(browsers_to_start)} browsers in {elapsed:.2f}s",
-        )
-
-        # 收集所有初始化成功、且状态为 IDLE 的 Tab
-        all_ready_tabs = []
-        for browser in browsers_to_start:
-            if browser.status != BrowserStatus.ERROR:
-                for tab in browser.tabs:
-                    if tab.status == BrowserStatus.IDLE:
-                        all_ready_tabs.append(tab)
         
-        for tab in all_ready_tabs:
-            await self.release_tab(tab)
+        # 记录启动任务的引用，防止被 GC
+        self._startup_tasks = []
+
+        async def run_startup_sequence(b, delay):
+            if delay > 0:
+                await asyncio.sleep(delay)
+            browser_id, success, error_msg = await start_browser_safe(b)
+            if success:
+                print(f"[BrowserPool] Browser {browser_id} started and tabs queued.")
+                if browser_id in disabled_after_start:
+                    print(f"[BrowserPool] Browser {browser_id} is disabled.")
+            else:
+                print(f"[BrowserPool] Failed to start browser {browser_id}: {error_msg}")
+                await db.add_log("ERROR", f"Failed to load browser {browser_id}: {error_msg}", browser_id)
+
+        for i, b in enumerate(browsers_to_start):
+            task = asyncio.create_task(run_startup_sequence(b, i * random.uniform(0.5, 2.5)))
+            self._startup_tasks.append(task)
+
+        print(f"[BrowserPool] Initiated background startup for {len(browsers_to_start)} browsers.")
+        await db.add_log("INFO", f"Initiated background startup for {len(browsers_to_start)} browsers.")
+
+        # 整理工作：Tab 已在 start_browser_safe 中实时入队
 
 
 

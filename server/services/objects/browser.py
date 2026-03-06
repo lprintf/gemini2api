@@ -1,6 +1,7 @@
 """浏览器实例（支持多标签页） - 纯净资源管理层"""
 
 import asyncio
+import random
 import time
 from collections import deque
 from datetime import datetime
@@ -116,6 +117,7 @@ class BrowserInstance:
             if self.max_tabs > 1:
 
                 async def setup_tab(tab: TabInstance) -> bool:
+                    await asyncio.sleep(random.uniform(0.5, 2.5))
                     try:
                         new_page = await self.launcher.context.new_page()
                         await bind_and_init_tab(tab, new_page)

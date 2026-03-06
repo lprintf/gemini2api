@@ -74,6 +74,7 @@ class Database:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 task_id TEXT UNIQUE NOT NULL,
                 browser_id TEXT,
+                tab_id TEXT,
                 prompt TEXT NOT NULL,
                 model TEXT DEFAULT 'Fast',
                 input_image TEXT,
@@ -139,6 +140,17 @@ class Database:
                     await self.conn.commit()
         except Exception as e:
             print(f"Migration error (max_tabs): {e}")
+
+        # 迁移：为旧数据库增加 tab_id 列
+        try:
+            async with self.conn.execute("PRAGMA table_info(tasks)") as cursor:
+                rows = await cursor.fetchall()
+                columns = [row["name"] for row in rows]
+                if "tab_id" not in columns:
+                    await self.conn.execute("ALTER TABLE tasks ADD COLUMN tab_id TEXT")
+                    await self.conn.commit()
+        except Exception as e:
+            print(f"Migration error (tab_id): {e}")
 
     # ==================== Browser CRUD ====================
 
@@ -270,13 +282,14 @@ class Database:
         await self.conn.execute(
             """
             INSERT INTO tasks
-            (task_id, browser_id, prompt, model, input_image, status,
+            (task_id, browser_id, tab_id, prompt, model, input_image, status,
              result_paths, error_message, duration, created_at, completed_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 task.task_id,
                 task.browser_id,
+                task.tab_id,
                 task.prompt,
                 task.model,
                 task.input_image,
@@ -439,6 +452,7 @@ class Database:
             id=row["id"],
             task_id=row["task_id"],
             browser_id=row["browser_id"],
+            tab_id=row["tab_id"] if "tab_id" in row.keys() else None,
             prompt=row["prompt"],
             model=row["model"],
             input_image=row["input_image"],

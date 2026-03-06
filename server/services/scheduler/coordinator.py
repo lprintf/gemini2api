@@ -110,7 +110,8 @@ class TaskCoordinator:
                 "result_paths": result_paths,
                 "duration": duration,
                 "completed_at": datetime.now(),
-                "browser_id": browser.browser_id
+                "browser_id": browser.browser_id,
+                "tab_id": tab.tab_id
             })
 
             return {
