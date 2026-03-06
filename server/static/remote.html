@@ -4,1199 +4,389 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Remote Control - Gemini2API</title>
+    <title>Gemini2API Remote Control</title>
+    <!-- Use Modular Assets -->
+    <link rel="stylesheet" href="/static/css/common.css">
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            background: #1a1a2e;
-            color: #eee;
-            min-height: 100vh;
+            background: #1a1a1a;
+            color: #e0e0e0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
         }
 
         .header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 0.75rem 1.5rem;
+            background: #2d2d2d;
+            padding: 0.5rem 1rem;
+            border-bottom: 1px solid #404040;
+            box-shadow: none;
+        }
+
+        .main-layout {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 280px;
+            background: #252525;
+            border-right: 1px solid #404040;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .sidebar-header {
+            padding: 1rem;
+            font-weight: 600;
+            border-bottom: 1px solid #404040;
+            background: #2d2d2d;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
         }
 
-        .header h1 {
-            font-size: 1.25rem;
-            font-weight: 600;
-        }
-
-        .header-actions {
-            display: flex;
-            gap: 0.5rem;
-            align-items: center;
-        }
-
-        .container {
-            display: flex;
-            height: calc(100vh - 52px);
-        }
-
-        /* 左侧选择器 */
-        .sidebar {
-            width: 300px;
-            background: #16213e;
-            border-right: 1px solid #333;
-            padding: 1rem;
+        .list-container {
+            flex: 1;
             overflow-y: auto;
-        }
-
-        .sidebar h3 {
-            font-size: 0.9rem;
-            color: #888;
-            margin-bottom: 0.75rem;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        .browser-list,
-        .tab-list {
-            list-style: none;
-            max-height: 40vh;
-            overflow-y: auto;
-            border: 1px solid rgba(255, 255, 255, 0.05);
-            border-radius: 4px;
-            padding: 2px;
         }
 
         .browser-item,
         .tab-item {
-            padding: 0.6rem 0.75rem;
-            margin-bottom: 0.25rem;
-            border-radius: 6px;
+            padding: 0.75rem 1rem;
             cursor: pointer;
+            border-bottom: 1px solid #333;
+            display: flex;
+            align-items: center;
+            gap: 10px;
             transition: all 0.2s;
             font-size: 0.9rem;
         }
 
         .browser-item:hover,
         .tab-item:hover {
-            background: rgba(102, 126, 234, 0.2);
+            background: #333;
         }
 
         .browser-item.active,
         .tab-item.active {
-            background: rgba(102, 126, 234, 0.4);
-            border-left: 3px solid #667eea;
+            background: #3d3d3d;
+            border-left: 4px solid #667eea;
         }
 
-        .browser-item .status,
-        .tab-item .status {
-            display: inline-block;
+        .status {
             width: 8px;
             height: 8px;
             border-radius: 50%;
-            margin-right: 4px;
-            /* Tightened */
-            flex-shrink: 0;
+            display: inline-block;
         }
 
         .status.idle {
-            background: #28a745;
+            background: #4ade80;
         }
 
         .status.busy {
-            background: #ffc107;
-        }
-
-        .status.closed {
-            background: #6c757d;
+            background: #fbbf24;
         }
 
         .status.error {
-            background: #dc3545 !important;
-            /* Force red for errors */
+            background: #f87171;
         }
 
-        .status.disabled {
-            background: #6c757d;
-            /* Subtle gray for administrative but idle */
+        .status.closed {
+            background: #6b7280;
         }
 
         .status.sleep {
-            background: #6c757d;
-            border: 1px dashed #fff;
+            background: #a78bfa;
         }
 
-        /* Toggle Checkbox Styles */
         .toggle-btn {
-            display: inline-flex;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            display: flex;
             align-items: center;
             justify-content: center;
-            width: 14px;
-            height: 14px;
+            font-size: 14px;
             cursor: pointer;
-            margin-right: 4px;
-            /* Tightened */
-            border: 2px solid #555;
-            border-radius: 2px;
-            background: transparent;
-            color: #90EE90;
-            font-size: 11px;
+            border: 1px solid currentColor;
             transition: all 0.2s;
-            user-select: none;
-            flex-shrink: 0;
-        }
-
-        .toggle-btn:hover {
-            border-color: #764ba2;
         }
 
         .toggle-btn.on {
-            background: #764ba2;
-            border-color: #764ba2;
-            color: white;
+            color: #4ade80;
         }
 
         .toggle-btn.off {
-            border-color: #666;
-            color: transparent;
+            color: #f87171;
         }
 
-        .status.launching,
-        .status.closing {
-            background: #007bff;
-        }
-
-        .status.preheating {
-            background: #17a2b8;
-        }
-
-        .tab-item .model-badge {
-            font-size: 0.7rem;
-            padding: 0.1rem 0.4rem;
-            border-radius: 3px;
-            margin-left: 0.5rem;
+        .toggle-btn:hover {
             background: rgba(255, 255, 255, 0.1);
         }
 
-        /* 主内容区 */
-        .main-content {
+        /* Remote Canvas */
+        .remote-area {
             flex: 1;
             display: flex;
             flex-direction: column;
-            overflow: hidden;
+            background: #111;
+            position: relative;
         }
 
         .toolbar {
-            background: #16213e;
-            padding: 0.5rem 1rem;
+            padding: 0.75rem 1rem;
+            background: #252525;
+            border-bottom: 1px solid #404040;
             display: flex;
-            gap: 0.5rem;
+            gap: 10px;
             align-items: center;
-            border-bottom: 1px solid #333;
+            flex-wrap: wrap;
         }
 
-        .btn {
-            padding: 0.4rem 0.8rem;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 0.85rem;
-            transition: all 0.2s;
-            display: inline-flex;
-            align-items: center;
-            gap: 0.3rem;
-        }
-
-        .btn-primary {
-            background: #667eea;
-            color: white;
-        }
-
-        .btn-primary:hover {
-            background: #5a6fd6;
-        }
-
-        .btn-secondary {
-            background: #444;
-            color: white;
-        }
-
-        .btn-secondary:hover {
-            background: #555;
-        }
-
-        .btn-success {
-            background: #28a745;
-            color: white;
-        }
-
-        .btn-danger {
-            background: #dc3545;
-            color: white;
-        }
-
-        .toolbar .separator {
-            width: 1px;
-            height: 24px;
-            background: #444;
-            margin: 0 0.5rem;
-        }
-
-        .toolbar .info {
-            margin-left: auto;
-            font-size: 0.8rem;
-            color: #888;
-        }
-
-        /* URL 地址栏 */
         .url-bar {
-            gap: 0.5rem;
+            flex: 1;
+            display: flex;
+            gap: 5px;
+            min-width: 300px;
         }
 
         .url-input {
             flex: 1;
-            padding: 0.4rem 0.75rem;
-            border: 1px solid #444;
+            background: #1a1a1a;
+            border: 1px solid #404040;
+            color: #fff;
+            padding: 0.4rem 0.8rem;
             border-radius: 6px;
-            background: #1a1a2e;
-            color: white;
-            font-size: 0.85rem;
-        }
-
-        .url-input:focus {
             outline: none;
-            border-color: #667eea;
         }
 
-        /* 截图显示区 */
-        .screenshot-container {
+        .canvas-container {
             flex: 1;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 1rem;
             overflow: auto;
-            background: #0f0f23;
+            display: flex;
+            align-items: flex-start;
+            justify-content: center;
+            padding: 20px;
+            position: relative;
         }
 
         .screenshot-wrapper {
             position: relative;
-            display: inline-block;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
-            border-radius: 4px;
-            overflow: hidden;
-        }
-
-        #screenshot {
-            display: block;
-            max-width: 100%;
-            max-height: calc(100vh - 160px);
-            cursor: crosshair;
+            box-shadow: 0 0 30px rgba(0, 0, 0, 0.5);
+            background: #fff;
+            line-height: 0;
+            display: none;
         }
 
         .screenshot-wrapper.loading::after {
-            content: 'Loading...';
+            content: "Loading...";
             position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
+            top: 10px;
+            right: 10px;
             background: rgba(0, 0, 0, 0.7);
-            padding: 1rem 2rem;
-            border-radius: 8px;
             color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            z-index: 10;
         }
 
-        /* 鼠标位置指示器 */
+        #screenshot {
+            max-width: none;
+            cursor: crosshair;
+        }
+
+        .placeholder {
+            color: #666;
+            text-align: center;
+            margin-top: 100px;
+        }
+
         .cursor-indicator {
             position: absolute;
             width: 20px;
             height: 20px;
-            border: 2px solid #ff0;
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            background: rgba(255, 255, 255, 0.2);
             border-radius: 50%;
             pointer-events: none;
             transform: translate(-50%, -50%);
             display: none;
-            z-index: 10;
+            z-index: 100;
         }
 
-        /* 占位状态 */
-        .placeholder {
-            text-align: center;
-            color: #666;
-            padding: 2rem;
-        }
-
-        .placeholder-icon {
-            font-size: 4rem;
-            margin-bottom: 1rem;
-        }
-
-        /* 状态栏 */
-        .statusbar {
-            background: #16213e;
-            padding: 0.4rem 1rem;
-            font-size: 0.75rem;
+        /* Status Bar */
+        .status-bar {
+            background: #252525;
+            padding: 5px 1rem;
+            border-top: 1px solid #404040;
+            font-size: 12px;
             color: #888;
             display: flex;
-            gap: 2rem;
-            border-top: 1px solid #333;
+            justify-content: space-between;
         }
 
-        .statusbar span {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.3rem;
-        }
-
-        /* Toast */
-        .toast {
-            position: fixed;
-            bottom: 4rem;
-            left: 50%;
-            transform: translateX(-50%);
-            background: #333;
-            color: white;
-            padding: 0.75rem 1.5rem;
-            border-radius: 8px;
-            z-index: 2000;
-            display: none;
-            font-size: 0.9rem;
-        }
-
-        .toast.show {
-            display: block;
-            animation: fadeIn 0.3s ease;
-        }
-
-        .toast.success {
-            background: #28a745;
-        }
-
-        .toast.error {
-            background: #dc3545;
-        }
-
-        @keyframes fadeIn {
-            from {
-                opacity: 0;
-                transform: translateX(-50%) translateY(20px);
-            }
-
-            to {
-                opacity: 1;
-                transform: translateX(-50%) translateY(0);
-            }
-        }
-
-        /* 键盘输入弹窗 */
-        .modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.7);
-            z-index: 1000;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .modal.show {
-            display: flex;
-        }
-
-        .modal-content {
-            background: #1a1a2e;
-            border-radius: 12px;
-            padding: 1.5rem;
-            width: 400px;
-            max-width: 90%;
-            border: 1px solid #333;
-        }
-
-        .modal-title {
-            font-size: 1.1rem;
-            margin-bottom: 1rem;
-        }
-
-        .modal-input {
-            width: 100%;
-            padding: 0.75rem;
-            border: 1px solid #444;
-            border-radius: 6px;
-            background: #16213e;
-            color: white;
-            font-size: 1rem;
-            margin-bottom: 1rem;
-        }
-
-        .modal-input:focus {
-            outline: none;
-            border-color: #667eea;
-        }
-
-        .modal-footer {
-            display: flex;
-            justify-content: flex-end;
-            gap: 0.5rem;
-        }
-
-        /* 快捷键提示 */
-        .shortcuts-hint {
-            font-size: 0.75rem;
-            color: #666;
-            margin-top: 0.5rem;
-        }
-
-        .shortcuts-hint kbd {
-            background: #333;
-            padding: 0.1rem 0.4rem;
-            border-radius: 3px;
+        #jsInput {
+            background: #1a1a1a;
+            border: 1px solid #404040;
+            color: #4ade80;
             font-family: monospace;
+            width: 100%;
+            height: 80px;
+            padding: 8px;
+            border-radius: 6px;
+            margin-bottom: 5px;
+        }
+
+        #jsResult {
+            background: #000;
+            padding: 8px;
+            border-radius: 4px;
+            max-height: 150px;
+            overflow: auto;
+            white-space: pre-wrap;
+            display: none;
+            font-family: monospace;
+            font-size: 12px;
+        }
+
+        .model-badge {
+            font-size: 10px;
+            padding: 1px 4px;
+            border-radius: 3px;
+            background: #444;
+            color: #ccc;
+            margin-left: auto;
+        }
+
+        /* Keyboard Modal */
+        #keyboardModal .modal-content {
+            background: #2d2d2d;
+            color: white;
+            max-width: 400px;
+        }
+
+        #keyboardInput {
+            background: #1a1a1a;
+            color: white;
+            border: 1px solid #404040;
         }
     </style>
 </head>
 
 <body>
     <div class="header">
-        <h1>Remote Control</h1>
-        <div class="header-actions">
-            <a href="/admin" class="btn btn-secondary">Back to Admin</a>
+        <div style="display: flex; align-items: center; gap: 20px;">
+            <h1 style="font-size: 1.2rem; color: #667eea;">Gemini2API Remote</h1>
+            <a href="/admin" class="nav-btn" style="background: #444; padding: 4px 10px;">Back to Admin</a>
         </div>
     </div>
 
-    <div class="container">
-        <!-- 左侧边栏 -->
+    <div class="main-layout">
+        <!-- Sidebar -->
         <div class="sidebar">
-            <h3>Browsers</h3>
-            <ul id="browserList" class="browser-list">
-                <li class="browser-item">Loading...</li>
-            </ul>
-
-            <h3 style="margin-top: 1.5rem;">Tabs</h3>
-            <ul id="tabList" class="tab-list">
-                <li class="tab-item" style="color: #666;">Select a browser first</li>
-            </ul>
-
-            <!-- 命令运行器 (Command Runner) -->
-            <div style="margin-top: 2rem; border-top: 1px solid #333; padding-top: 1.5rem;">
-                <h3>Command Runner</h3>
-                <div style="display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.5rem;">
-                    <input type="text" id="cmdInput" class="modal-input"
-                        style="font-size: 0.85rem; padding: 0.5rem; background: #0f172a; border-color: #334155;"
-                        placeholder='e.g. click #btn, input "hello" #box'
-                        onkeydown="if(event.key==='Enter') runCommand()">
-                    <button class="btn btn-primary" style="width: 100%;" onclick="runCommand()">Run Command</button>
-                    <div style="font-size: 0.7rem; color: #64748b; margin-top: 0.2rem; line-height: 1.4;">
-                        • <b>click</b> [#sel]<br>
-                        • <b>input</b> "text" [#sel]<br>
-                        • <b>model</b> fast|pro<br>
-                        • <b>new</b> / <b>reset</b><br>
-                        • <b>goto</b> url<br>
-                        • <b>eval</b> "js code"
-                    </div>
-                </div>
+            <div class="sidebar-header">
+                <span>Browsers</span>
+                <button class="btn btn-primary" onclick="loadBrowsers()" style="padding: 2px 8px;">Refresh</button>
             </div>
+            <ul id="browserList" class="list-container"></ul>
 
-            <!-- JS 执行器 -->
-            <div style="margin-top: 1.5rem; border-top: 1px solid #333; padding-top: 1.5rem;">
-                <h3>JS Console</h3>
-                <div style="display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.5rem;">
-                    <textarea id="jsInput" class="modal-input"
-                        style="font-size: 0.8rem; padding: 0.5rem; background: #0f172a; border-color: #334155; min-height: 80px; font-family: monospace; resize: vertical;"
-                        placeholder="document.title"></textarea>
-                    <button class="btn btn-success" style="width: 100%;" onclick="runJS()">▶ Execute JS</button>
-                    <div id="jsResult"
-                        style="font-size: 0.75rem; color: #94a3b8; background: #0f172a; padding: 0.5rem; border-radius: 4px; max-height: 100px; overflow: auto; display: none; font-family: monospace; white-space: pre-wrap;">
-                    </div>
-                </div>
+            <div class="sidebar-header" style="border-top: 1px solid #404040;">
+                <span>Tabs</span>
             </div>
+            <ul id="tabList" class="list-container"></ul>
         </div>
 
-        <!-- 主内容区 -->
-        <div class="main-content">
-            <!-- 地址栏 -->
-            <div class="toolbar url-bar">
-                <input type="text" id="urlInput" class="url-input" placeholder="Enter URL (e.g., chrome://settings/)"
-                    onkeydown="if(event.key==='Enter') navigateTo()">
-                <button class="btn btn-primary" onclick="navigateTo()" title="Navigate to URL">Go</button>
-                <button class="btn btn-secondary" onclick="goBack()" title="Go back">←</button>
-                <button class="btn btn-secondary" onclick="goForward()" title="Go forward">→</button>
-            </div>
-
+        <!-- Remote Canvas -->
+        <div class="remote-area">
             <div class="toolbar">
-                <button class="btn btn-primary" onclick="refreshScreenshot()" title="Refresh screenshot (R)">
-                    Refresh
-                </button>
-                <button class="btn btn-secondary" onclick="toggleAutoRefresh()" id="autoRefreshBtn"
-                    title="Auto refresh after actions">
-                    Auto: ON
-                </button>
-                <div class="separator"></div>
-                <button class="btn btn-secondary" onclick="showKeyboardModal()" title="Type text (T)">
-                    Keyboard
-                </button>
-                <button class="btn btn-secondary" onclick="sendKey('Enter')" title="Press Enter">
-                    Enter
-                </button>
-                <button class="btn btn-secondary" onclick="sendKey('Escape')" title="Press Escape">
-                    Esc
-                </button>
-                <div class="separator"></div>
-                <button class="btn btn-secondary" onclick="sendKey('F5')" title="Refresh page">
-                    F5
-                </button>
-                <div class="info" id="viewportInfo">-</div>
+                <button class="btn btn-secondary" onclick="goBack()" title="Back">←</button>
+                <button class="btn btn-secondary" onclick="goForward()" title="Forward">→</button>
+                <button class="btn btn-primary" onclick="refreshScreenshot()">Refresh (R)</button>
+                <button class="btn btn-secondary" id="autoRefreshBtn" onclick="toggleAutoRefresh()">Auto: ON</button>
+
+                <div class="url-bar">
+                    <input type="text" id="urlInput" class="url-input" placeholder="https://..."
+                        value="https://www.google.com">
+                    <button class="btn btn-success" onclick="navigateTo()">Go</button>
+                </div>
+
+                <button class="btn btn-warning" onclick="showKeyboardModal()">Type Text (T)</button>
             </div>
 
-            <div class="screenshot-container" id="screenshotContainer">
-                <div class="placeholder" id="placeholder">
-                    <div class="placeholder-icon">:(</div>
-                    <div>Select a browser and tab to view screenshot</div>
+            <div class="toolbar" style="background: #222; border-bottom: 1px dashed #333;">
+                <div style="flex: 1; display:flex; gap: 5px;">
+                    <input type="text" id="cmdInput" class="url-input"
+                        placeholder="Enter command (e.g. click 'button text')" style="font-family: monospace;">
+                    <button class="btn btn-primary" onclick="runCommand()">Run Cmd</button>
                 </div>
-                <div class="screenshot-wrapper" id="screenshotWrapper" style="display: none;">
-                    <img id="screenshot" alt="Tab Screenshot">
-                    <div class="cursor-indicator" id="cursorIndicator"></div>
+                <div style="display: flex; gap:10px; color: #888; font-size: 12px;">
+                    <button class="btn btn-secondary"
+                        onclick="document.getElementById('jsSection').style.display = document.getElementById('jsSection').style.display === 'none' ? 'block' : 'none'"
+                        style="padding: 2px 8px;">JS Console</button>
                 </div>
             </div>
 
-            <div class="statusbar">
-                <span id="statusCoords">Coords: -</span>
-                <span id="statusLastAction">Last action: -</span>
-                <span id="statusTime">Updated: -</span>
+            <div id="jsSection" class="toolbar"
+                style="display: none; background: #1a1a1a; flex-direction: column; align-items: stretch;">
+                <textarea id="jsInput" placeholder="// Enter JavaScript to execute in page..."></textarea>
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div style="font-size: 11px; color: #666;">Press Run to execute. Access page via DOM elements.</div>
+                    <button class="btn btn-success" onclick="runJS()">Run JS</button>
+                </div>
+                <pre id="jsResult"></pre>
+            </div>
+
+            <div class="canvas-container">
+                <div id="placeholder" class="placeholder">
+                    <h2>No Tab Selected</h2>
+                    <p>Please select a browser and a tab from the sidebar to start remote control.</p>
+                </div>
+
+                <div id="screenshotWrapper" class="screenshot-wrapper">
+                    <img id="screenshot" src="" alt="Remote Browser View">
+                    <div id="cursorIndicator" class="cursor-indicator"></div>
+                </div>
+            </div>
+
+            <div class="status-bar">
+                <div>
+                    <span id="statusCoords">Coords: 0, 0</span> |
+                    <span id="viewportInfo">1280 x 900</span> |
+                    <span id="statusLastAction">Last action: None</span>
+                </div>
+                <div>
+                    <span id="statusTime">Waiting...</span>
+                </div>
             </div>
         </div>
     </div>
 
-    <!-- 键盘输入弹窗 -->
-    <div class="modal" id="keyboardModal">
+    <!-- Keyboard Modal -->
+    <div id="keyboardModal" class="modal">
         <div class="modal-content">
             <div class="modal-title">Type Text</div>
-            <input type="text" class="modal-input" id="keyboardInput" placeholder="Enter text to type...">
-            <div class="shortcuts-hint">
-                Press <kbd>Enter</kbd> to send, <kbd>Escape</kbd> to cancel
+            <div class="form-group">
+                <label>Enter text to type at current cursor/focus:</label>
+                <input type="text" class="form-control" id="keyboardInput" placeholder="Hello World...">
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" onclick="hideKeyboardModal()">Cancel</button>
-                <button class="btn btn-primary" onclick="sendTypedText()">Send</button>
+                <button class="btn btn-primary" onclick="sendTypedText()">Send (Enter)</button>
             </div>
         </div>
     </div>
 
-    <!-- Toast -->
     <div id="toast" class="toast"></div>
 
-    <script>
-        const API_BASE = '/api/admin';
-
-        let selectedBrowser = null;
-        let selectedTab = null;
-        let viewportWidth = 1280;
-        let viewportHeight = 900;
-        let autoRefresh = true;
-        let isLoading = false;
-
-        // 初始化
-        document.addEventListener('DOMContentLoaded', () => {
-            loadBrowsers();
-            setupScreenshotEvents();
-            setupKeyboardShortcuts();
-        });
-
-        // 加载浏览器列表
-        async function loadBrowsers() {
-            try {
-                const response = await fetch(`${API_BASE}/browsers`);
-                const data = await response.json();
-
-                const list = document.getElementById('browserList');
-                if (data.browsers.length === 0) {
-                    list.innerHTML = '<li class="browser-item" style="color: #666;">No browsers available</li>';
-                    return;
-                }
-
-                const sortedBrowsers = data.browsers.sort((a, b) => a.browser_id.localeCompare(b.browser_id, undefined, { numeric: true }));
-
-                list.innerHTML = sortedBrowsers.map(b => `
-                    <li class="browser-item ${selectedBrowser === b.browser_id ? 'active' : ''}"
-                        onclick="selectBrowser('${b.browser_id}')"
-                        data-browser-id="${b.browser_id}">
-                        <span class="toggle-btn ${b.is_enabled ? 'on' : 'off'}" 
-                              onclick="event.stopPropagation(); toggleBrowserEnabled('${b.browser_id}', ${!b.is_enabled})"
-                              title="${b.is_enabled ? 'Enabled (Click to Disable)' : 'Disabled (Click to Enable)'}">
-                            ${b.is_enabled ? '✓' : ''}
-                        </span>
-                        <span>${b.browser_id}</span>
-                        <span class="status ${b.status}"></span>
-                        <span style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
-                            ${escapeHtml(b.account_name)}
-                        </span>
-                    </li>
-                `).join('');
-
-            } catch (e) {
-                showToast('Failed to load browsers: ' + e.message, 'error');
-            }
-        }
-
-        // 切换浏览器启用状态
-        async function toggleBrowserEnabled(id, enabled) {
-            try {
-                const response = await fetch(`${API_BASE}/browsers/${id}`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ is_enabled: enabled })
-                });
-                if (!response.ok) throw new Error('Update failed');
-                showToast(`Browser ${id} ${enabled ? 'Enabled' : 'Disabled'}`, 'success');
-                loadBrowsers();
-            } catch (e) {
-                showToast('Action failed: ' + e.message, 'error');
-            }
-        }
-
-        // 选择浏览器
-        async function selectBrowser(browserId) {
-            selectedBrowser = browserId;
-            selectedTab = null;
-
-            // 更新 UI
-            document.querySelectorAll('.browser-item').forEach(el => {
-                el.classList.toggle('active', el.dataset.browserId === browserId);
-            });
-
-            // 加载标签页
-            await loadTabs(browserId);
-        }
-
-        // 加载标签页列表
-        async function loadTabs(browserId) {
-            try {
-                const response = await fetch(`${API_BASE}/browsers/${browserId}/tabs`);
-                const data = await response.json();
-
-                const list = document.getElementById('tabList');
-                if (data.tabs.length === 0) {
-                    list.innerHTML = '<li class="tab-item" style="color: #666;">No tabs available</li>';
-                    return;
-                }
-
-                list.innerHTML = data.tabs.map(t => `
-                    <li class="tab-item ${selectedTab === t.tab_id ? 'active' : ''}"
-                        onclick="selectTab(${t.tab_id})"
-                        data-tab-id="${t.tab_id}">
-                        <span class="status ${t.status}"></span>
-                        Tab ${t.tab_id} 
-                        ${t.status === 'busy' && t.activity ? `<small style="opacity:0.7">(${escapeHtml(t.activity)})</small>` : ''}
-                        ${t.status === 'sleep' ? `<small style="opacity:0.7; color: #ff6b6b"> (Sleep until ${formatTime(t.sleep_until)})</small>` : ''}
-                        <span class="model-badge">${t.model}</span>
-                    </li>
-                `).join('');
-
-            } catch (e) {
-                showToast('Failed to load tabs: ' + e.message, 'error');
-            }
-        }
-
-        // 选择标签页
-        async function selectTab(tabId) {
-            selectedTab = tabId;
-
-            // 更新 UI
-            document.querySelectorAll('.tab-item').forEach(el => {
-                el.classList.toggle('active', parseInt(el.dataset.tabId) === tabId);
-            });
-
-            // 刷新截图
-            await refreshScreenshot();
-        }
-
-        // 刷新截图
-        async function refreshScreenshot() {
-            if (!selectedBrowser || selectedTab === null) {
-                showToast('Please select a browser and tab first', 'error');
-                return;
-            }
-
-            if (isLoading) return;
-            isLoading = true;
-
-            const wrapper = document.getElementById('screenshotWrapper');
-            const placeholder = document.getElementById('placeholder');
-            const img = document.getElementById('screenshot');
-
-            wrapper.classList.add('loading');
-
-            try {
-                const response = await fetch(
-                    `${API_BASE}/browsers/${selectedBrowser}/tabs/${selectedTab}/screenshot?quality=50&_t=${Date.now()}`
-                );
-
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}`);
-                }
-
-                // 获取视口尺寸
-                viewportWidth = parseInt(response.headers.get('X-Viewport-Width') || '1280');
-                viewportHeight = parseInt(response.headers.get('X-Viewport-Height') || '900');
-                document.getElementById('viewportInfo').textContent = `${viewportWidth} x ${viewportHeight}`;
-
-                // 显示图片
-                const blob = await response.blob();
-                const url = URL.createObjectURL(blob);
-
-                img.onload = () => {
-                    URL.revokeObjectURL(img.src);
-                    wrapper.classList.remove('loading');
-                    isLoading = false;
-                };
-
-                img.src = url;
-                placeholder.style.display = 'none';
-                wrapper.style.display = 'inline-block';
-
-                document.getElementById('statusTime').textContent = `Updated: ${new Date().toLocaleTimeString()}`;
-
-            } catch (e) {
-                showToast('Screenshot failed: ' + e.message, 'error');
-                wrapper.classList.remove('loading');
-                isLoading = false;
-            }
-        }
-
-        // 导航到指定 URL
-        async function navigateTo() {
-            const urlInput = document.getElementById('urlInput');
-            const url = urlInput.value.trim();
-
-            if (!url) {
-                showToast('Please enter a URL', 'error');
-                return;
-            }
-
-            if (!selectedBrowser || selectedTab === null) {
-                showToast('Please select a browser and tab first', 'error');
-                return;
-            }
-
-            try {
-                showToast('Navigating...', '');
-
-                const response = await fetch(
-                    `${API_BASE}/browsers/${selectedBrowser}/tabs/${selectedTab}/navigate`,
-                    {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ url: url })
-                    }
-                );
-
-                const result = await response.json();
-
-                if (response.ok) {
-                    document.getElementById('statusLastAction').textContent = `Navigated to: ${result.title || url}`;
-                    urlInput.value = result.url; // 更新为实际 URL
-                    showToast('Navigation successful', 'success');
-                    await refreshScreenshot();
-                } else {
-                    showToast(result.detail || 'Navigation failed', 'error');
-                }
-
-            } catch (e) {
-                showToast('Navigation failed: ' + e.message, 'error');
-            }
-        }
-
-        async function clearLastClick() {
-            if (!selectedBrowser || selectedTab === null) return;
-            // 通过获取一张新截图来隐式清除红点
-            await refreshScreenshot();
-        }
-
-        async function runCommand() {
-            const inputEl = document.getElementById('cmdInput');
-            const cmd = inputEl.value.trim();
-            if (!cmd) return;
-
-            if (!selectedBrowser || selectedTab === null) {
-                showToast('Please select a browser and tab first', 'error');
-                return;
-            }
-
-            const btn = event.target.tagName === 'BUTTON' ? event.target : event.target.closest('button');
-            const originalText = btn ? btn.textContent : 'Run';
-            if (btn) { btn.textContent = 'Running...'; btn.disabled = true; }
-
-            try {
-                // 直接发送原始字符串到后端解析
-                const response = await fetch(`${API_BASE}/browsers/${selectedBrowser}/tabs/${selectedTab}/command`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ cmd: cmd })
-                });
-
-                const data = await response.json();
-                if (data.success) {
-                    showToast('Command executed', 'success');
-                    inputEl.value = '';
-                    if (autoRefresh) setTimeout(refreshScreenshot, 500);
-                } else {
-                    showToast('Failed: ' + (data.error || 'Unknown error'), 'error');
-                }
-            } catch (e) {
-                showToast('API error: ' + e.message, 'error');
-            } finally {
-                if (btn) { btn.textContent = originalText; btn.disabled = false; }
-            }
-        }
-
-        // 执行 JavaScript
-        async function runJS() {
-            const jsCode = document.getElementById('jsInput').value.trim();
-            const resultEl = document.getElementById('jsResult');
-
-            if (!jsCode) {
-                showToast('Please enter JS code', 'error');
-                return;
-            }
-
-            if (!selectedBrowser || selectedTab === null) {
-                showToast('Please select a browser and tab first', 'error');
-                return;
-            }
-
-            try {
-                // 使用 eval 命令执行 JS
-                const response = await fetch(`${API_BASE}/browsers/${selectedBrowser}/tabs/${selectedTab}/command`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ cmd: `eval "${jsCode.replace(/"/g, '\\"')}"` })
-                });
-
-                const data = await response.json();
-                resultEl.style.display = 'block';
-
-                if (data.success) {
-                    const result = data.result;
-                    resultEl.style.color = '#4ade80';
-                    resultEl.textContent = result !== undefined ? JSON.stringify(result, null, 2) : '(undefined)';
-                    showToast('JS executed', 'success');
-                    if (autoRefresh) setTimeout(refreshScreenshot, 300);
-                } else {
-                    resultEl.style.color = '#f87171';
-                    resultEl.textContent = 'Error: ' + (data.error || 'Unknown');
-                    showToast('JS failed', 'error');
-                }
-            } catch (e) {
-                resultEl.style.display = 'block';
-                resultEl.style.color = '#f87171';
-                resultEl.textContent = 'API Error: ' + e.message;
-                showToast('API error', 'error');
-            }
-        }
-
-        // 后退
-        async function goBack() {
-            if (!selectedBrowser || selectedTab === null) return;
-
-            try {
-                await sendKey('Alt+ArrowLeft');
-            } catch (e) {
-                // 备用方案：使用 history API
-                showToast('Back navigation attempted', '');
-            }
-        }
-
-        // 前进
-        async function goForward() {
-            if (!selectedBrowser || selectedTab === null) return;
-
-            try {
-                await sendKey('Alt+ArrowRight');
-            } catch (e) {
-                showToast('Forward navigation attempted', '');
-            }
-        }
-
-        // 设置截图交互事件
-        function setupScreenshotEvents() {
-            const img = document.getElementById('screenshot');
-            const wrapper = document.getElementById('screenshotWrapper');
-            const cursor = document.getElementById('cursorIndicator');
-
-            // 计算点击位置相对于视口的坐标
-            // 图片原始尺寸 = 视口尺寸，所以只需计算相对位置
-            function getRelativeCoords(e) {
-                const rect = img.getBoundingClientRect();
-
-                // 鼠标在显示图片上的相对位置 (0-1)
-                const relX = (e.clientX - rect.left) / rect.width;
-                const relY = (e.clientY - rect.top) / rect.height;
-
-                // 返回相对比例和实际像素位置
-                return {
-                    x: relX,
-                    y: relY,
-                    actualX: Math.round(relX * viewportWidth),
-                    actualY: Math.round(relY * viewportHeight)
-                };
-            }
-
-            // 鼠标移动 - 显示坐标
-            img.addEventListener('mousemove', (e) => {
-                const coords = getRelativeCoords(e);
-                document.getElementById('statusCoords').textContent = `Coords: ${coords.actualX}, ${coords.actualY}`;
-
-                // 显示光标指示器
-                const rect = img.getBoundingClientRect();
-                cursor.style.display = 'block';
-                cursor.style.left = (e.clientX - rect.left) + 'px';
-                cursor.style.top = (e.clientY - rect.top) + 'px';
-            });
-
-            // 鼠标离开
-            img.addEventListener('mouseleave', () => {
-                cursor.style.display = 'none';
-            });
-
-            // 点击事件
-            img.addEventListener('click', async (e) => {
-                e.preventDefault();
-                const coords = getRelativeCoords(e);
-                await sendMouseAction('click', coords.x, coords.y);
-            });
-
-            // 右键点击
-            img.addEventListener('contextmenu', async (e) => {
-                e.preventDefault();
-                const coords = getRelativeCoords(e);
-                await sendMouseAction('click', coords.x, coords.y, 'right');
-            });
-
-            // 滚轮事件
-            img.addEventListener('wheel', async (e) => {
-                e.preventDefault();
-                const coords = getRelativeCoords(e);
-                await sendMouseAction('scroll', coords.x, coords.y, 'left', e.deltaY);
-            });
-        }
-
-        // 发送鼠标动作
-        async function sendMouseAction(action, x, y, button = 'left', scrollDelta = 0) {
-            if (!selectedBrowser || selectedTab === null) return;
-
-            try {
-                const response = await fetch(
-                    `${API_BASE}/browsers/${selectedBrowser}/tabs/${selectedTab}/mouse`,
-                    {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            action: action,
-                            x: x,
-                            y: y,
-                            button: button,
-                            scroll_delta: scrollDelta
-                        })
-                    }
-                );
-
-                const result = await response.json();
-
-                if (response.ok) {
-                    document.getElementById('statusLastAction').textContent =
-                        `Last action: ${action} at (${Math.round(result.x)}, ${Math.round(result.y)})`;
-
-                    // 自动刷新截图
-                    if (autoRefresh && action === 'click') {
-                        // 等待页面响应后刷新
-                        setTimeout(refreshScreenshot, 300);
-                    }
-                } else {
-                    showToast(result.detail || 'Action failed', 'error');
-                }
-
-            } catch (e) {
-                showToast('Mouse action failed: ' + e.message, 'error');
-            }
-        }
-
-        // 发送键盘按键
-        async function sendKey(key) {
-            if (!selectedBrowser || selectedTab === null) {
-                showToast('Please select a browser and tab first', 'error');
-                return;
-            }
-
-            try {
-                const response = await fetch(
-                    `${API_BASE}/browsers/${selectedBrowser}/tabs/${selectedTab}/keyboard`,
-                    {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            action: 'press',
-                            key: key
-                        })
-                    }
-                );
-
-                const result = await response.json();
-
-                if (response.ok) {
-                    document.getElementById('statusLastAction').textContent = `Last action: press ${key}`;
-                    if (autoRefresh) {
-                        setTimeout(refreshScreenshot, 300);
-                    }
-                } else {
-                    showToast(result.detail || 'Key press failed', 'error');
-                }
-
-            } catch (e) {
-                showToast('Key press failed: ' + e.message, 'error');
-            }
-        }
-
-        // 发送输入文本
-        async function sendTypedText() {
-            const input = document.getElementById('keyboardInput');
-            const text = input.value;
-
-            if (!text) {
-                hideKeyboardModal();
-                return;
-            }
-
-            if (!selectedBrowser || selectedTab === null) {
-                showToast('Please select a browser and tab first', 'error');
-                return;
-            }
-
-            try {
-                const response = await fetch(
-                    `${API_BASE}/browsers/${selectedBrowser}/tabs/${selectedTab}/keyboard`,
-                    {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            action: 'type',
-                            text: text
-                        })
-                    }
-                );
-
-                const result = await response.json();
-
-                if (response.ok) {
-                    document.getElementById('statusLastAction').textContent = `Last action: typed "${text.substring(0, 20)}..."`;
-                    hideKeyboardModal();
-                    input.value = '';
-                    if (autoRefresh) {
-                        setTimeout(refreshScreenshot, 300);
-                    }
-                } else {
-                    showToast(result.detail || 'Type failed', 'error');
-                }
-
-            } catch (e) {
-                showToast('Type failed: ' + e.message, 'error');
-            }
-        }
-
-        // 键盘快捷键
-        function setupKeyboardShortcuts() {
-            document.addEventListener('keydown', (e) => {
-                // 如果在输入框中则不处理
-                if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
-                    // 在键盘弹窗中按 Enter 发送
-                    if (e.key === 'Enter' && document.getElementById('keyboardModal').classList.contains('show')) {
-                        e.preventDefault();
-                        sendTypedText();
-                    }
-                    // Escape 关闭弹窗
-                    if (e.key === 'Escape') {
-                        hideKeyboardModal();
-                    }
-                    return;
-                }
-
-                // R - 刷新截图
-                if (e.key === 'r' || e.key === 'R') {
-                    e.preventDefault();
-                    refreshScreenshot();
-                }
-
-                // T - 打开键盘输入
-                if (e.key === 't' || e.key === 'T') {
-                    e.preventDefault();
-                    showKeyboardModal();
-                }
-
-                // Escape - 发送 Escape 键
-                if (e.key === 'Escape') {
-                    sendKey('Escape');
-                }
-            });
-        }
-
-        // 切换自动刷新
-        function toggleAutoRefresh() {
-            autoRefresh = !autoRefresh;
-            document.getElementById('autoRefreshBtn').textContent = `Auto: ${autoRefresh ? 'ON' : 'OFF'}`;
-        }
-
-        // 显示键盘输入弹窗
-        function showKeyboardModal() {
-            document.getElementById('keyboardModal').classList.add('show');
-            document.getElementById('keyboardInput').focus();
-        }
-
-        // 隐藏键盘输入弹窗
-        function hideKeyboardModal() {
-            document.getElementById('keyboardModal').classList.remove('show');
-        }
-
-        // Toast 提示
-        function showToast(message, type = '') {
-            const toast = document.getElementById('toast');
-            toast.textContent = message;
-            toast.className = 'toast show ' + type;
-            setTimeout(() => toast.classList.remove('show'), 3000);
-        }
-
-        // HTML 转义
-        function escapeHtml(str) {
-            if (!str) return '';
-            const div = document.createElement('div');
-            div.textContent = str;
-            return div.innerHTML;
-        }
-
-        function formatTime(isoString) {
-            if (!isoString) return '-';
-            const date = new Date(isoString);
-            return date.toLocaleString('zh-CN', {
-                month: '2-digit',
-                day: '2-digit',
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit',
-            });
-        }
-
-        // 点击弹窗外部关闭
-        document.getElementById('keyboardModal').addEventListener('click', (e) => {
-            if (e.target.id === 'keyboardModal') {
-                hideKeyboardModal();
-            }
-        });
-    </script>
+    <!-- Modular Scripts -->
+    <script src="/static/js/utils.js"></script>
+    <script src="/static/js/remote.js"></script>
 </body>
 
 </html>
