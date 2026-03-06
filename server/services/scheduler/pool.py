@@ -253,7 +253,7 @@ class BrowserPool:
 
     async def release_tab(self, tab: "TabInstance"):
         """将标签页还回对应模型的空闲队列"""
-        await asyncio.sleep(random.randint(50, 300))
+        await asyncio.sleep(random.randint(50, 300) / 1000.0)
         if tab.status != BrowserStatus.IDLE:
             # 如果不是 IDLE 状态（如处于 SLEEP），则不进入队列
             return
