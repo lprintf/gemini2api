@@ -121,8 +121,8 @@ class BrowserInstance:
             # 5. 并行启动其它 Tab
             if self.max_tabs > 1:
 
-                async def setup_tab(tab: TabInstance) -> bool:
-                    await asyncio.sleep(random.uniform(0.0, 5.0))
+                async def setup_tab(tab: TabInstance, index: int) -> bool:
+                    await asyncio.sleep(index * random.uniform(1.0, 5.0))
                     try:
                         new_page = await self.launcher.context.new_page()
                         await bind_and_init_tab(tab, new_page)
@@ -132,7 +132,7 @@ class BrowserInstance:
                         print(f"[Browser {self.browser_id}] Init Tab {tab.tab_id} Fail: {e}")
                         return False
 
-                init_tasks = [setup_tab(self.tabs[i]) for i in range(1, self.max_tabs)]
+                init_tasks = [setup_tab(self.tabs[i], i) for i in range(1, self.max_tabs)]
                 await asyncio.gather(*init_tasks)
 
             self.status = BrowserStatus.IDLE

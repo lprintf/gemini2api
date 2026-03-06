@@ -133,7 +133,7 @@ class BrowserPool:
                 await db.add_log("ERROR", f"Failed to load browser {browser_id}: {error_msg}", browser_id)
 
         for i, b in enumerate(browsers_to_start):
-            task = asyncio.create_task(run_startup_sequence(b, i * random.uniform(0.1, 2.0)))
+            task = asyncio.create_task(run_startup_sequence(b, i * random.uniform(0.1, 3.0)))
             self._startup_tasks.append(task)
 
         print(f"[BrowserPool] Initiated background startup for {len(browsers_to_start)} browsers.")
