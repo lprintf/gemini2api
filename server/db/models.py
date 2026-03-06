@@ -16,8 +16,6 @@ class BrowserConfig(BaseModel):
     account_name: str
     proxy: Optional[str] = None
     user_data_dir: str
-    rate_limit: int = 2
-    rate_window: int = 50
     is_enabled: bool = True
     auto_start: bool = True
     max_tabs: int = 3
@@ -43,8 +41,6 @@ class BrowserConfigUpdate(BaseModel):
 
     account_name: Optional[str] = None
     proxy: Optional[str] = None
-    rate_limit: Optional[int] = None
-    rate_window: Optional[int] = None
     is_enabled: Optional[bool] = None
     auto_start: Optional[bool] = None
     max_tabs: Optional[int] = None
@@ -79,9 +75,6 @@ class GlobalConfig(BaseModel):
     # Browser Pool
     min_browsers: int = 1
     max_browsers: int = 10
-    # Rate Limit
-    default_rate_limit: int = 3
-    rate_window_seconds: int = 60
     # Load Balancer
     lb_strategy: str = "least_loaded"  # round_robin/least_loaded/random
     # Logging
@@ -104,8 +97,6 @@ class GlobalConfigUpdate(BaseModel):
     server_port: Optional[int] = None
     min_browsers: Optional[int] = None
     max_browsers: Optional[int] = None
-    default_rate_limit: Optional[int] = None
-    rate_window_seconds: Optional[int] = None
     lb_strategy: Optional[str] = None
     log_level: Optional[str] = None
     admin_username: Optional[str] = None
@@ -151,11 +142,8 @@ class BrowserStatus(BaseModel):
     user_data_dir: str
     is_enabled: bool = True
     auto_start: bool = True
-    rate_limit: int = 3
-    rate_window: int = 60
     created_at: Optional[datetime] = None
     last_active_at: Optional[datetime] = None
     total_tasks: int = 0
     failed_tasks: int = 0
     current_task_id: Optional[str] = None
-    rate_limit_info: Optional[dict] = None

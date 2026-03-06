@@ -47,8 +47,6 @@ class UpdateBrowserRequest(BaseModel):
 
     account_name: Optional[str] = None
     proxy: Optional[str] = None
-    rate_limit: Optional[int] = None
-    rate_window: Optional[int] = None
     is_enabled: Optional[bool] = None
     auto_start: Optional[bool] = None
     max_tabs: Optional[int] = None
@@ -72,8 +70,6 @@ class UpdateConfigRequest(BaseModel):
     server_port: Optional[int] = None
     min_browsers: Optional[int] = None
     max_browsers: Optional[int] = None
-    default_rate_limit: Optional[int] = None
-    rate_window_seconds: Optional[int] = None
     lb_strategy: Optional[str] = None
     log_level: Optional[str] = None
     admin_username: Optional[str] = None
@@ -270,10 +266,6 @@ async def update_config(request: UpdateConfigRequest):
                 print(f"[Config] Updated browser_pool.max_browsers to {updates['max_browsers']}")
             if "min_browsers" in updates:
                 browser_pool.min_browsers = updates["min_browsers"]
-            if "default_rate_limit" in updates:
-                browser_pool.browser_rate_limit = updates["default_rate_limit"]
-            if "rate_window_seconds" in updates:
-                browser_pool.browser_rate_window = updates["rate_window_seconds"]
 
         return config.model_dump()
     except Exception as e:

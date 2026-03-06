@@ -62,8 +62,6 @@ class Database:
                 account_name TEXT NOT NULL,
                 proxy TEXT,
                 user_data_dir TEXT NOT NULL,
-                rate_limit INTEGER DEFAULT 3,
-                rate_window INTEGER DEFAULT 60,
                 is_enabled INTEGER DEFAULT 1,
                 auto_start INTEGER DEFAULT 1,
                 max_tabs INTEGER DEFAULT 3,
@@ -94,8 +92,6 @@ class Database:
                 server_port INTEGER DEFAULT 8000,
                 min_browsers INTEGER DEFAULT 1,
                 max_browsers INTEGER DEFAULT 10,
-                default_rate_limit INTEGER DEFAULT 3,
-                rate_window_seconds INTEGER DEFAULT 60,
                 lb_strategy TEXT DEFAULT 'least_loaded',
                 log_level TEXT DEFAULT 'INFO',
                 admin_username TEXT DEFAULT 'admin',
@@ -187,16 +183,14 @@ class Database:
             """
             INSERT INTO browsers
             (browser_id, account_name, proxy, user_data_dir,
-             rate_limit, rate_window, is_enabled, auto_start, max_tabs, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             is_enabled, auto_start, max_tabs, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 config.browser_id,
                 config.account_name,
                 config.proxy,
                 config.user_data_dir,
-                config.rate_limit,
-                config.rate_window,
                 1 if config.is_enabled else 0,
                 1 if config.auto_start else 0,
                 config.max_tabs,
@@ -261,8 +255,6 @@ class Database:
             account_name=row["account_name"],
             proxy=row["proxy"],
             user_data_dir=row["user_data_dir"],
-            rate_limit=row["rate_limit"],
-            rate_window=row["rate_window"],
             is_enabled=bool(row["is_enabled"]),
             auto_start=bool(row["auto_start"]),
             max_tabs=row["max_tabs"] if "max_tabs" in row.keys() else 3,
@@ -479,8 +471,6 @@ class Database:
                     server_port=row["server_port"],
                     min_browsers=row["min_browsers"],
                     max_browsers=row["max_browsers"],
-                    default_rate_limit=row["default_rate_limit"],
-                    rate_window_seconds=row["rate_window_seconds"],
                     lb_strategy=row["lb_strategy"],
                     log_level=row["log_level"],
                     admin_username=row["admin_username"],

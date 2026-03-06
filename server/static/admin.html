@@ -580,7 +580,6 @@
                             <th>Status</th>
                             <th>Tabs</th>
                             <th>Tasks</th>
-                            <th>Rate Limit</th>
                             <th>Actions</th>
                         </tr>
                     </thead>
@@ -732,16 +731,6 @@
                     </div>
                     <div class="form-row">
                         <div class="form-group">
-                            <label>Default Rate Limit (req/min)</label>
-                            <input type="number" class="form-control" id="cfgRateLimit" min="1">
-                        </div>
-                        <div class="form-group">
-                            <label>Rate Window (seconds)</label>
-                            <input type="number" class="form-control" id="cfgRateWindow" min="1">
-                        </div>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group">
                             <label>Load Balancer Strategy</label>
                             <select class="form-control" id="cfgLbStrategy">
                                 <option value="least_loaded">Least Loaded</option>
@@ -799,176 +788,167 @@
                 </div>
             </div>
         </div>
-    </div>
 
-    <!-- Create Browser Modal -->
-    <div id="createBrowserModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-title">Add New Browser</div>
-            <form id="createBrowserForm" onsubmit="createBrowser(event)">
-                <div class="form-group">
-                    <label>Browser ID (optional, auto-assign if empty)</label>
-                    <input type="number" class="form-control" id="newBrowserId" min="0" placeholder="Auto">
-                </div>
-                <div class="form-group">
-                    <label>Account Name (optional)</label>
-                    <input type="text" class="form-control" id="newAccountName" placeholder="Default: equals to ID">
-                </div>
-                <div class="form-group">
-                    <label>Proxy (optional)</label>
-                    <input type="text" class="form-control" id="newProxy" placeholder="http://proxy:port">
-                </div>
-                <div class="form-group">
-                    <label>Max Tabs (concurrent tasks per browser)</label>
-                    <input type="number" class="form-control" id="newMaxTabs" min="1" max="10" value="3">
-                </div>
-                <div class="form-group">
-                    <div class="checkbox-group">
-                        <input type="checkbox" id="newAutoStart" checked>
-                        <label for="newAutoStart" style="margin-bottom: 0;">Auto Start</label>
+        <!-- Create Browser Modal -->
+        <div id="createBrowserModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-title">Add New Browser</div>
+                <form id="createBrowserForm" onsubmit="createBrowser(event)">
+                    <div class="form-group">
+                        <label>Browser ID (optional, auto-assign if empty)</label>
+                        <input type="number" class="form-control" id="newBrowserId" min="0" placeholder="Auto">
                     </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary"
-                        onclick="hideModal('createBrowserModal')">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Create</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- Edit Browser Modal -->
-    <div id="editBrowserModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-title">Edit Browser</div>
-            <form id="editBrowserForm" onsubmit="updateBrowser(event)">
-                <input type="hidden" id="editBrowserId">
-                <div class="form-group">
-                    <label>Account Name</label>
-                    <input type="text" class="form-control" id="editAccountName">
-                </div>
-                <div class="form-group">
-                    <label>Proxy</label>
-                    <input type="text" class="form-control" id="editProxy" placeholder="http://proxy:port">
-                </div>
-                <div class="form-group">
-                    <label>Rate Limit (req/min)</label>
-                    <input type="number" class="form-control" id="editRateLimit" min="1">
-                </div>
-                <div class="form-group">
-                    <label>Rate Window (seconds)</label>
-                    <input type="number" class="form-control" id="editRateWindow" min="1">
-                </div>
-                <div class="form-group">
-                    <div class="checkbox-group">
-                        <input type="checkbox" id="editAutoStart">
-                        <label for="editAutoStart" style="margin-bottom: 0;">Auto Start</label>
+                    <div class="form-group">
+                        <label>Account Name (optional)</label>
+                        <input type="text" class="form-control" id="newAccountName" placeholder="Default: equals to ID">
                     </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary"
-                        onclick="hideModal('editBrowserModal')">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Save</button>
-                </div>
-            </form>
+                    <div class="form-group">
+                        <label>Proxy (optional)</label>
+                        <input type="text" class="form-control" id="newProxy" placeholder="http://proxy:port">
+                    </div>
+                    <div class="form-group">
+                        <label>Max Tabs (concurrent tasks per browser)</label>
+                        <input type="number" class="form-control" id="newMaxTabs" min="1" max="10" value="3">
+                    </div>
+                    <div class="form-group">
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="newAutoStart" checked>
+                            <label for="newAutoStart" style="margin-bottom: 0;">Auto Start</label>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary"
+                            onclick="hideModal('createBrowserModal')">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Create</button>
+                    </div>
+                </form>
+            </div>
         </div>
-    </div>
 
-    <!-- Toast -->
-    <div id="toast" class="toast"></div>
+        <!-- Edit Browser Modal -->
+        <div id="editBrowserModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-title">Edit Browser</div>
+                <form id="editBrowserForm" onsubmit="updateBrowser(event)">
+                    <input type="hidden" id="editBrowserId">
+                    <div class="form-group">
+                        <label>Account Name</label>
+                        <input type="text" class="form-control" id="editAccountName">
+                    </div>
+                    <div class="form-group">
+                        <label>Proxy</label>
+                        <input type="text" class="form-control" id="editProxy" placeholder="http://proxy:port">
+                    </div>
+                    <div class="form-group">
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="editAutoStart">
+                            <label for="editAutoStart" style="margin-bottom: 0;">Auto Start</label>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary"
+                            onclick="hideModal('editBrowserModal')">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Save</button>
+                    </div>
+                </form>
+            </div>
+        </div>
 
-    <!-- Refresh Button -->
-    <button class="refresh-btn" onclick="refreshCurrentTab()" title="Refresh">R</button>
+        <!-- Toast -->
+        <div id="toast" class="toast"></div>
 
-    <script>
-        const API_BASE = '/api/admin';
-        let currentTab = 'dashboard';
-        let browserData = [];
+        <!-- Refresh Button -->
+        <button class="refresh-btn" onclick="refreshCurrentTab()" title="Refresh">R</button>
 
-        // Tab navigation
-        document.querySelectorAll('.nav-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const tab = btn.dataset.tab;
-                switchTab(tab);
+        <script>
+            const API_BASE = '/api/admin';
+            let currentTab = 'dashboard';
+            let browserData = [];
+
+            // Tab navigation
+            document.querySelectorAll('.nav-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const tab = btn.dataset.tab;
+                    switchTab(tab);
+                });
             });
-        });
 
-        function switchTab(tab) {
-            currentTab = tab;
-            document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
-            document.querySelector(`.nav-btn[data-tab="${tab}"]`).classList.add('active');
-            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-            document.getElementById(tab).classList.add('active');
-            refreshCurrentTab();
-        }
-
-        function refreshCurrentTab() {
-            switch (currentTab) {
-                case 'dashboard': loadDashboard(); break;
-                case 'browsers': loadBrowsers(); break;
-                case 'tabs': loadTabs(); break;
-                case 'tasks': loadTasks(); break;
-                case 'config': loadConfig(); break;
-                case 'logs': loadLogs(); break;
+            function switchTab(tab) {
+                currentTab = tab;
+                document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+                document.querySelector(`.nav-btn[data-tab="${tab}"]`).classList.add('active');
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                document.getElementById(tab).classList.add('active');
+                refreshCurrentTab();
             }
-        }
 
-        // API calls
-        async function api(endpoint, method = 'GET', data = null) {
-            const options = {
-                method,
-                headers: { 'Content-Type': 'application/json' },
-            };
-            if (data) options.body = JSON.stringify(data);
-
-            const response = await fetch(API_BASE + endpoint, options);
-            if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.detail || 'API Error');
+            function refreshCurrentTab() {
+                switch (currentTab) {
+                    case 'dashboard': loadDashboard(); break;
+                    case 'browsers': loadBrowsers(); break;
+                    case 'tabs': loadTabs(); break;
+                    case 'tasks': loadTasks(); break;
+                    case 'config': loadConfig(); break;
+                    case 'logs': loadLogs(); break;
+                }
             }
-            return response.json();
-        }
 
-        // Dashboard
-        async function loadDashboard() {
-            try {
-                const data = await api('/dashboard');
+            // API calls
+            async function api(endpoint, method = 'GET', data = null) {
+                const options = {
+                    method,
+                    headers: { 'Content-Type': 'application/json' },
+                };
+                if (data) options.body = JSON.stringify(data);
 
-                document.getElementById('totalBrowsers').textContent = data.browsers.total;
-                document.getElementById('idleBrowsers').textContent = data.browsers.status_count.idle || 0;
-                document.getElementById('busyBrowsers').textContent = data.browsers.status_count.busy || 0;
-                document.getElementById('todayTasks').textContent = data.tasks.today_tasks;
+                const response = await fetch(API_BASE + endpoint, options);
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'API Error');
+                }
+                return response.json();
+            }
 
-                document.getElementById('statTotalTasks').textContent = data.tasks.total_tasks;
-                document.getElementById('statCompleted').textContent = data.tasks.completed_tasks;
-                document.getElementById('statFailed').textContent = data.tasks.failed_tasks;
+            // Dashboard
+            async function loadDashboard() {
+                try {
+                    const data = await api('/dashboard');
 
-                const totalFinished = data.tasks.completed_tasks + data.tasks.failed_tasks;
-                const successRate = totalFinished > 0
-                    ? (data.tasks.completed_tasks / totalFinished * 100).toFixed(1) + '%'
-                    : '-%';
-                document.getElementById('statSuccessRate').textContent = successRate;
+                    document.getElementById('totalBrowsers').textContent = data.browsers.total;
+                    document.getElementById('idleBrowsers').textContent = data.browsers.status_count.idle || 0;
+                    document.getElementById('busyBrowsers').textContent = data.browsers.status_count.busy || 0;
+                    document.getElementById('todayTasks').textContent = data.tasks.today_tasks;
 
-                document.getElementById('statAvgDuration').textContent = data.tasks.avg_duration
-                    ? data.tasks.avg_duration.toFixed(2) + 's' : '-';
+                    document.getElementById('statTotalTasks').textContent = data.tasks.total_tasks;
+                    document.getElementById('statCompleted').textContent = data.tasks.completed_tasks;
+                    document.getElementById('statFailed').textContent = data.tasks.failed_tasks;
 
-                // 错误统计
-                const errorStats = data.tasks.error_stats || {};
-                const errorEntries = Object.entries(errorStats);
-                if (errorEntries.length > 0) {
-                    document.getElementById('errorStatsCard').style.display = 'block';
-                    const errorHtml = errorEntries.map(([msg, count]) => `
+                    const totalFinished = data.tasks.completed_tasks + data.tasks.failed_tasks;
+                    const successRate = totalFinished > 0
+                        ? (data.tasks.completed_tasks / totalFinished * 100).toFixed(1) + '%'
+                        : '-%';
+                    document.getElementById('statSuccessRate').textContent = successRate;
+
+                    document.getElementById('statAvgDuration').textContent = data.tasks.avg_duration
+                        ? data.tasks.avg_duration.toFixed(2) + 's' : '-';
+
+                    // 错误统计
+                    const errorStats = data.tasks.error_stats || {};
+                    const errorEntries = Object.entries(errorStats);
+                    if (errorEntries.length > 0) {
+                        document.getElementById('errorStatsCard').style.display = 'block';
+                        const errorHtml = errorEntries.map(([msg, count]) => `
                         <div class="log-item" style="display: flex; justify-content: space-between;">
                             <span style="color: #d9534f; font-weight: 500;">${escapeHtml(msg)}</span>
                             <span class="status-badge status-failed">${count}</span>
                         </div>
                     `).join('');
-                    document.getElementById('errorStatsList').innerHTML = errorHtml;
-                } else {
-                    document.getElementById('errorStatsCard').style.display = 'none';
-                }
+                        document.getElementById('errorStatsList').innerHTML = errorHtml;
+                    } else {
+                        document.getElementById('errorStatsCard').style.display = 'none';
+                    }
 
-                const logsHtml = data.recent_logs.map(log => `
+                    const logsHtml = data.recent_logs.map(log => `
                     <div class="log-item">
                         <span class="log-time">${formatTime(log.created_at)}</span>
                         <span class="log-level ${log.level}">${log.level}</span>
@@ -976,37 +956,37 @@
                         <span>${escapeHtml(log.message)}</span>
                     </div>
                 `).join('');
-                document.getElementById('recentLogs').innerHTML = logsHtml || '<div class="empty-state">No recent logs</div>';
+                    document.getElementById('recentLogs').innerHTML = logsHtml || '<div class="empty-state">No recent logs</div>';
 
-                document.getElementById('serverStatus').textContent = 'Connected';
-                document.getElementById('serverStatus').style.color = '#90EE90';
-            } catch (e) {
-                showToast('Failed to load dashboard: ' + e.message, 'error');
-                document.getElementById('serverStatus').textContent = 'Disconnected';
-                document.getElementById('serverStatus').style.color = '#FF6B6B';
-            }
-        }
-
-        // Browsers
-        async function loadBrowsers() {
-            try {
-                const data = await api('/browsers');
-                browserData = data.browsers;
-
-                // 简单按 ID 排序
-                browserData.sort((a, b) => a.browser_id.localeCompare(b.browser_id, undefined, { numeric: true }));
-
-                updateBrowserFilters();
-
-                if (browserData.length === 0) {
-                    document.getElementById('browserList').innerHTML = '';
-                    document.getElementById('browserEmpty').style.display = 'block';
-                    return;
+                    document.getElementById('serverStatus').textContent = 'Connected';
+                    document.getElementById('serverStatus').style.color = '#90EE90';
+                } catch (e) {
+                    showToast('Failed to load dashboard: ' + e.message, 'error');
+                    document.getElementById('serverStatus').textContent = 'Disconnected';
+                    document.getElementById('serverStatus').style.color = '#FF6B6B';
                 }
+            }
 
-                document.getElementById('browserEmpty').style.display = 'none';
+            // Browsers
+            async function loadBrowsers() {
+                try {
+                    const data = await api('/browsers');
+                    browserData = data.browsers;
 
-                const html = browserData.map(b => `
+                    // 简单按 ID 排序
+                    browserData.sort((a, b) => a.browser_id.localeCompare(b.browser_id, undefined, { numeric: true }));
+
+                    updateBrowserFilters();
+
+                    if (browserData.length === 0) {
+                        document.getElementById('browserList').innerHTML = '';
+                        document.getElementById('browserEmpty').style.display = 'block';
+                        return;
+                    }
+
+                    document.getElementById('browserEmpty').style.display = 'none';
+
+                    const html = browserData.map(b => `
                     <tr>
                         <td>
                             <strong>${b.browser_id}</strong>
@@ -1017,189 +997,184 @@
                         </td>
                         <td>${b.idle_tabs || 0} idle, ${b.sleeping_tabs || 0} sleep / ${b.total_tabs || 0}</td>
                         <td>${b.total_tasks} (${b.failed_tasks} failed)</td>
-                        <td>${b.rate_limit.remaining}/${b.rate_limit.limit} per ${b.rate_limit.window_seconds}s</td>
                         <td>
                             ${b.is_enabled
-                        ? `<button class="btn btn-secondary" onclick="toggleBrowserEnabled('${b.browser_id}', false)">Disable</button>`
-                        : `<button class="btn btn-success" onclick="toggleBrowserEnabled('${b.browser_id}', true)">Enable</button>`
-                    }
+                            ? `<button class="btn btn-secondary" onclick="toggleBrowserEnabled('${b.browser_id}', false)">Disable</button>`
+                            : `<button class="btn btn-success" onclick="toggleBrowserEnabled('${b.browser_id}', true)">Enable</button>`
+                        }
                             ${b.status === 'closed'
-                        ? `<button class="btn btn-success" onclick="launchBrowser('${b.browser_id}')">Launch</button>`
-                        : `<button class="btn btn-warning" onclick="closeBrowser('${b.browser_id}')">Close</button>`
-                    }
+                            ? `<button class="btn btn-success" onclick="launchBrowser('${b.browser_id}')">Launch</button>`
+                            : `<button class="btn btn-warning" onclick="closeBrowser('${b.browser_id}')">Close</button>`
+                        }
                             <button class="btn btn-primary" onclick="showEditBrowserModal('${b.browser_id}')">Edit</button>
                             <button class="btn btn-danger" onclick="deleteBrowser('${b.browser_id}')">Delete</button>
                         </td>
                     </tr>
                 `).join('');
 
-                document.getElementById('browserList').innerHTML = html;
-            } catch (e) {
-                showToast('Failed to load browsers: ' + e.message, 'error');
-            }
-        }
-
-        function updateBrowserFilters() {
-            const options = browserData.map(b =>
-                `<option value="${b.browser_id}">${b.browser_id} - ${escapeHtml(b.account_name)}</option>`
-            ).join('');
-
-            document.getElementById('taskBrowserFilter').innerHTML = '<option value="">All Browsers</option>' + options;
-            document.getElementById('logBrowserFilter').innerHTML = '<option value="">All Browsers</option>' + options;
-        }
-
-        async function launchBrowser(id) {
-            try {
-                await api(`/browsers/${id}/launch`, 'POST');
-                showToast(`Browser ${id} launched`, 'success');
-                loadBrowsers();
-            } catch (e) {
-                showToast('Failed to launch browser: ' + e.message, 'error');
-            }
-        }
-
-        async function closeBrowser(id) {
-            try {
-                await api(`/browsers/${id}/close`, 'POST');
-                showToast(`Browser ${id} closed`, 'success');
-                loadBrowsers();
-            } catch (e) {
-                showToast('Failed to close browser: ' + e.message, 'error');
-            }
-        }
-
-        async function toggleBrowserEnabled(id, enabled) {
-            try {
-                await api(`/browsers/${id}`, 'PUT', { is_enabled: enabled });
-                showToast(`Browser ${id} is now ${enabled ? 'Online' : 'Offline'}`, 'success');
-                loadBrowsers();
-            } catch (e) {
-                showToast('Operation failed: ' + e.message, 'error');
-            }
-        }
-
-        async function deleteBrowser(id) {
-            if (!confirm(`Delete browser ${id}?`)) return;
-            try {
-                await api(`/browsers/${id}`, 'DELETE');
-                showToast(`Browser ${id} deleted`, 'success');
-                loadBrowsers();
-            } catch (e) {
-                showToast('Failed to delete browser: ' + e.message, 'error');
-            }
-        }
-
-        function showCreateBrowserModal() {
-            document.getElementById('createBrowserForm').reset();
-            document.getElementById('newHeadless').checked = true;
-            document.getElementById('newAutoStart').checked = true;
-            showModal('createBrowserModal');
-        }
-
-        async function createBrowser(e) {
-            e.preventDefault();
-            try {
-                const data = {
-                    auto_start: document.getElementById('newAutoStart').checked,
-                };
-
-                const browserId = document.getElementById('newBrowserId').value;
-                if (browserId) data.browser_id = parseInt(browserId);
-
-                const accountName = document.getElementById('newAccountName').value;
-                if (accountName) data.account_name = accountName;
-
-                const proxy = document.getElementById('newProxy').value;
-                if (proxy) data.proxy = proxy;
-
-                const maxTabs = document.getElementById('newMaxTabs').value;
-                if (maxTabs) data.max_tabs = parseInt(maxTabs);
-
-                await api('/browsers', 'POST', data);
-                showToast('Browser created', 'success');
-                hideModal('createBrowserModal');
-                loadBrowsers();
-            } catch (e) {
-                showToast('Failed to create browser: ' + e.message, 'error');
-            }
-        }
-
-        function showEditBrowserModal(id) {
-            const browser = browserData.find(b => b.browser_id === id);
-            if (!browser) return;
-
-            document.getElementById('editBrowserId').value = id;
-            document.getElementById('editAccountName').value = browser.account_name;
-            document.getElementById('editProxy').value = browser.proxy || '';
-            document.getElementById('editRateLimit').value = browser.rate_limit.limit;
-            document.getElementById('editRateWindow').value = browser.rate_limit.window_seconds;
-            document.getElementById('editAutoStart').checked = true;
-
-            showModal('editBrowserModal');
-        }
-
-        async function updateBrowser(e) {
-            e.preventDefault();
-            try {
-                const id = document.getElementById('editBrowserId').value;
-                const data = {
-                    account_name: document.getElementById('editAccountName').value,
-                    proxy: document.getElementById('editProxy').value || null,
-                    rate_limit: parseInt(document.getElementById('editRateLimit').value),
-                    rate_window: parseInt(document.getElementById('editRateWindow').value),
-                    auto_start: document.getElementById('editAutoStart').checked,
-                };
-
-                await api(`/browsers/${id}`, 'PUT', data);
-                showToast('Browser updated', 'success');
-                hideModal('editBrowserModal');
-                loadBrowsers();
-            } catch (e) {
-                showToast('Failed to update browser: ' + e.message, 'error');
-            }
-        }
-
-        // Tabs
-        let tabsData = [];
-
-        async function loadTabs() {
-            try {
-                const data = await api('/tabs');
-                tabsData = data.tabs;
-
-                // 更新统计卡片
-                document.getElementById('totalTabs').textContent = data.total;
-                document.getElementById('idleTabs').textContent = data.status_count.idle || 0;
-                document.getElementById('busyTabs').textContent = data.status_count.busy || 0;
-                document.getElementById('sleepTabs').textContent = data.status_count.sleep || 0;
-                document.getElementById('errorTabs').textContent = (data.status_count.error || 0) + (data.status_count.disabled || 0) + (data.status_count.closed || 0) + (data.status_count.launching || 0);
-
-                // 更新浏览器筛选器
-                const browsers = [...new Set(tabsData.map(t => t.browser_id))];
-                const browserOptions = browsers.map(id => `<option value="${id}">${id}</option>`).join('');
-                document.getElementById('tabBrowserFilter').innerHTML = '<option value="">All Browsers</option>' + browserOptions;
-
-                // 应用筛选
-                const statusFilter = document.getElementById('tabStatusFilter').value;
-                const browserFilter = document.getElementById('tabBrowserFilter').value;
-
-                let filteredTabs = tabsData;
-                if (statusFilter) {
-                    filteredTabs = filteredTabs.filter(t => t.status === statusFilter);
+                    document.getElementById('browserList').innerHTML = html;
+                } catch (e) {
+                    showToast('Failed to load browsers: ' + e.message, 'error');
                 }
-                if (browserFilter) {
-                    filteredTabs = filteredTabs.filter(t => t.browser_id === browserFilter);
+            }
+
+            function updateBrowserFilters() {
+                const options = browserData.map(b =>
+                    `<option value="${b.browser_id}">${b.browser_id} - ${escapeHtml(b.account_name)}</option>`
+                ).join('');
+
+                document.getElementById('taskBrowserFilter').innerHTML = '<option value="">All Browsers</option>' + options;
+                document.getElementById('logBrowserFilter').innerHTML = '<option value="">All Browsers</option>' + options;
+            }
+
+            async function launchBrowser(id) {
+                try {
+                    await api(`/browsers/${id}/launch`, 'POST');
+                    showToast(`Browser ${id} launched`, 'success');
+                    loadBrowsers();
+                } catch (e) {
+                    showToast('Failed to launch browser: ' + e.message, 'error');
                 }
+            }
 
-                if (filteredTabs.length === 0) {
-                    document.getElementById('tabList').innerHTML = '';
-                    document.getElementById('tabEmpty').style.display = 'block';
-                    return;
+            async function closeBrowser(id) {
+                try {
+                    await api(`/browsers/${id}/close`, 'POST');
+                    showToast(`Browser ${id} closed`, 'success');
+                    loadBrowsers();
+                } catch (e) {
+                    showToast('Failed to close browser: ' + e.message, 'error');
                 }
+            }
 
-                document.getElementById('tabEmpty').style.display = 'none';
+            async function toggleBrowserEnabled(id, enabled) {
+                try {
+                    await api(`/browsers/${id}`, 'PUT', { is_enabled: enabled });
+                    showToast(`Browser ${id} is now ${enabled ? 'Online' : 'Offline'}`, 'success');
+                    loadBrowsers();
+                } catch (e) {
+                    showToast('Operation failed: ' + e.message, 'error');
+                }
+            }
 
-                const html = filteredTabs.map(t => `
+            async function deleteBrowser(id) {
+                if (!confirm(`Delete browser ${id}?`)) return;
+                try {
+                    await api(`/browsers/${id}`, 'DELETE');
+                    showToast(`Browser ${id} deleted`, 'success');
+                    loadBrowsers();
+                } catch (e) {
+                    showToast('Failed to delete browser: ' + e.message, 'error');
+                }
+            }
+
+            function showCreateBrowserModal() {
+                document.getElementById('createBrowserForm').reset();
+                document.getElementById('newHeadless').checked = true;
+                document.getElementById('newAutoStart').checked = true;
+                showModal('createBrowserModal');
+            }
+
+            async function createBrowser(e) {
+                e.preventDefault();
+                try {
+                    const data = {
+                        auto_start: document.getElementById('newAutoStart').checked,
+                    };
+
+                    const browserId = document.getElementById('newBrowserId').value;
+                    if (browserId) data.browser_id = parseInt(browserId);
+
+                    const accountName = document.getElementById('newAccountName').value;
+                    if (accountName) data.account_name = accountName;
+
+                    const proxy = document.getElementById('newProxy').value;
+                    if (proxy) data.proxy = proxy;
+
+                    const maxTabs = document.getElementById('newMaxTabs').value;
+                    if (maxTabs) data.max_tabs = parseInt(maxTabs);
+
+                    await api('/browsers', 'POST', data);
+                    showToast('Browser created', 'success');
+                    hideModal('createBrowserModal');
+                    loadBrowsers();
+                } catch (e) {
+                    showToast('Failed to create browser: ' + e.message, 'error');
+                }
+            }
+
+            function showEditBrowserModal(id) {
+                const browser = browserData.find(b => b.browser_id === id);
+                if (!browser) return;
+
+                document.getElementById('editBrowserId').value = id;
+                document.getElementById('editAccountName').value = browser.account_name;
+                document.getElementById('editProxy').value = browser.proxy || '';
+                document.getElementById('editAutoStart').checked = true;
+
+                showModal('editBrowserModal');
+            }
+
+            async function updateBrowser(e) {
+                e.preventDefault();
+                try {
+                    const id = document.getElementById('editBrowserId').value;
+                    const data = {
+                        account_name: document.getElementById('editAccountName').value,
+                        proxy: document.getElementById('editProxy').value || null,
+                        auto_start: document.getElementById('editAutoStart').checked,
+                    };
+
+                    await api(`/browsers/${id}`, 'PUT', data);
+                    showToast('Browser updated', 'success');
+                    hideModal('editBrowserModal');
+                    loadBrowsers();
+                } catch (e) {
+                    showToast('Failed to update browser: ' + e.message, 'error');
+                }
+            }
+
+            // Tabs
+            let tabsData = [];
+
+            async function loadTabs() {
+                try {
+                    const data = await api('/tabs');
+                    tabsData = data.tabs;
+
+                    // 更新统计卡片
+                    document.getElementById('totalTabs').textContent = data.total;
+                    document.getElementById('idleTabs').textContent = data.status_count.idle || 0;
+                    document.getElementById('busyTabs').textContent = data.status_count.busy || 0;
+                    document.getElementById('sleepTabs').textContent = data.status_count.sleep || 0;
+                    document.getElementById('errorTabs').textContent = (data.status_count.error || 0) + (data.status_count.disabled || 0) + (data.status_count.closed || 0) + (data.status_count.launching || 0);
+
+                    // 更新浏览器筛选器
+                    const browsers = [...new Set(tabsData.map(t => t.browser_id))];
+                    const browserOptions = browsers.map(id => `<option value="${id}">${id}</option>`).join('');
+                    document.getElementById('tabBrowserFilter').innerHTML = '<option value="">All Browsers</option>' + browserOptions;
+
+                    // 应用筛选
+                    const statusFilter = document.getElementById('tabStatusFilter').value;
+                    const browserFilter = document.getElementById('tabBrowserFilter').value;
+
+                    let filteredTabs = tabsData;
+                    if (statusFilter) {
+                        filteredTabs = filteredTabs.filter(t => t.status === statusFilter);
+                    }
+                    if (browserFilter) {
+                        filteredTabs = filteredTabs.filter(t => t.browser_id === browserFilter);
+                    }
+
+                    if (filteredTabs.length === 0) {
+                        document.getElementById('tabList').innerHTML = '';
+                        document.getElementById('tabEmpty').style.display = 'block';
+                        return;
+                    }
+
+                    document.getElementById('tabEmpty').style.display = 'none';
+
+                    const html = filteredTabs.map(t => `
                     <tr>
                         <td><strong>${t.browser_id}</strong></td>
                         <td>Tab ${t.tab_id}</td>
@@ -1219,71 +1194,71 @@
                     </tr>
                 `).join('');
 
-                document.getElementById('tabList').innerHTML = html;
-            } catch (e) {
-                showToast('Failed to load tabs: ' + e.message, 'error');
-            }
-        }
-
-        async function reinitializeTab(browserId, tabId) {
-            try {
-                showToast(`Reinitializing ${browserId} Tab ${tabId}...`);
-                const result = await api(`/browsers/${browserId}/tabs/${tabId}/reinitialize`, 'POST');
-                if (result.success) {
-                    showToast(`Tab ${browserId}-${tabId} reinitialized`, 'success');
-                } else {
-                    showToast(`Tab ${browserId}-${tabId} reinitialize failed`, 'error');
-                }
-                loadTabs();
-            } catch (e) {
-                showToast('Failed to reinitialize tab: ' + e.message, 'error');
-            }
-        }
-
-        async function reinitializeErrorTabs() {
-            const errorTabs = tabsData.filter(t => t.status === 'error');
-            if (errorTabs.length === 0) {
-                showToast('No error tabs to reinitialize', 'success');
-                return;
-            }
-
-            if (!confirm(`Reinitialize ${errorTabs.length} error tab(s)?`)) return;
-
-            showToast(`Reinitializing ${errorTabs.length} error tabs...`);
-            let successCount = 0;
-            for (const tab of errorTabs) {
-                try {
-                    const result = await api(`/browsers/${tab.browser_id}/tabs/${tab.tab_id}/reinitialize`, 'POST');
-                    if (result.success) successCount++;
+                    document.getElementById('tabList').innerHTML = html;
                 } catch (e) {
-                    console.error(`Failed to reinit ${tab.browser_id}-${tab.tab_id}:`, e);
+                    showToast('Failed to load tabs: ' + e.message, 'error');
                 }
             }
-            showToast(`Reinitialized ${successCount}/${errorTabs.length} tabs`, successCount === errorTabs.length ? 'success' : 'error');
-            loadTabs();
-        }
 
-        // Tasks
-        async function loadTasks() {
-            try {
-                const status = document.getElementById('taskStatusFilter').value;
-                const browserId = document.getElementById('taskBrowserFilter').value;
+            async function reinitializeTab(browserId, tabId) {
+                try {
+                    showToast(`Reinitializing ${browserId} Tab ${tabId}...`);
+                    const result = await api(`/browsers/${browserId}/tabs/${tabId}/reinitialize`, 'POST');
+                    if (result.success) {
+                        showToast(`Tab ${browserId}-${tabId} reinitialized`, 'success');
+                    } else {
+                        showToast(`Tab ${browserId}-${tabId} reinitialize failed`, 'error');
+                    }
+                    loadTabs();
+                } catch (e) {
+                    showToast('Failed to reinitialize tab: ' + e.message, 'error');
+                }
+            }
 
-                let endpoint = '/tasks?limit=50';
-                if (status) endpoint += `&status=${status}`;
-                if (browserId) endpoint += `&browser_id=${browserId}`;
-
-                const data = await api(endpoint);
-
-                if (data.tasks.length === 0) {
-                    document.getElementById('taskList').innerHTML = '';
-                    document.getElementById('taskEmpty').style.display = 'block';
+            async function reinitializeErrorTabs() {
+                const errorTabs = tabsData.filter(t => t.status === 'error');
+                if (errorTabs.length === 0) {
+                    showToast('No error tabs to reinitialize', 'success');
                     return;
                 }
 
-                document.getElementById('taskEmpty').style.display = 'none';
+                if (!confirm(`Reinitialize ${errorTabs.length} error tab(s)?`)) return;
 
-                const html = data.tasks.map(t => `
+                showToast(`Reinitializing ${errorTabs.length} error tabs...`);
+                let successCount = 0;
+                for (const tab of errorTabs) {
+                    try {
+                        const result = await api(`/browsers/${tab.browser_id}/tabs/${tab.tab_id}/reinitialize`, 'POST');
+                        if (result.success) successCount++;
+                    } catch (e) {
+                        console.error(`Failed to reinit ${tab.browser_id}-${tab.tab_id}:`, e);
+                    }
+                }
+                showToast(`Reinitialized ${successCount}/${errorTabs.length} tabs`, successCount === errorTabs.length ? 'success' : 'error');
+                loadTabs();
+            }
+
+            // Tasks
+            async function loadTasks() {
+                try {
+                    const status = document.getElementById('taskStatusFilter').value;
+                    const browserId = document.getElementById('taskBrowserFilter').value;
+
+                    let endpoint = '/tasks?limit=50';
+                    if (status) endpoint += `&status=${status}`;
+                    if (browserId) endpoint += `&browser_id=${browserId}`;
+
+                    const data = await api(endpoint);
+
+                    if (data.tasks.length === 0) {
+                        document.getElementById('taskList').innerHTML = '';
+                        document.getElementById('taskEmpty').style.display = 'block';
+                        return;
+                    }
+
+                    document.getElementById('taskEmpty').style.display = 'none';
+
+                    const html = data.tasks.map(t => `
                     <tr>
                         <td><code>${t.task_id.substring(0, 8)}...</code></td>
                         <td>${t.browser_id || '-'}</td>
@@ -1294,78 +1269,74 @@
                     </tr>
                 `).join('');
 
-                document.getElementById('taskList').innerHTML = html;
-            } catch (e) {
-                showToast('Failed to load tasks: ' + e.message, 'error');
-            }
-        }
-
-        // Config
-        async function loadConfig() {
-            try {
-                const data = await api('/config');
-
-                document.getElementById('cfgServerHost').value = data.server_host;
-                document.getElementById('cfgServerPort').value = data.server_port;
-                document.getElementById('cfgMinBrowsers').value = data.min_browsers;
-                document.getElementById('cfgMaxBrowsers').value = data.max_browsers;
-                document.getElementById('cfgRateLimit').value = data.default_rate_limit;
-                document.getElementById('cfgRateWindow').value = data.rate_window_seconds;
-                document.getElementById('cfgLbStrategy').value = data.lb_strategy;
-                document.getElementById('cfgLogLevel').value = data.log_level;
-                document.getElementById('cfgAdminUsername').value = data.admin_username;
-            } catch (e) {
-                showToast('Failed to load config: ' + e.message, 'error');
-            }
-        }
-
-        async function saveConfig(e) {
-            e.preventDefault();
-            try {
-                const data = {
-                    server_host: document.getElementById('cfgServerHost').value,
-                    server_port: parseInt(document.getElementById('cfgServerPort').value),
-                    min_browsers: parseInt(document.getElementById('cfgMinBrowsers').value),
-                    max_browsers: parseInt(document.getElementById('cfgMaxBrowsers').value),
-                    default_rate_limit: parseInt(document.getElementById('cfgRateLimit').value),
-                    rate_window_seconds: parseInt(document.getElementById('cfgRateWindow').value),
-                    lb_strategy: document.getElementById('cfgLbStrategy').value,
-                    log_level: document.getElementById('cfgLogLevel').value,
-                    admin_username: document.getElementById('cfgAdminUsername').value,
-                };
-
-                const password = document.getElementById('cfgAdminPassword').value;
-                if (password) data.admin_password = password;
-
-                await api('/config', 'PUT', data);
-                showToast('Configuration saved', 'success');
-                document.getElementById('cfgAdminPassword').value = '';
-            } catch (e) {
-                showToast('Failed to save config: ' + e.message, 'error');
-            }
-        }
-
-        // Logs
-        async function loadLogs() {
-            try {
-                const level = document.getElementById('logLevelFilter').value;
-                const browserId = document.getElementById('logBrowserFilter').value;
-
-                let endpoint = '/logs?limit=100';
-                if (level) endpoint += `&level=${level}`;
-                if (browserId) endpoint += `&browser_id=${browserId}`;
-
-                const data = await api(endpoint);
-
-                if (data.logs.length === 0) {
-                    document.getElementById('logList').innerHTML = '';
-                    document.getElementById('logEmpty').style.display = 'block';
-                    return;
+                    document.getElementById('taskList').innerHTML = html;
+                } catch (e) {
+                    showToast('Failed to load tasks: ' + e.message, 'error');
                 }
+            }
 
-                document.getElementById('logEmpty').style.display = 'none';
+            // Config
+            async function loadConfig() {
+                try {
+                    const data = await api('/config');
 
-                const html = data.logs.map(log => `
+                    document.getElementById('cfgServerHost').value = data.server_host;
+                    document.getElementById('cfgServerPort').value = data.server_port;
+                    document.getElementById('cfgMinBrowsers').value = data.min_browsers;
+                    document.getElementById('cfgMaxBrowsers').value = data.max_browsers;
+                    document.getElementById('cfgLbStrategy').value = data.lb_strategy;
+                    document.getElementById('cfgLogLevel').value = data.log_level;
+                    document.getElementById('cfgAdminUsername').value = data.admin_username;
+                } catch (e) {
+                    showToast('Failed to load config: ' + e.message, 'error');
+                }
+            }
+
+            async function saveConfig(e) {
+                e.preventDefault();
+                try {
+                    const data = {
+                        server_host: document.getElementById('cfgServerHost').value,
+                        server_port: parseInt(document.getElementById('cfgServerPort').value),
+                        min_browsers: parseInt(document.getElementById('cfgMinBrowsers').value),
+                        max_browsers: parseInt(document.getElementById('cfgMaxBrowsers').value),
+                        lb_strategy: document.getElementById('cfgLbStrategy').value,
+                        log_level: document.getElementById('cfgLogLevel').value,
+                        admin_username: document.getElementById('cfgAdminUsername').value,
+                    };
+
+                    const password = document.getElementById('cfgAdminPassword').value;
+                    if (password) data.admin_password = password;
+
+                    await api('/config', 'PUT', data);
+                    showToast('Configuration saved', 'success');
+                    document.getElementById('cfgAdminPassword').value = '';
+                } catch (e) {
+                    showToast('Failed to save config: ' + e.message, 'error');
+                }
+            }
+
+            // Logs
+            async function loadLogs() {
+                try {
+                    const level = document.getElementById('logLevelFilter').value;
+                    const browserId = document.getElementById('logBrowserFilter').value;
+
+                    let endpoint = '/logs?limit=100';
+                    if (level) endpoint += `&level=${level}`;
+                    if (browserId) endpoint += `&browser_id=${browserId}`;
+
+                    const data = await api(endpoint);
+
+                    if (data.logs.length === 0) {
+                        document.getElementById('logList').innerHTML = '';
+                        document.getElementById('logEmpty').style.display = 'block';
+                        return;
+                    }
+
+                    document.getElementById('logEmpty').style.display = 'none';
+
+                    const html = data.logs.map(log => `
                     <div class="log-item">
                         <span class="log-time">${formatTime(log.created_at)}</span>
                         <span class="log-level ${log.level}">${log.level}</span>
@@ -1374,104 +1345,104 @@
                     </div>
                 `).join('');
 
-                document.getElementById('logList').innerHTML = html;
-            } catch (e) {
-                showToast('Failed to load logs: ' + e.message, 'error');
-            }
-        }
-
-        async function clearOldLogs() {
-            if (!confirm('Clear logs older than 7 days?')) return;
-            try {
-                await api('/logs?days=7', 'DELETE');
-                showToast('Old logs cleared', 'success');
-                loadLogs();
-            } catch (e) {
-                showToast('Failed to clear logs: ' + e.message, 'error');
-            }
-        }
-
-        // Utils
-        function showModal(id) {
-            document.getElementById(id).classList.add('show');
-        }
-
-        function hideModal(id) {
-            document.getElementById(id).classList.remove('show');
-        }
-
-        function showToast(message, type = '') {
-            const toast = document.getElementById('toast');
-            toast.textContent = message;
-            toast.className = 'toast show ' + type;
-            setTimeout(() => toast.classList.remove('show'), 3000);
-        }
-
-        function formatTime(isoString) {
-            if (!isoString) return '-';
-            const date = new Date(isoString);
-            return date.toLocaleString('zh-CN', {
-                month: '2-digit',
-                day: '2-digit',
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit',
-            });
-        }
-
-        function truncate(str, len) {
-            if (!str) return '-';
-            return str.length > len ? str.substring(0, len) + '...' : str;
-        }
-
-        function escapeHtml(str) {
-            if (!str) return '';
-            const div = document.createElement('div');
-            div.textContent = str;
-            return div.innerHTML;
-        }
-
-        async function resetAllStats() {
-            if (!confirm('确定要重置所有任务统计并清空今日日志/调试文件吗？此操作不可恢复。')) {
-                return;
-            }
-
-            try {
-                // 1. 重置任务统计
-                const taskRes = await fetch('/api/admin/tasks/reset', { method: 'DELETE' });
-                const taskData = await taskRes.json();
-
-                // 2. 清理今日日志
-                const logRes = await fetch('/api/admin/logs/today', { method: 'DELETE' });
-                const logData = await logRes.json();
-
-                if (taskData.success && logData.success) {
-                    showToast('重置成功：统计已归零，今日日志已清空', 'success');
-                    refreshCurrentTab();
-                } else {
-                    showToast('重置部分失败，请检查后端日志', 'error');
-                    console.error('Reset results:', { taskData, logData });
+                    document.getElementById('logList').innerHTML = html;
+                } catch (e) {
+                    showToast('Failed to load logs: ' + e.message, 'error');
                 }
-            } catch (err) {
-                showToast('重置请求失败: ' + err.message, 'error');
             }
-        }
 
-        // Close modals on backdrop click
-        document.querySelectorAll('.modal').forEach(modal => {
-            modal.addEventListener('click', (e) => {
-                if (e.target === modal) {
-                    modal.classList.remove('show');
+            async function clearOldLogs() {
+                if (!confirm('Clear logs older than 7 days?')) return;
+                try {
+                    await api('/logs?days=7', 'DELETE');
+                    showToast('Old logs cleared', 'success');
+                    loadLogs();
+                } catch (e) {
+                    showToast('Failed to clear logs: ' + e.message, 'error');
                 }
+            }
+
+            // Utils
+            function showModal(id) {
+                document.getElementById(id).classList.add('show');
+            }
+
+            function hideModal(id) {
+                document.getElementById(id).classList.remove('show');
+            }
+
+            function showToast(message, type = '') {
+                const toast = document.getElementById('toast');
+                toast.textContent = message;
+                toast.className = 'toast show ' + type;
+                setTimeout(() => toast.classList.remove('show'), 3000);
+            }
+
+            function formatTime(isoString) {
+                if (!isoString) return '-';
+                const date = new Date(isoString);
+                return date.toLocaleString('zh-CN', {
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                });
+            }
+
+            function truncate(str, len) {
+                if (!str) return '-';
+                return str.length > len ? str.substring(0, len) + '...' : str;
+            }
+
+            function escapeHtml(str) {
+                if (!str) return '';
+                const div = document.createElement('div');
+                div.textContent = str;
+                return div.innerHTML;
+            }
+
+            async function resetAllStats() {
+                if (!confirm('确定要重置所有任务统计并清空今日日志/调试文件吗？此操作不可恢复。')) {
+                    return;
+                }
+
+                try {
+                    // 1. 重置任务统计
+                    const taskRes = await fetch('/api/admin/tasks/reset', { method: 'DELETE' });
+                    const taskData = await taskRes.json();
+
+                    // 2. 清理今日日志
+                    const logRes = await fetch('/api/admin/logs/today', { method: 'DELETE' });
+                    const logData = await logRes.json();
+
+                    if (taskData.success && logData.success) {
+                        showToast('重置成功：统计已归零，今日日志已清空', 'success');
+                        refreshCurrentTab();
+                    } else {
+                        showToast('重置部分失败，请检查后端日志', 'error');
+                        console.error('Reset results:', { taskData, logData });
+                    }
+                } catch (err) {
+                    showToast('重置请求失败: ' + err.message, 'error');
+                }
+            }
+
+            // Close modals on backdrop click
+            document.querySelectorAll('.modal').forEach(modal => {
+                modal.addEventListener('click', (e) => {
+                    if (e.target === modal) {
+                        modal.classList.remove('show');
+                    }
+                });
             });
-        });
 
-        // Initial load
-        loadDashboard();
+            // Initial load
+            loadDashboard();
 
-        // Auto refresh every 30 seconds
-        setInterval(refreshCurrentTab, 30000);
-    </script>
+            // Auto refresh every 30 seconds
+            setInterval(refreshCurrentTab, 30000);
+        </script>
 </body>
 
 </html>

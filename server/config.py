@@ -30,13 +30,6 @@ class BrowserPoolConfig(BaseModel):
     download_workers: int = 2
 
 
-class RateLimitConfig(BaseModel):
-    """速率限制配置"""
-    default_limit: int = 10  # 每分钟请求数
-    window_seconds: int = 60
-    burst: int = 20
-
-
 class LoadBalancerConfig(BaseModel):
     """负载均衡配置"""
     strategy: str = "least_loaded"  # round_robin/least_loaded/random
@@ -63,7 +56,6 @@ class Config(BaseModel):
     """全局配置"""
     server: ServerConfig = ServerConfig()
     browser_pool: BrowserPoolConfig = BrowserPoolConfig()
-    rate_limit: RateLimitConfig = RateLimitConfig()
     load_balancer: LoadBalancerConfig = LoadBalancerConfig()
     logging: LoggingConfig = LoggingConfig()
     security: SecurityConfig = SecurityConfig()
@@ -76,8 +68,6 @@ def apply_env_overrides(config: Config) -> Config:
         "SERVER_PORT": ("server", "port", int),
         "MAX_BROWSERS": ("browser_pool", "max_browsers", int),
         "MIN_BROWSERS": ("browser_pool", "min_browsers", int),
-        "RATE_LIMIT": ("rate_limit", "default_limit", int),
-        "RATE_WINDOW": ("rate_limit", "window_seconds", int),
         "LB_STRATEGY": ("load_balancer", "strategy", str),
         "LOG_LEVEL": ("logging", "level", str),
         "ADMIN_USERNAME": ("security", "admin_username", str),
@@ -109,10 +99,6 @@ def config_from_global(global_config: GlobalConfig) -> Config:
         browser_pool=BrowserPoolConfig(
             min_browsers=global_config.min_browsers,
             max_browsers=global_config.max_browsers,
-        ),
-        rate_limit=RateLimitConfig(
-            default_limit=global_config.default_rate_limit,
-            window_seconds=global_config.rate_window_seconds,
         ),
         load_balancer=LoadBalancerConfig(
             strategy=global_config.lb_strategy,
