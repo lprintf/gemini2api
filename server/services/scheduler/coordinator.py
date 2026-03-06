@@ -49,8 +49,9 @@ class TaskCoordinator:
         await db.create_task(task_record)
         
         try:
-            # 1. O(1) 获取可用 Tab (资源抢占在 acquire_tab 内部由 Queue 保证)
-            tab = await self.pool.acquire_tab(model=model)
+            # 1. 获取可用 Tab (设置 10s 超时，超时抛出 NoAvailableBrowsers 触发 429)
+            from ..objects.exceptions import NoAvailableBrowsers
+            tab = await self.pool.acquire_tab(model=model, timeout=10.0)
             browser = self.pool.get_browser(tab.browser_id)
             if not browser:
                 raise RuntimeError(f"Browser {tab.browser_id} for acquired tab not found")
@@ -93,7 +94,9 @@ class TaskCoordinator:
                     "status": "failed",
                     "error_message": error_msg,
                     "duration": duration,
-                    "completed_at": datetime.now()
+                    "completed_at": datetime.now(),
+                    "browser_id": browser.browser_id if browser else None,
+                    "tab_id": tab.tab_id if tab else None
                 })
                 return {"success": False, "error": error_msg}
 
@@ -118,6 +121,9 @@ class TaskCoordinator:
                 "duration": duration
             }
 
+        except (NoAvailableBrowsers, NoAvailableTabs) as e:
+            # 资源不足直接透传，由 API 层转为 429
+            raise e
         except BaseException as e:
             now = datetime.now()
             # 如果 browser/tab 已准备好，则进行惩罚
@@ -140,7 +146,9 @@ class TaskCoordinator:
                 "status": "failed",
                 "error_message": str(e),
                 "duration": duration,
-                "completed_at": datetime.now()
+                "completed_at": datetime.now(),
+                "browser_id": browser.browser_id if browser else None,
+                "tab_id": tab.tab_id if tab else None
             })
             raise e
         finally:

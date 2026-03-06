@@ -242,18 +242,29 @@ class BrowserPool:
             )
             return browser_id_str
             
-    async def acquire_tab(self, model: str = "Fast") -> "TabInstance":
-        """O(1) 获取一个可用标签页"""
+    async def acquire_tab(self, model: str = "Fast", timeout: Optional[float] = None) -> "TabInstance":
+        """获取一个可用标签页 (支持超时)"""
+        from ..objects.exceptions import NoAvailableBrowsers
+        
         if model not in self._idle_queues:
             model = "Fast" # 默认回退
             
-        # 阻塞等待直至队列中有可用资源
-        tab = await self._idle_queues[model].get()
-        return tab
+        try:
+            if timeout == 0:
+                # 立即获取，不阻塞
+                return self._idle_queues[model].get_nowait()
+            elif timeout is not None:
+                # 阻塞等待直至超时
+                return await asyncio.wait_for(self._idle_queues[model].get(), timeout=timeout)
+            else:
+                # 永久阻塞等待
+                return await self._idle_queues[model].get()
+        except (asyncio.QueueEmpty, asyncio.TimeoutError):
+            raise NoAvailableBrowsers()
 
     async def release_tab(self, tab: "TabInstance"):
         """将标签页还回对应模型的空闲队列"""
-        await asyncio.sleep(random.randint(50, 300) / 1000.0)
+        await asyncio.sleep(random.randint(50, 3000) / 1000.0)
         if tab.status != BrowserStatus.IDLE:
             # 如果不是 IDLE 状态（如处于 SLEEP），则不进入队列
             return
