@@ -63,7 +63,9 @@ _SELECTORS = {
     "image_gen_opt": [
         'button.toolbox-drawer-item-list-button:has-text("Create images")',
         'button.toolbox-drawer-item-list-button:has-text("Create image")',
+        'button.toolbox-drawer-item-list-button:has-text("Image")',
         'button.toolbox-drawer-item-list-button:has-text("生成图片")',
+        'button.toolbox-drawer-item-list-button:has-text("图片")',
         'button.toolbox-drawer-item-list-button:has-text("制作图片")',
     ],
     "image_gen_deselect": ".toolbox-drawer-item-deselect-button",
