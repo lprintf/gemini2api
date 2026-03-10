@@ -76,7 +76,7 @@ class ImageGenerationTask(BaseEngineTask):
             # wait_for_results 会在大约 3 秒文本无变化或检测到图片时返回
             generation_success = await actions.wait_for_results(
                 page, 
-                timeout_s=149 if model != "Fast" else 99,
+                timeout_s=149 if model != "Fast" else 129,
                 original_prompt=prompt
             )
             durations["generate"] = round(time.time() - t2, 3)
