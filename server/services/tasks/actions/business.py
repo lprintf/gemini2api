@@ -413,7 +413,7 @@ async def get_generated_urls(page: Page, max_wait_s: int = 12) -> List[str]:
         
     return []
 
-async def download_hd_image(page: Page, img_url: str, remove_wm: bool = True, max_attempts: int = 4, is_disconnected: Optional[Any] = None):
+async def download_hd_image(page: Page, img_url: str, remove_wm: bool = True, max_attempts: int = 3, is_disconnected: Optional[Any] = None):
     """下载高清图片 (精准 Hover 下载版，带 Snackbar 错误检测和快速失败)"""
     for attempt in range(max_attempts):
         is_last = (attempt == max_attempts - 1)
@@ -520,11 +520,8 @@ async def download_hd_image(page: Page, img_url: str, remove_wm: bool = True, ma
                 tab_log(page, f"Attempt {attempt+1} failed, retrying...", "warning")
                 await asyncio.sleep(0.5)
         
-    tab_log(page, "Falling back to direct request.", "warning")
-    success, img_bytes, h, stats = await download_q_image(page, img_url, remove_wm)
-    if stats:
-        stats["mode"] = "hd_fallback_q"
-    return success, img_bytes, h, stats
+    return False, None, None, {"error": "HD download failed after all attempts", "mode": "hd_failure"}
+
 
 async def download_q_image(page: Page, img_url: str, remove_wm: bool = True, is_disconnected: Optional[Any] = None):
     """通过 URL 直接请求下载预览图 (纯内存处理)"""
