@@ -137,10 +137,13 @@ class TaskCoordinator:
                 tab.failed_tasks += 1
                 tab.consecutive_failures += 1
                 
-                # 【全局惩罚】：发生故障或被取消时，强制进入 9 分钟冷却（若尚未标记）
+                # 【全局惩罚】：发生故障时，强制进入 9 分钟冷却（若尚未标记）
+                # 注意：如果是 asyncio.CancelledError (Client disconnected)，不记录严厉惩罚，仅让其 rewarm
                 from server.services.objects.exceptions import BrowserStatus
-                if tab.status != BrowserStatus.SLEEP:
-                    tab_log(tab.page, f"Task failed or cancelled: {e}. Triggering 9m mandatory punishment.", "error")
+                if isinstance(e, asyncio.CancelledError):
+                    tab_log(tab.page, f"Task cancelled by client: {e}. Skipping 9m penalty, triggering rewarm.", "warning")
+                elif tab.status != BrowserStatus.SLEEP:
+                    tab_log(tab.page, f"Task failed with error: {e}. Triggering 9m mandatory punishment.", "error")
                     tab.status = BrowserStatus.SLEEP
                     tab.sleep_until = now + timedelta(minutes=9)
             
