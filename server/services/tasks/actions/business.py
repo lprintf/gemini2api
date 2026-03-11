@@ -282,11 +282,25 @@ async def wait_for_results(page: Page, timeout_s: int = 60, original_prompt: str
             (prefix) => {{
                 // 0. [严格回退检测] 如果编辑器里重新出现了刚才发送的提示词，说明提交被静默拒绝并回退
                 const editor = document.querySelector('.ql-editor.new-input-ui');
-                if (editor && prefix && editor.innerText.length > 10) {{
+                const stopBtn = document.querySelector('.send-button.stop');
+                
+                // 只要没有停止按钮，且输入框里有我们的 Prompt (哪怕只有一部分)，就判定为回退
+                if (!stopBtn && editor && prefix) {{
                     const currentText = editor.innerText.trim();
                     if (currentText.includes(prefix)) {{
                         window._gemini_reverted = true;
                         return true; 
+                    }}
+                }}
+
+                // 0.1 [错误弹窗检测] 检测页面上的错误提示 (如 Safety 拦截、Quota 拦截等)
+                const snackbar = document.querySelector('mat-snack-bar-container, .snack-bar, m-snackbar');
+                if (snackbar) {{
+                    const txt = snackbar.innerText.toLowerCase();
+                    const errKeywords = ["something went wrong", "unable to", "failed", "violation", "safety", "无法", "错误", "失败"];
+                    if (errKeywords.some(k => txt.includes(k))) {{
+                        window._gemini_reverted = true; // 借用此标志作为快速失败信号
+                        return true;
                     }}
                 }}
 
@@ -307,8 +321,7 @@ async def wait_for_results(page: Page, timeout_s: int = 60, original_prompt: str
                 const isComplete = footer && footer.classList.contains('complete');
 
                 // 2.1 全局信号：停止相应按钮是否存在 (如果存在，说明还在吐字)
-                const globalStopBtn = document.querySelector('.send-button.stop');
-                const isActuallyGenerating = !!globalStopBtn;
+                const isActuallyGenerating = !!stopBtn;
 
                 // 获取当前文本长度（排除视障辅助文本）
                 let currentLen = 0;
@@ -462,55 +475,96 @@ async def download_hd_image(page: Page, img_url: str, remove_wm: bool = True, ma
             except Exception:
                 download_btn = None
 
-            if download_btn:
-                t_dl_start = time.time()
-                try:
-                    async with page.expect_download(timeout=19000) as download_info:
-                        tab_log(page, "Attempting forced click on download button...")
+            t_dl_start = time.time()
+            try:
+                async with page.expect_download(timeout=19000) as download_info:
+                    if download_btn:
+                        tab_log(page, "Attempting forced native click on download button...")
                         await download_btn.click(force=True)
-                        
-                        # 核心优化：在点击后的前 2 秒内高频监测 Snackbar，实现“秒级”快速失败
-                        # 这不需要等到 expect_download 超时
-                        for _ in range(4): # 0.5s * 4 = 2s
-                            error_toast = await page.query_selector('mat-snack-bar-container, .snack-bar, m-snackbar')
-                            if error_toast:
-                                toast_text = await error_toast.inner_text()
-                                if any(k in toast_text for k in ["无法下载", "can't download", "无法保存", "error"]):
-                                    tab_log(page, f"UI Error Toast detected: {toast_text.strip()}. Aborting wait.", "warning")
-                                    # 注意：这里不能简单 continue，因为 expect_download 还在运行
-                                    # 我们通过这种方式尽早跳出本次下载尝试
-                                    raise TimeoutError("Fast-fail due to UI Error Toast")
-                            await asyncio.sleep(0.5)
-
-                        tab_log(page, "Download button clicked, waiting for event...")
-
-                    download = await download_info.value
-                    dl_url = str(download.url) # 转换为字符串确保安全
-                    tab_log(page, f"Download event captured: {download.suggested_filename} | URL: {dl_url[:80]}...")
-                    
-                    if dl_url.startswith("blob:null"):
-                        tab_log(page, f"Warning: Detected blob:null URL ({dl_url}). Gemini context might be isolated.", "error")
-
-                    failure = await download.failure() # 日志显示这是个协程，必须 await
-                    if failure:
-                        tab_log(page, f"Download failure reported by browser: {failure}", "error")
-                        continue
-                        
-                    path = await download.path()
-                    dl_time = round(time.time() - t_dl_start, 3)
-                    if path:
-                        buf = BytesIO(Path(path).read_bytes())
-                        success, img_bytes, img_hash, p_stats = await _process_image(buf, remove_wm)
-                        if success:
-                            p_stats["dl_time"] = dl_time
-                            p_stats["mode"] = "hd"
-                            p_stats["hd_url"] = dl_url
-                        return success, img_bytes, img_hash, p_stats
-                except Exception as e:
-                    if "Fast-fail" in str(e):
-                        tab_log(page, f"Attempt {attempt+1} aborted early: {e}")
                     else:
-                        tab_log(page, f"HD wait_for_download exception (attempt {attempt+1}): {str(e)}")
+                        tab_log(page, "Native wait failed, attempting robust JS physical click fallback...")
+                        clicked = await page.evaluate(f"""
+                            (imgUrl) => {{
+                                const containers = document.querySelectorAll('model-response, response-container, .model-response');
+                                if (containers.length === 0) return {{ success: false, reason: "no containers" }};
+                                const last = containers[containers.length - 1];
+                                
+                                let imgs = Array.from(last.querySelectorAll('img'));
+                                let targetImg = imgs.find(i => i.src === imgUrl);
+                                if (!targetImg && imgUrl) {{
+                                    const base = imgUrl.split('=')[0].split('?')[0];
+                                    targetImg = imgs.find(i => i.src.includes(base));
+                                }}
+                                if (!targetImg && imgs.length === 1) targetImg = imgs[0];
+                                if (!targetImg) return {{ success: false, reason: "img not found", foundUrls: imgs.map(i=>i.src) }};
+                                
+                                let parent = targetImg.parentElement;
+                                let btn = null;
+                                for(let i=0; i<6; i++) {{
+                                    if(!parent || parent === last) break;
+                                    btn = parent.querySelector('{combined_selector}');
+                                    if(btn) break;
+                                    parent = parent.parentElement;
+                                }}
+                                
+                                if (!btn) btn = last.querySelector('{combined_selector}');
+                                
+                                if(btn) {{
+                                    btn.scrollIntoView();
+                                    btn.click();
+                                    return {{ success: true }};
+                                }}
+                                return {{ success: false, reason: "btn not found in parents or response container" }};
+                            }}
+                        """, img_url)
+                        if not clicked.get("success"):
+                            tab_log(page, f"JS Physical click failed: {{clicked.get('reason')}}", "warning")
+                            raise TimeoutError(f"JS fallback failed: {{clicked.get('reason')}}")
+                        else:
+                            tab_log(page, "JS Physical click executed successfully.")
+
+                    # 核心优化：在点击后的前 2 秒内高频监测 Snackbar，实现“秒级”快速失败
+                    # 这不需要等到 expect_download 超时
+                    for _ in range(4): # 0.5s * 4 = 2s
+                        error_toast = await page.query_selector('mat-snack-bar-container, .snack-bar, m-snackbar')
+                        if error_toast:
+                            toast_text = await error_toast.inner_text()
+                            if any(k in toast_text for k in ["无法下载", "can't download", "无法保存", "error"]):
+                                tab_log(page, f"UI Error Toast detected: {toast_text.strip()}. Aborting wait.", "warning")
+                                # 注意：这里不能简单 continue，因为 expect_download 还在运行
+                                # 我们通过这种方式尽早跳出本次下载尝试
+                                raise TimeoutError("Fast-fail due to UI Error Toast")
+                        await asyncio.sleep(0.5)
+
+                    tab_log(page, "Download button clicked, waiting for event...")
+
+                download = await download_info.value
+                dl_url = str(download.url) # 转换为字符串确保安全
+                tab_log(page, f"Download event captured: {download.suggested_filename} | URL: {dl_url[:80]}...")
+                
+                if dl_url.startswith("blob:null"):
+                    tab_log(page, f"Warning: Detected blob:null URL ({dl_url}). Gemini context might be isolated.", "error")
+
+                failure = await download.failure() # 日志显示这是个协程，必须 await
+                if failure:
+                    tab_log(page, f"Download failure reported by browser: {failure}", "error")
+                    continue
+                    
+                path = await download.path()
+                dl_time = round(time.time() - t_dl_start, 3)
+                if path:
+                    buf = BytesIO(Path(path).read_bytes())
+                    success, img_bytes, img_hash, p_stats = await _process_image(buf, remove_wm)
+                    if success:
+                        p_stats["dl_time"] = dl_time
+                        p_stats["mode"] = "hd"
+                        p_stats["hd_url"] = dl_url
+                    return success, img_bytes, img_hash, p_stats
+            except Exception as e:
+                if "Fast-fail" in str(e):
+                    tab_log(page, f"Attempt {attempt+1} aborted early: {e}")
+                else:
+                    tab_log(page, f"HD wait_for_download exception (attempt {attempt+1}): {str(e)}")
             
             if not is_last: continue
         except Exception as e:

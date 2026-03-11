@@ -181,17 +181,29 @@ class ImageGenerationTask(BaseEngineTask):
                 )
                 durations["download"] = round(time.time() - t3, 3)
 
-            # 统一校验：如果没有下载到任何图片信息，则视为失败（除非上面 Situation A 已提前返回）
+            # 统一校验：如果没有下载到任何图片信息，则视为失败（除非有文字回复）
             if not images_info:
                 # 获取最后探测到的图片 URL 数量，用于更精确的报错
                 urls = await actions.get_generated_urls(page)
-                error_msg = f"Failed to process any generated images (Found {len(urls)} URLs but all failed)"
-                tab_log(page, error_msg, "error")
-                await actions.dump_inspect(page, mode="full")
-                await actions.dump_html(page)
-                tab.status = BrowserStatus.SLEEP
-                tab.sleep_until = datetime.now() + timedelta(minutes=9)
-                return TaskResult(success=False, error=error_msg)
+                if urls:
+                    error_msg = f"Failed to process any generated images (Found {len(urls)} URLs but all failed)"
+                    tab_log(page, error_msg, "error")
+                    
+                    if not response_text:
+                        # 彻底没图也没文字，才判死刑
+                        await actions.dump_inspect(page, mode="full")
+                        await actions.dump_html(page)
+                        tab.status = BrowserStatus.SLEEP
+                        tab.sleep_until = datetime.now() + timedelta(minutes=9)
+                        return TaskResult(success=False, error=error_msg)
+                    else:
+                        # 有文字但没下载到图，标记为警告并正常返回
+                        tab_log(page, f"Warning: {len(urls)} images detected but failed to download. Returning text as fallback.", "warning")
+                elif not response_text:
+                    # 既没图也没文字
+                    error_msg = "No results found (no images and no text)"
+                    tab_log(page, error_msg, "error")
+                    return TaskResult(success=False, error=error_msg)
             
             # 汇总结果数据（包含图文混排场景）
             result_data = {
