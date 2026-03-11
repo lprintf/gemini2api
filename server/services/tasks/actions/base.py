@@ -62,10 +62,22 @@ async def select_menu_item(page: Page, item_selectors: List[str], menu_selectors
     return False
 
 async def upload_image(page: Page, image_path: str, selector: str = _SELECTORS["input_box"]):
-    """粘贴图片上传 (非阻塞版：仅触发粘贴)"""
+    """上传图片 (优先使用原生文件输入，回退至 JS 粘贴)"""
     img_file = Path(image_path)
     if not img_file.exists(): return False
     
+    # 1. 首选方案: 寻找隐藏的 input[type="file"] 直接赋值 (headless=new 标准解法)
+    try:
+        file_inputs = page.locator('input[type="file"]')
+        count = await file_inputs.count()
+        if count > 0:
+            # Gemini 通常有动态生成的隐含 file input
+            await file_inputs.nth(count - 1).set_input_files(str(img_file))
+            return True
+    except Exception as e:
+        tab_log(page, f"Native set_input_files failed: {e}. Falling back to JS paste.", "warning")
+
+    # 2. 回退方案: JS 模拟剪贴板粘贴 (可能在最新版内核被 isTrusted 拦截)
     with open(img_file, "rb") as f:
         img_data = f.read()
         img_b64 = base64.b64encode(img_data).decode()

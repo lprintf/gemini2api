@@ -324,7 +324,7 @@ class BrowserPool:
             )
 
         # 异步启动，不阻塞 API
-        asyncio.create_task(browser.launch())
+        asyncio.create_task(browser.launch(on_tab_ready=self.release_tab))
 
     async def close_browser(self, browser_id: str):
         """停止指定浏览器"""

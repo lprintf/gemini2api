@@ -7,7 +7,7 @@ services:
       dockerfile: Dockerfile
     image: gemini2api:latest
     restart: unless-stopped
-    shm_size: 32gb
+    shm_size: 64gb
     volumes:
       - ./server:/app/server:ro
       - ${DATA_DIR:-./data}:/app/data

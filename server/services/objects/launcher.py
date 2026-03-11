@@ -19,6 +19,7 @@ DEFAULT_PERMISSIONS = ["clipboard-read", "clipboard-write"]
 
 BASE_ARGS = [
     "--no-sandbox",
+    "--headless=new",
 ]
 
 def get_launch_args() -> List[str]:
@@ -86,8 +87,10 @@ class GeminiLauncher:
 
         self.context = await self.playwright.chromium.launch_persistent_context(
             str(self.user_data_dir),
+            headless=False,
             viewport=DEFAULT_VIEWPORT,
             args=launch_args,
+            ignore_default_args=["--headless", "--headless=old", "--disable-dev-shm-usage"],
             permissions=DEFAULT_PERMISSIONS,
             proxy=proxy_config,
         )

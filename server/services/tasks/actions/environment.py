@@ -109,8 +109,26 @@ async def prepare_environment(page: Page, model: str = "Fast") -> bool:
     return True
 
 async def reinitialize_page(page: Page, model: str = "Fast") -> bool:
-    """初始化/重置页面环境"""
+    """初始化/重置页面环境（增强防御版，清理 CSR 环境污染）"""
     try:
+        # 1. 注销引发死锁的 Service Worker 和清除临时状态
+        try:
+            await page.evaluate("""() => {
+                if ('serviceWorker' in navigator) {
+                    navigator.serviceWorker.getRegistrations().then(regs => {
+                        for (let reg of regs) reg.unregister();
+                    });
+                }
+                sessionStorage.clear();
+            }""")
+        except:
+            pass
+
+        # 2. 物理核弹：跳转到 about:blank 强制销毁当前 V8 上下文和分离的 DOM 树，解决堆内存碎片
+        await page.goto("about:blank", wait_until="commit", timeout=10000)
+        await asyncio.sleep(0.5)
+
+        # 3. 重新建立干净的客户端渲染环境
         await page.goto("https://gemini.google.com/app", wait_until="load", timeout=180000)
         return await prepare_environment(page, model)
     except Exception as e:
