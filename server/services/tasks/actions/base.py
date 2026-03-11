@@ -72,7 +72,11 @@ async def upload_image(page: Page, image_path: str, selector: str = _SELECTORS["
         count = await file_inputs.count()
         if count > 0:
             # Gemini 通常有动态生成的隐含 file input
-            await file_inputs.nth(count - 1).set_input_files(str(img_file))
+            input_el = file_inputs.nth(count - 1)
+            await input_el.set_input_files(str(img_file))
+            # [优化]：强制触发 change 事件并给 UI 一点反应时间
+            await input_el.evaluate("el => el.dispatchEvent(new Event('change', { bubbles: true }))")
+            await asyncio.sleep(0.5)
             return True
     except Exception as e:
         tab_log(page, f"Native set_input_files failed: {e}. Falling back to JS paste.", "warning")
