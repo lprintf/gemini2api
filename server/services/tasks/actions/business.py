@@ -207,7 +207,7 @@ async def submit_image_prompt(page: Page, prompt: str, image_paths: List[str] = 
         submit_success = await click_submit(page)
         
         if submit_success:
-            # 动态监测提交结果（最多等待 15s）
+            # 动态监测提交结果（最多等待 15.0s）
             timeout = 15.0
             start_wait = time.time()
             happy_counter = 0  # 信号稳定性计数器
