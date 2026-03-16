@@ -1,3 +1,9 @@
+"""
+运行命令: docker compose exec gemini2api uv run tests/test_hd.py
+
+错误日志存放在: /data/gemini2api/data/log/[日期] 下
+错误快照存放在: /data/gemini2api/data/debug/[日期] 下
+"""
 import asyncio
 import httpx
 import json
@@ -290,3 +296,4 @@ async def run_load_test():
 
 if __name__ == "__main__":
     asyncio.run(run_load_test())
+

@@ -230,18 +230,31 @@ class BrowserPool:
         if model not in self._idle_queues:
             raise ValueError(f"Model {model} not found in browser pool")
             
-        try:
-            if timeout == 0:
-                # 立即获取，不阻塞
-                return self._idle_queues[model].get_nowait()
-            elif timeout is not None:
-                # 阻塞等待直至超时
-                return await asyncio.wait_for(self._idle_queues[model].get(), timeout=timeout)
-            else:
-                # 永久阻塞等待
-                return await self._idle_queues[model].get()
-        except (asyncio.QueueEmpty, asyncio.TimeoutError):
-            raise NoAvailableBrowsers()
+        start_time = time.time()
+        while True:
+            current_timeout = timeout
+            if timeout is not None and timeout > 0:
+                elapsed = time.time() - start_time
+                current_timeout = max(0, timeout - elapsed)
+                
+            try:
+                if current_timeout == 0:
+                    tab = self._idle_queues[model].get_nowait()
+                elif current_timeout is not None:
+                    tab = await asyncio.wait_for(self._idle_queues[model].get(), timeout=current_timeout)
+                else:
+                    tab = await self._idle_queues[model].get()
+                    
+                # 校验底层的物理资源是否还活着（防毒丸出队）
+                # 注意：不能只查 tab.status 是否为 IDLE，因为 coordinator 的 failover 逻辑可能会将它强行置为 IDLE
+                browser = self.browsers.get(tab.browser_id)
+                if not browser or browser.status == BrowserStatus.CLOSED or getattr(tab, "page", None) is None:
+                    print(f"[BrowserPool] Dropped invalid tab {tab.tab_id} from browser {tab.browser_id} during acquire")
+                    continue
+                    
+                return tab
+            except (asyncio.QueueEmpty, asyncio.TimeoutError):
+                raise NoAvailableBrowsers()
 
     async def release_tab(self, tab: "TabInstance"):
         """将标签页还回对应模型的空闲队列"""

@@ -193,18 +193,43 @@ class TaskCoordinator:
                             tab_log(t.page, "Background work completed")
                     except Exception as e:
                         tab_log(t.page, f"Background chain failed at some stage: {e}", "error")
-                    finally:
-                        try:
-                            from ..tasks import actions
-                            await actions.reinitialize_page(t.page, model=m)
-                        except Exception as e:
-                            tab_log(t.page, f"Background final rewarm failed: {e}", "error")
-                        finally:
+
+                    # === 核心调度逻辑：处理惩罚、恢复与回笼 ===
+                    try:
+                        # 1. 如果处于 SLEEP 状态（如触发了 9m 惩罚），在此处挂起并保持现场
+                        if t.status == BrowserStatus.SLEEP and t.sleep_until:
+                            while True:
+                                now = datetime.now()
+                                wait_seconds = (t.sleep_until - now).total_seconds()
+                                if wait_seconds <= 0:
+                                    break
+                                tab_log(t.page, f"Tab is in SLEEP mode. {wait_seconds:.0f}s remaining before recovery.")
+                                await asyncio.sleep(min(60, wait_seconds))
+                            tab_log(t.page, "Sleep period ended. Starting recovery...")
+
+                        # 2. 如果有后台工作（如 HD 下载等），在此执行
+                        if work:
+                            tab_log(t.page, "Running background work...")
+                            await work
+
+                        # 3. 准备回笼：只要没死，就尝试洗白
+                        t.last_active_at = datetime.now()
+                        if t.status == BrowserStatus.CLOSED or getattr(t, "page", None) is None:
+                            tab_log(t.page, f"Tab {t.tab_id} is dead ({t.status}), skipping re-entry.", "warning")
+                            return
+
+                        from ..tasks import actions
+                        success = await actions.reinitialize_page(t.page, model=m)
+                        if success:
                             t.status = BrowserStatus.IDLE
                             t.sleep_until = None
-                            t.last_active_at = datetime.now()
-                            # 7. 【生命周期管控点】：重回队列，供下次分配
                             await self.pool.release_tab(t)
+                        else:
+                            t.status = BrowserStatus.ERROR
+                            tab_log(t.page, f"Tab {t.tab_id} re-warm failed, abandoned.", "warning")
+                    except Exception as e:
+                        tab_log(t.page, f"Fatal error in background chain: {e}", "error")
+                        t.status = BrowserStatus.ERROR
                 
                 asyncio.create_task(background_chain(tab, model, bg_work))
 
