@@ -479,7 +479,7 @@ async def download_hd_image(page: Page, img_url: str, remove_wm: bool = True, ma
 
             t_dl_start = time.time()
             try:
-                async with page.expect_download(timeout=19000) as download_info:
+                async with page.expect_download(timeout=29000) as download_info:
                     if download_btn:
                         tab_log(page, "Attempting forced native click on download button...")
                         await download_btn.click(force=True)
