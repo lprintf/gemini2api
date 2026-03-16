@@ -273,33 +273,38 @@ async def wait_for_results(page: Page, timeout_s: int = 60, original_prompt: str
     """
     try:
         # 清除之前的状态（如果有）
-        await page.evaluate("() => { window._gemini_wait_state = null; window._gemini_reverted = false; }")
+        await page.evaluate("() => { window._gemini_wait_state = null; window._gemini_reverted = false; window._gemini_last_log_ts = Date.now(); }")
         
-        # 取 Prompt 前 50 位作为回退匹配特征
-        prompt_prefix = original_prompt.strip()[:50]
+        # 对 Prompt 进行清理，用于精确比对（移除多余空格）
+        clean_prompt = original_prompt.strip()
         
         await page.wait_for_function(f"""
-            (prefix) => {{
-                // 0. [严格回退检测] 如果编辑器里重新出现了刚才发送的提示词，说明提交被静默拒绝并回退
+            (targetPrompt) => {{
                 const editor = document.querySelector('.ql-editor.new-input-ui');
                 const stopBtn = document.querySelector('.send-button.stop');
-                
-                // 只要没有停止按钮，且输入框里有我们的 Prompt (哪怕只有一部分)，就判定为回退
-                if (!stopBtn && editor && prefix) {{
+                const isActuallyGenerating = !!stopBtn;
+
+                // 1. [高精度回退检测] 
+                // 使用模糊匹配：只要编辑器里的文本包含了我们发送的 Prompt，就判定为回退
+                // 因为 Gemini 可能会加 "Image Edit: " 前缀，或者有微小的换行符差异
+                if (editor && targetPrompt) {{
                     const currentText = editor.innerText.trim();
-                    if (currentText.includes(prefix)) {{
+                    // 只要当前文本包含完整的原始 Prompt，且没有正在生成的迹象（或者编辑器看起来像是非活跃状态）
+                    if (currentText.includes(targetPrompt)) {{
                         window._gemini_reverted = true;
+                        window._gemini_revert_info = currentText; // 记录现场文本用于日志
                         return true; 
                     }}
                 }}
 
-                // 0.1 [错误弹窗检测] 检测页面上的错误提示 (如 Safety 拦截、Quota 拦截等)
+                // 2. [错误弹窗检测] 
                 const snackbar = document.querySelector('mat-snack-bar-container, .snack-bar, m-snackbar');
                 if (snackbar) {{
                     const txt = snackbar.innerText.toLowerCase();
-                    const errKeywords = ["something went wrong", "unable to", "failed", "violation", "safety", "无法", "错误", "失败"];
+                    const errKeywords = ["something went wrong", "unable to", "failed", "violation", "safety", "content policy", "copyright", "无法", "错误", "失败"];
                     if (errKeywords.some(k => txt.includes(k))) {{
-                        window._gemini_reverted = true; // 借用此标志作为快速失败信号
+                        window._gemini_reverted = true; 
+                        window._gemini_revert_info = `Snackbar: ${{txt}}`;
                         return true;
                     }}
                 }}
@@ -308,22 +313,18 @@ async def wait_for_results(page: Page, timeout_s: int = 60, original_prompt: str
                 if (containers.length === 0) return false;
                 const last = containers[containers.length - 1];
                 
-                // 1. 成功路径：检测到图片 (googleusercontent 域名且非头像)
+                // 3. 成功路径：检测到图片
                 const imgs = Array.from(last.querySelectorAll('img'));
-                const hasImages = imgs.some(i => i.src.includes('googleusercontent') && !i.src.includes('{_AVATAR_PATTERN}'));
+                const hasImages = imgs.some(i => i.src.includes('googleusercontent'));
                 if (hasImages) return true;
 
-                // 2. 状态提取
+                // 4. 状态提取
                 const mc = last.querySelector('message-content');
                 const isBusy = (last.getAttribute('aria-busy') === 'true') || (mc && mc.getAttribute('aria-busy') === 'true');
-                
                 const footer = last.querySelector('.response-footer, response-footer');
                 const isComplete = footer && footer.classList.contains('complete');
 
-                // 2.1 全局信号：停止相应按钮是否存在 (如果存在，说明还在吐字)
-                const isActuallyGenerating = !!stopBtn;
-
-                // 获取当前文本长度（排除视障辅助文本）
+                // 获取当前文本长度
                 let currentLen = 0;
                 if (mc) {{
                     const clone = mc.cloneNode(true);
@@ -331,7 +332,7 @@ async def wait_for_results(page: Page, timeout_s: int = 60, original_prompt: str
                     currentLen = clone.innerText.trim().length;
                 }}
 
-                // 3. 稳定性检测逻辑
+                // 5. 稳定性检测逻辑
                 if (!window._gemini_wait_state) {{
                     window._gemini_wait_state = {{ len: currentLen, ts: Date.now() }};
                 }}
@@ -343,33 +344,34 @@ async def wait_for_results(page: Page, timeout_s: int = 60, original_prompt: str
                 }}
                 
                 const stableTime = Date.now() - state.ts;
-                const isStable = stableTime > 5000; // 文本无变化时长提升到 5s 提高保险系数
+                const isStable = stableTime > 5000; 
 
-                // 4. 返回判断
-                // 回复完成且不再忙碌 且 全局停止按钮消失 (最强信号组合)
+                // 6. 返回判断
                 if (!isActuallyGenerating && isComplete && !isBusy) {{
                     return true;
                 }}
 
-                // 无图片回退路径：文字长度已经稳定 且 页面上绝对没有"停止"按钮 且 逻辑不忙碌
                 if (!hasImages && currentLen > 10 && isStable && !isActuallyGenerating && !isBusy) {{
                     return true;
                 }}
                 
                 return false;
             }}
-        """, arg=prompt_prefix, timeout=timeout_s * 1000)
+        """, arg=clean_prompt, timeout=timeout_s * 1000)
         
-        # 检查是否因为"编辑器内容回退"而提前退出
+        # 检查退出原因
         reverted = await page.evaluate("window._gemini_reverted === true")
         if reverted:
-            tab_log(page, "Editor content revert detected: Gemini silently rejected the prompt. Failing fast.", "warning")
+            # 捕获具体的现场信息
+            revert_content = await page.evaluate("window._gemini_revert_info || 'Unknown'")
+            tab_log(page, f"Silent rejection detected! Editor content: '{revert_content[:200]}...'. Failing fast.", "warning")
             return False
 
-        # 护城河：防止图片刚开始渲染还没拿到达标的 url
+        tab_log(page, "Generation wait completed successfully.", "info")
         await asyncio.sleep(1.5)
         return True
-    except:
+    except Exception as e:
+        tab_log(page, f"wait_for_results timeout or error: {e}", "warning")
         return False
 
 async def get_last_response_text(page: Page) -> str:

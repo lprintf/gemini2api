@@ -37,8 +37,15 @@ class ImageGenerationTask(BaseEngineTask):
             durations["prepare"] = round(time.time() - t0, 3)
             if not success:
                 tab_log(page, "Environment preparation failed", "error")
-                await actions.dump_inspect(page, mode="full")
-                await actions.dump_html(page)
+                
+                # 背景执行诊断
+                async def _bg_diag(p):
+                    try:
+                        await actions.dump_inspect(p, mode="full")
+                        await actions.dump_html(p)
+                    except: pass
+                asyncio.create_task(_bg_diag(page))
+
                 tab.status = BrowserStatus.SLEEP
                 tab.sleep_until = datetime.now() + timedelta(minutes=9)
                 return TaskResult(success=False, error="Environment preparation failed")
@@ -53,8 +60,14 @@ class ImageGenerationTask(BaseEngineTask):
             durations["submit"] = round(time.time() - t1, 3)
             if not success:
                 tab_log(page, "Failed to submit image prompt (possible stuck UI)", "error")
-                await actions.dump_inspect(page, mode="full")
-                await actions.dump_html(page)
+                
+                # 背景执行诊断
+                async def _bg_diag(p):
+                    try:
+                        await actions.dump_inspect(p, mode="full")
+                        await actions.dump_html(p)
+                    except: pass
+                asyncio.create_task(_bg_diag(page))
                 
                 # 惩罚：进入 9 分钟冷却，配合 coordinator 保持现场供人工检查
                 tab.status = BrowserStatus.SLEEP
@@ -126,8 +139,14 @@ class ImageGenerationTask(BaseEngineTask):
                     err_msg = "Silent rejection detected (Editor reverted)" if reverted else "Timed out waiting for results"
                     
                     tab_log(page, f"{err_msg} after {durations['generate']}s", "error")
-                    await actions.dump_inspect(page, mode="full")
-                    await actions.dump_html(page)
+                    
+                    # 背景执行诊断
+                    async def _bg_diag(p):
+                        try:
+                            await actions.dump_inspect(p, mode="full")
+                            await actions.dump_html(p)
+                        except: pass
+                    asyncio.create_task(_bg_diag(page))
                     
                     # 无论有无文字，均视为故障，进入 9 分钟冷却惩罚
                     tab.status = BrowserStatus.SLEEP
@@ -143,8 +162,15 @@ class ImageGenerationTask(BaseEngineTask):
                 
                 # 理论上不会走到这里（因为 wait_for_results 返回 True 代表有图或有稳定文字）
                 tab_log(page, "Unexpected: wait_for_results returned True but no images/text found", "error")
-                await actions.dump_inspect(page, mode="full")
-                await actions.dump_html(page)
+                
+                # 背景执行诊断
+                async def _bg_diag(p):
+                    try:
+                        await actions.dump_inspect(p, mode="full")
+                        await actions.dump_html(p)
+                    except: pass
+                asyncio.create_task(_bg_diag(page))
+                
                 return TaskResult(success=False, error="No results found (no images and no text)")
 
             # 5. 下载处理阶段 (已有图片链接)
@@ -191,8 +217,14 @@ class ImageGenerationTask(BaseEngineTask):
                     
                     if not response_text:
                         # 彻底没图也没文字，才判死刑
-                        await actions.dump_inspect(page, mode="full")
-                        await actions.dump_html(page)
+                        # 背景执行诊断
+                        async def _bg_diag(p):
+                            try:
+                                await actions.dump_inspect(p, mode="full")
+                                await actions.dump_html(p)
+                            except: pass
+                        asyncio.create_task(_bg_diag(page))
+                        
                         tab.status = BrowserStatus.SLEEP
                         tab.sleep_until = datetime.now() + timedelta(minutes=9)
                         return TaskResult(success=False, error=error_msg)
@@ -226,10 +258,13 @@ class ImageGenerationTask(BaseEngineTask):
             error_trace = traceback.format_exc()
             tab_log(page, f"Task failed with exception: {str(e)}\n{error_trace}", "error")
             # 异常发生时自动捕获快照
-            try:
-                await actions.dump_inspect(page, mode="full")
-                await actions.dump_html(page)
-            except: pass
+            # 背景执行诊断
+            async def _bg_diag(p):
+                try:
+                    await actions.dump_inspect(p, mode="full")
+                    await actions.dump_html(p)
+                except: pass
+            asyncio.create_task(_bg_diag(page))
             
             tab.status = BrowserStatus.SLEEP
             tab.sleep_until = datetime.now() + timedelta(minutes=9)

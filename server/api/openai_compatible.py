@@ -136,7 +136,7 @@ async def create_image_edit(
         ..., description="A text description of the desired image edits"
     ),
     prompt_prefix: Optional[str] = Form(
-        "Image Edit: ", description="Optional prefix to add to the prompt"
+        "", description="Optional prefix to add to the prompt"
     ),
     model: str = Form(
         "gemini-flash", description="Model to use: gemini-pro or gemini-flash"
@@ -314,7 +314,7 @@ async def create_image_edit_async(
         ..., description="A text description of the desired image edits"
     ),
     prompt_prefix: Optional[str] = Form(
-        "Image Edit: ", description="Optional prefix to add to the prompt"
+        "", description="Optional prefix to add to the prompt"
     ),
     model: str = Form(
         "gemini-flash", description="Model to use: gemini-pro or gemini-flash"

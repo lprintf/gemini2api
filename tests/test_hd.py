@@ -1,8 +1,8 @@
 """
 运行命令: docker compose exec gemini2api uv run tests/test_hd.py
 
-错误日志存放在: /data/gemini2api/data/log/[日期] 下
-错误快照存放在: /data/gemini2api/data/debug/[日期] 下
+错误日志存放在: /data/gemini2api/data/log/[yyyymmdd] 下
+错误快照存放在: /data/gemini2api/data/debug/[yyyymmdd] 下
 """
 import asyncio
 import httpx
