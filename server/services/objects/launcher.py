@@ -90,7 +90,7 @@ class GeminiLauncher:
             headless=False,
             viewport=DEFAULT_VIEWPORT,
             args=launch_args,
-            ignore_default_args=["--headless", "--headless=old", "--disable-dev-shm-usage"],
+            ignore_default_args=["--headless", "--headless=old"],
             permissions=DEFAULT_PERMISSIONS,
             proxy=proxy_config,
         )
