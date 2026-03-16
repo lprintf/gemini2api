@@ -154,7 +154,9 @@ IDLE → BUSY → [成功] → IDLE
 
 ## 开发
 
-### 本地运行
+### 本地运行 
+
+通常 docker 运行
 
 ```bash
 # 安装依赖
@@ -170,7 +172,7 @@ uv run uvicorn server.app:app --reload
 ### 测试
 
 ```bash
-uv run pytest tests/
+docker compose exec gemini2api uv run tests/xxx.py
 ```
 
 ## 许可证

@@ -4,6 +4,7 @@ OpenAI 兼容 API
 提供与 OpenAI Images API 兼容的接口
 """
 
+import asyncio
 import base64
 import hashlib
 import time
@@ -69,12 +70,19 @@ class ImageEditResponse(BaseModel):
     text: Optional[str] = None  # Gemini 回复的文字描述（图文混排时存在）
 
 
-class TaskResponse(BaseModel):
-    """任务响应"""
+class AsyncEditResponse(BaseModel):
+    """异步编辑请求响应"""
 
-    id: str
-    status: str
-    created_at: int
+    task_id: str
+    status: str  # processing
+
+
+class TaskResponse(BaseModel):
+    """任务状态响应"""
+
+    task_id: str
+    status: str  # processing/completed/failed
+    created_at: Optional[int] = None
     completed_at: Optional[int] = None
     result: Optional[ImageEditResponse] = None
     error: Optional[str] = None
@@ -295,6 +303,96 @@ async def create_image_edit(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/images/edits_async", response_model=AsyncEditResponse)
+async def create_image_edit_async(
+    request: Request,
+    image_paths: str = Form(
+        ...,
+        description="Comma-separated paths to images: uploads/{date}/{hash}.{fmt} or outputs/hd/{date}/{hash}.{fmt}",
+    ),
+    prompt: str = Form(
+        ..., description="A text description of the desired image edits"
+    ),
+    prompt_prefix: Optional[str] = Form(
+        "Image Edit: ", description="Optional prefix to add to the prompt"
+    ),
+    model: str = Form(
+        "gemini-flash", description="Model to use: gemini-pro or gemini-flash"
+    ),
+    n: int = Form(1, description="Number of images to generate"),
+    download_mode: Literal["preview", "hd", "both"] = Form(
+        "both",
+        description="Download mode: preview (fast), hd (sync HD only), both (preview + background HD)",
+    ),
+    response_format: Literal["url", "b64_json"] = Form(
+        "url", description="Response format for result query"
+    ),
+    api_key: str = Depends(check_rate_limit),
+):
+    """
+    Create an async image editing task.
+
+    Unlike POST /images/edits, this endpoint returns immediately with a task_id.
+    Use GET /images/tasks/{task_id} to poll for results.
+
+    Images must be provided via `image_paths` (from POST /v1/images/uploads).
+    File uploads are NOT supported — use the sync endpoint for that.
+
+    Path formats:
+    - `uploads/{date}/{hash}.{fmt}` - from POST /v1/images/uploads
+    - `outputs/hd/{date}/{hash}.{fmt}` - previously generated HD image
+    """
+    if browser_pool is None:
+        raise HTTPException(status_code=500, detail="Browser pool not initialized")
+
+    # 解析 image_paths
+    input_paths: List[Path] = []
+    for p in image_paths.split(","):
+        p = p.strip()
+        if not p:
+            continue
+        if p.startswith("uploads/") or p.startswith("outputs/"):
+            path = Path(f"data/{p}")
+        else:
+            raise HTTPException(status_code=400, detail=f"Invalid path format: {p}")
+        if not path.exists():
+            raise HTTPException(status_code=404, detail=f"Image not found: {p}")
+        input_paths.append(path)
+
+    if not input_paths:
+        raise HTTPException(
+            status_code=400,
+            detail="At least one image must be provided via 'image_paths'",
+        )
+
+    # 转换模型名称
+    gemini_model = "Pro" if "pro" in model.lower() else "Fast"
+
+    # 添加可选的提示前缀
+    if prompt_prefix:
+        prompt = f"{prompt_prefix}{prompt}"
+
+    task_id = f"task-{uuid.uuid4().hex[:12]}"
+
+    # 后台执行任务
+    async def _run_task():
+        try:
+            await task_coordinator.generate_images(
+                prompt=prompt,
+                input_images=[str(p) for p in input_paths],
+                model=gemini_model,
+                download_mode=download_mode,
+                task_id=task_id,
+            )
+        except Exception:
+            import traceback
+            traceback.print_exc()
+
+    asyncio.create_task(_run_task())
+
+    return AsyncEditResponse(task_id=task_id, status="processing")
+
+
 @router.get("/images/tasks/{task_id}", response_model=TaskResponse)
 async def get_task_status(
     task_id: str,
@@ -303,10 +401,47 @@ async def get_task_status(
     """
     Get the status of an async image editing task.
 
-    (For future async implementation)
+    Returns task status and result (if completed).
+    Poll this endpoint after submitting via POST /images/edits_async.
     """
-    # TODO: 实现任务队列和状态查询
-    raise HTTPException(status_code=501, detail="Async tasks not implemented yet")
+    from server.db.database import get_db
+
+    db = get_db()
+    task = await db.get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
+
+    # 安全阀：processing 超过 9 分钟视为失败
+    if task.status == "processing" and task.created_at:
+        from datetime import datetime, timedelta
+        if datetime.now() - task.created_at > timedelta(minutes=9):
+            await db.update_task(task_id, {
+                "status": "failed",
+                "error_message": "Task timed out (>9min)",
+                "completed_at": datetime.now(),
+            })
+            task = await db.get_task(task_id)
+
+    # 构造 created_at / completed_at 为 unix timestamp
+    created_ts = int(task.created_at.timestamp()) if task.created_at else None
+    completed_ts = int(task.completed_at.timestamp()) if task.completed_at else None
+
+    # 如果完成，构造 ImageEditResponse
+    result = None
+    if task.status == "completed" and task.result_paths:
+        data = []
+        for img_id in task.result_paths:
+            data.append(ImageData(url=img_id))
+        result = ImageEditResponse(created=created_ts or 0, data=data)
+
+    return TaskResponse(
+        task_id=task.task_id,
+        status=task.status,
+        created_at=created_ts,
+        completed_at=completed_ts,
+        result=result,
+        error=task.error_message,
+    )
 
 
 @router.get("/images/hd/{date}/{file_hash}", response_model=HDImageResponse)
