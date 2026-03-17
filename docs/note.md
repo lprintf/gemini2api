@@ -35,6 +35,9 @@ docker compose exec gemini2api uv run python -c "import server.app"
 
 ```
 清除3天前上传的图片： find /data/gemini2api/data/uploads/ -type f -mtime +3 -delete
+清除输出文件: 
+find /data/gemini2api/data/outputs/ -type f -mtime +3 -delete
+find /data/gemini2api/data/debug/ -type f -mtime +3 -delete
 清除缓存： 
 find /data/gemini2api/data/browser_data/*/Default/Cache/ -type f -delete
 find /data/gemini2api/data/browser_data/*/Default/Code\ Cache/ -type f -delete
