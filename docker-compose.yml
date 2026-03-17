@@ -7,7 +7,12 @@ services:
       dockerfile: Dockerfile
     image: gemini2api:latest
     restart: unless-stopped
-    shm_size: 64gb
+    # --- 核心配置开始 ---
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    # shm_size: 64gb
     volumes:
       - ./server:/app/server:ro
       - ${DATA_DIR:-./data}:/app/data
@@ -29,6 +34,11 @@ services:
   frontend:
     image: nginx:alpine
     restart: unless-stopped
+    # --- 核心配置开始 ---
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
     ports:
       - "${FRONTEND_PORT}:80"
     volumes:
