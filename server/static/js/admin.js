@@ -375,25 +375,60 @@ async function reinitializeErrorTabs() {
         return;
     }
 
-    if (!confirm(`Reinitialize ${errorTabs.length} error tab(s)?`)) return;
+    if (!confirm(`Reinitialize ${errorTabs.length} error tab(s)? This will run in parallel.`)) return;
+
+    const btn = document.getElementById('btnReinitErrorTabs');
+    let originalText = '';
+    if (btn) {
+        originalText = btn.textContent;
+        btn.textContent = `Reinitializing (${errorTabs.length})...`;
+        btn.disabled = true;
+    }
 
     showToast(`Reinitializing ${errorTabs.length} error tabs...`);
     let successCount = 0;
-    for (const tab of errorTabs) {
-        try {
-            const result = await apiFetch(`/browsers/${tab.browser_id}/tabs/${tab.tab_id}/reinitialize`, { method: 'POST' });
-            if (result.success) {
-                successCount++;
-                showToast(`Tab ${tab.browser_id}-${tab.tab_id} restarted`, 'success');
-            } else {
-                showToast(`Tab ${tab.browser_id}-${tab.tab_id} failed`, 'error');
+    let completedCount = 0;
+    
+    // Concurrency limit helper
+    const limit = 5; // Max 5 parallel requests
+    let i = 0;
+    
+    const worker = async () => {
+        while (i < errorTabs.length) {
+            const tab = errorTabs[i++];
+            try {
+                const result = await apiFetch(`/browsers/${tab.browser_id}/tabs/${tab.tab_id}/reinitialize`, { method: 'POST' });
+                if (result.success) {
+                    successCount++;
+                    showToast(`Tab ${tab.browser_id}-${tab.tab_id} restarted`, 'success');
+                } else {
+                    showToast(`Tab ${tab.browser_id}-${tab.tab_id} failed`, 'error');
+                }
+            } catch (e) {
+                console.error(`Failed to reinit ${tab.browser_id}-${tab.tab_id}:`, e);
+                showToast(`Tab ${tab.browser_id}-${tab.tab_id} error: ${e.message}`, 'error');
+            } finally {
+                completedCount++;
+                if (btn) {
+                    btn.textContent = `Reinitializing (${completedCount}/${errorTabs.length})...`;
+                }
             }
-        } catch (e) {
-            console.error(`Failed to reinit ${tab.browser_id}-${tab.tab_id}:`, e);
         }
-    }
+    };
+
+    // Start workers
+    const workers = Array.from({ length: Math.min(limit, errorTabs.length) }, () => worker());
+    await Promise.all(workers);
+
     if (successCount > 0) {
         showToast(`Reinitialized ${successCount}/${errorTabs.length} tabs`, successCount === errorTabs.length ? 'success' : 'warning');
+    } else {
+        showToast(`Failed to reinitialize any of the ${errorTabs.length} tabs`, 'error');
+    }
+    
+    if (btn) {
+        btn.textContent = originalText;
+        btn.disabled = false;
     }
     loadTabs();
 }
