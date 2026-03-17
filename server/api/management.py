@@ -802,13 +802,21 @@ async def reinitialize_tab(browser_id: str, tab_id: int):
             status_code=404, detail=f"Tab {tab_id} not found in browser {browser_id}"
         )
 
+    # 标记为启动中，用于 UI 反馈
+    from server.services.objects.exceptions import BrowserStatus
+    tab.status = BrowserStatus.LAUNCHING
+
     try:
         from server.services.tasks import actions
         success = await actions.reinitialize_page(tab.page, model=tab.model)
         
-        # 更新状态
-        from server.services.objects.exceptions import BrowserStatus
-        tab.status = BrowserStatus.IDLE if success else BrowserStatus.ERROR
+        # 更新状态并回笼入队
+        if success:
+            await browser_pool.release_tab(tab)
+        else:
+            from server.services.objects.exceptions import BrowserStatus
+            tab.status = BrowserStatus.ERROR
+            
         tab.last_active_at = datetime.now()
 
         return {

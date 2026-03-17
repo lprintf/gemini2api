@@ -101,7 +101,8 @@ class BrowserInstance:
                 # 执行环境准备
                 tab.status = BrowserStatus.LAUNCHING
                 success = await actions.reinitialize_page(page, model=tab.model)
-                tab.status = BrowserStatus.IDLE if success else BrowserStatus.ERROR
+                if not success:
+                    tab.status = BrowserStatus.ERROR
                 
                 # 如果初始化成功且提供了回调，立即通知（实现即时入队）
                 if success and on_tab_ready:

@@ -257,13 +257,14 @@ class BrowserPool:
                 raise NoAvailableBrowsers()
 
     async def release_tab(self, tab: "TabInstance"):
-        """将标签页还回对应模型的空闲队列"""
-        if tab.status != BrowserStatus.IDLE:
-            # 如果不是 IDLE 状态（如处于 SLEEP），则不进入队列
-            return
-
+        """将标签页还回对应模型的空闲队列. 调用此方法前，请确保已将标签页已经可用"""
         # 放入队尾，实现 FIFO 天然轮换
         await self._idle_queues[tab.model].put(tab)
+
+        # 【核心需求】：入队成功后，才修改状态为 IDLE
+        # 只要此方法被调用，就认为 Tab 已经洗白，即使之前处于 SLEEP 也会被强制唤醒
+        tab.status = BrowserStatus.IDLE
+        tab.sleep_until = None
 
     async def update_browser(
         self, browser_id: str, updates: Dict

@@ -323,7 +323,7 @@ async function loadTabs() {
                 <td>${t.failed_tasks} (${t.consecutive_failures} consecutive)</td>
                 <td>${formatTime(t.last_active_at)}</td>
                 <td>
-                    <button class="btn btn-warning" onclick="reinitializeTab('${t.browser_id}', ${t.tab_id})" ${t.status === 'busy' ? 'disabled' : ''}>Reinit</button>
+                    <button class="btn btn-warning" onclick="reinitializeTab('${t.browser_id}', ${t.tab_id}, this)" ${t.status === 'busy' ? 'disabled' : ''}>Reinit</button>
                     <a class="btn btn-secondary" href="/remote?browser=${t.browser_id}&tab=${t.tab_id}" target="_blank">Remote</a>
                 </td>
             </tr>
@@ -335,18 +335,28 @@ async function loadTabs() {
     }
 }
 
-async function reinitializeTab(browserId, tabId) {
+async function reinitializeTab(browserId, tabId, btn) {
+    let originalText = '';
+    if (btn) {
+        originalText = btn.textContent;
+        btn.textContent = '...';
+        btn.disabled = true;
+    }
     try {
-        showToast(`Reinitializing ${browserId} Tab ${tabId}...`);
+        // showToast(`Reinitializing ${browserId} Tab ${tabId}...`);
         const result = await apiFetch(`/browsers/${browserId}/tabs/${tabId}/reinitialize`, { method: 'POST' });
         if (result.success) {
-            showToast(`Tab ${browserId}-${tabId} reinitialized`, 'success');
+            showToast(`Tab ${browserId}-${tabId} restarted`, 'success');
         } else {
             showToast(`Tab ${browserId}-${tabId} reinitialize failed`, 'error');
         }
         loadTabs();
     } catch (e) {
         showToast('Failed to reinitialize tab: ' + e.message, 'error');
+        if (btn) {
+            btn.textContent = originalText;
+            btn.disabled = false;
+        }
     }
 }
 
@@ -364,12 +374,19 @@ async function reinitializeErrorTabs() {
     for (const tab of errorTabs) {
         try {
             const result = await apiFetch(`/browsers/${tab.browser_id}/tabs/${tab.tab_id}/reinitialize`, { method: 'POST' });
-            if (result.success) successCount++;
+            if (result.success) {
+                successCount++;
+                showToast(`Tab ${tab.browser_id}-${tab.tab_id} restarted`, 'success');
+            } else {
+                showToast(`Tab ${tab.browser_id}-${tab.tab_id} failed`, 'error');
+            }
         } catch (e) {
             console.error(`Failed to reinit ${tab.browser_id}-${tab.tab_id}:`, e);
         }
     }
-    showToast(`Reinitialized ${successCount}/${errorTabs.length} tabs`, successCount === errorTabs.length ? 'success' : 'error');
+    if (successCount > 0) {
+        showToast(`Reinitialized ${successCount}/${errorTabs.length} tabs`, successCount === errorTabs.length ? 'success' : 'warning');
+    }
     loadTabs();
 }
 

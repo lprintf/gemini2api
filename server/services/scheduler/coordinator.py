@@ -221,8 +221,7 @@ class TaskCoordinator:
                         from ..tasks import actions
                         success = await actions.reinitialize_page(t.page, model=m)
                         if success:
-                            t.status = BrowserStatus.IDLE
-                            t.sleep_until = None
+                            # release_tab 会自动处理 status = IDLE
                             await self.pool.release_tab(t)
                         else:
                             t.status = BrowserStatus.ERROR
@@ -232,4 +231,3 @@ class TaskCoordinator:
                         t.status = BrowserStatus.ERROR
                 
                 asyncio.create_task(background_chain(tab, model, bg_work))
-
