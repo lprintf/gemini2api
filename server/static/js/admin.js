@@ -48,6 +48,10 @@ async function loadDashboard() {
 
         document.getElementById('totalBrowsers').textContent = data.browsers.total;
         document.getElementById('idleBrowsers').textContent = data.browsers.status_count.idle || 0;
+        if (data.browsers.queue_sizes) {
+            document.getElementById('qFastDash').textContent = data.browsers.queue_sizes.Fast || 0;
+            document.getElementById('qProDash').textContent = data.browsers.queue_sizes.Pro || 0;
+        }
         document.getElementById('busyBrowsers').textContent = data.browsers.status_count.busy || 0;
         document.getElementById('todayTasks').textContent = data.tasks.today_tasks;
 
@@ -277,6 +281,10 @@ async function loadTabs() {
         // 更新统计卡片
         document.getElementById('totalTabs').textContent = data.total;
         document.getElementById('idleTabs').textContent = data.status_count.idle || 0;
+        if (data.queue_sizes) {
+            document.getElementById('qFastTabs').textContent = data.queue_sizes.Fast || 0;
+            document.getElementById('qProTabs').textContent = data.queue_sizes.Pro || 0;
+        }
         document.getElementById('busyTabs').textContent = data.status_count.busy || 0;
         document.getElementById('sleepTabs').textContent = data.status_count.sleep || 0;
         document.getElementById('errorTabs').textContent = (data.status_count.error || 0) + (data.status_count.disabled || 0) + (data.status_count.closed || 0) + (data.status_count.launching || 0);

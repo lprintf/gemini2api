@@ -87,6 +87,16 @@
             color: #667eea;
             margin-right: 0.5rem;
         }
+
+        .queue-badge {
+            display: inline-block;
+            padding: 0.1rem 0.4rem;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            margin-left: 0.3rem;
+            background: rgba(255, 255, 255, 0.2);
+            font-weight: normal;
+        }
     </style>
 </head>
 
@@ -117,7 +127,13 @@
                     <div class="stat-label">Total Browsers</div>
                 </div>
                 <div class="stat-card success">
-                    <div class="stat-value" id="idleBrowsers">0</div>
+                    <div class="stat-value">
+                        <span id="idleBrowsers">0</span>
+                        <span style="font-size: 0.8rem; vertical-align: middle; margin-left: 0.5rem;">
+                            <span class="queue-badge">F: <span id="qFastDash">0</span></span>
+                            <span class="queue-badge">P: <span id="qProDash">0</span></span>
+                        </span>
+                    </div>
                     <div class="stat-label">Idle</div>
                 </div>
                 <div class="stat-card info">
@@ -192,7 +208,13 @@
                     <div class="stat-label">Total Tabs</div>
                 </div>
                 <div class="stat-card success">
-                    <div class="stat-value" id="idleTabs">0</div>
+                    <div class="stat-value">
+                        <span id="idleTabs">0</span>
+                        <span style="font-size: 0.8rem; vertical-align: middle; margin-left: 0.5rem;">
+                            <span class="queue-badge">F: <span id="qFastTabs">0</span></span>
+                            <span class="queue-badge">P: <span id="qProTabs">0</span></span>
+                        </span>
+                    </div>
                     <div class="stat-label">Idle</div>
                 </div>
                 <div class="stat-card info">

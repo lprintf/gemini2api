@@ -451,6 +451,7 @@ async def get_dashboard():
             "browsers": {
                 "total": pool_status["total_browsers"],
                 "status_count": pool_status["status_count"],
+                "queue_sizes": pool_status["queue_sizes"],
             },
             "tasks": task_stats.model_dump(),
             "recent_logs": [log.model_dump() for log in recent_logs],
@@ -860,6 +861,10 @@ async def list_all_tabs():
     return {
         "total": len(all_tabs),
         "status_count": status_count,
+        "queue_sizes": {
+            "Fast": browser_pool._idle_queues["Fast"].qsize(),
+            "Pro": browser_pool._idle_queues["Pro"].qsize(),
+        },
         "tabs": all_tabs,
     }
 

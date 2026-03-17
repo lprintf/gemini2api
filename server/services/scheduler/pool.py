@@ -374,6 +374,10 @@ class BrowserPool:
             "browsers": browsers_dicts,
             "total_tasks": sum(b.total_tasks for b in self.browsers.values()),
             "failed_tasks": sum(b.failed_tasks for b in self.browsers.values()),
+            "queue_sizes": {
+                "Fast": self._idle_queues["Fast"].qsize(),
+                "Pro": self._idle_queues["Pro"].qsize(),
+            }
         }
 
     async def create_task_record(
