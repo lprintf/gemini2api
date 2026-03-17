@@ -30,3 +30,13 @@ docker compose exec gemini2api uv run tests/bulk_httpx.py --sample-size=1
 docker compose exec gemini2api uv run tests/test_hd.py 
 docker compose exec gemini2api uv run python -c "import server.app"
 ```
+
+## 维护
+
+```
+清除3天前上传的图片： find /data/gemini2api/data/uploads/ -type f -mtime +3 -delete
+清除缓存： 
+find /data/gemini2api/data/browser_data/*/Default/Cache/ -type f -delete
+find /data/gemini2api/data/browser_data/*/Default/Code\ Cache/ -type f -delete
+find /data/gemini2api/data/browser_data/*/Default/GPUCache/ -type f -delete
+```
