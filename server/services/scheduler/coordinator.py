@@ -125,7 +125,14 @@ class TaskCoordinator:
             }
 
         except (NoAvailableBrowsers, NoAvailableTabs) as e:
-            # 资源不足直接透传，由 API 层转为 429
+            # 资源不足直接透传，由 API 层转为 429，但在那之前必须把数据库标记为失败，否则永远卡在 processing
+            duration = time.time() - start_time
+            await db.update_task(task_id, {
+                "status": "failed",
+                "error_message": "Rate limited: No available resources at the moment",
+                "duration": duration,
+                "completed_at": datetime.now()
+            })
             raise e
         except BaseException as e:
             now = datetime.now()
