@@ -37,32 +37,32 @@ class TaskCoordinator:
         tab = None
         result = None
         
-        # 0. 创建初步任务记录
-        task_record = TaskRecord(
-            task_id=task_id,
-            prompt=prompt,
-            model=model,
-            input_image=str(input_images[0]) if input_images else None,
-            status="processing",
-            created_at=datetime.now()
-        )
-        await db.create_task(task_record)
-        
         try:
-            # 1. 获取可用 Tab (设置 0s 超时，即立即失败触发 429)
+            # 1. 尝试获取可用 Tab (设置 0s 超时，即立即失败触发 429)
             from ..objects.exceptions import NoAvailableBrowsers, NoAvailableTabs
             tab = await self.pool.acquire_tab(model=model, timeout=0.0)
             browser = self.pool.get_browser(tab.browser_id)
             if not browser:
                 raise RuntimeError(f"Browser {tab.browser_id} for acquired tab not found")
 
-            # 2. 立即更新数据库记录，记录分配的资源
+            # 2. 只有拿到 Tab 后，才正式在数据库中创建任务记录 (防止 429 的任务污染数据库)
+            task_record = TaskRecord(
+                task_id=task_id,
+                prompt=prompt,
+                model=model,
+                input_image=str(input_images[0]) if input_images else None,
+                status="processing",
+                created_at=datetime.now()
+            )
+            await db.create_task(task_record)
+
+            # 3. 立即记录分配的资源
             await db.update_task(task_id, {
                 "browser_id": tab.browser_id,
                 "tab_id": tab.tab_id
             })
 
-            # 3. 准备执行细节
+            # 4. 准备执行细节
             engine_task = ImageGenerationTask(
                 prompt=prompt,
                 input_images=input_images,
@@ -72,11 +72,11 @@ class TaskCoordinator:
                 is_disconnected=is_disconnected
             )
 
-            # 4. 【生命周期管控点】：开始执行，标记资源忙碌
+            # 5. 【生命周期管控点】：开始执行，标记资源忙碌
             # 注意：此处不再显式 record_request，依靠 FIFO 天然轮换
             tab.status = BrowserStatus.BUSY
             
-            # 5. 注入 TabInstance 到业务 Task 中运行
+            # 6. 注入 TabInstance 到业务 Task 中运行
             result = await engine_task.run(tab)
             
             # 统计
@@ -125,14 +125,8 @@ class TaskCoordinator:
             }
 
         except (NoAvailableBrowsers, NoAvailableTabs) as e:
-            # 资源不足直接透传，由 API 层转为 429，但在那之前必须把数据库标记为失败，否则永远卡在 processing
-            duration = time.time() - start_time
-            await db.update_task(task_id, {
-                "status": "failed",
-                "error_message": "Rate limited: No available resources at the moment",
-                "duration": duration,
-                "completed_at": datetime.now()
-            })
+            # 资源不足直接透传，由 API 层转为 429
+            # 因为没有落库任务记录，我们直接抛出，彻底不在数据库里分配该任务
             raise e
         except BaseException as e:
             now = datetime.now()
