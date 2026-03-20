@@ -171,29 +171,6 @@ class TaskCoordinator:
 
                 async def background_chain(t, m, work):
                     from server.services.objects.exceptions import BrowserStatus
-                    try:
-                        # 1. 如果标记了 SLEEP，优先在此处等待（保持现场供人工检查）
-                        if t.status == BrowserStatus.SLEEP and t.sleep_until:
-                            while True:
-                                now = datetime.now()
-                                wait_seconds = (t.sleep_until - now).total_seconds()
-                                if wait_seconds <= 0:
-                                    break
-                                
-                                # 每隔 60s 打印一次活跃日志
-                                tab_log(t.page, f"Tab is in SLEEP mode. {wait_seconds:.0f}s remaining before recovery.")
-                                await asyncio.sleep(min(60, wait_seconds))
-                            
-                            tab_log(t.page, "Sleep period ended. Starting recovery...")
-
-                        # 2. 执行后台延续任务 (如强制重排)
-                        if work:
-                            tab_log(t.page, "Running background work...")
-                            await work
-                            tab_log(t.page, "Background work completed")
-                    except Exception as e:
-                        tab_log(t.page, f"Background chain failed at some stage: {e}", "error")
-
                     # === 核心调度逻辑：处理惩罚、恢复与回笼 ===
                     try:
                         # 1. 如果处于 SLEEP 状态（如触发了 9m 惩罚），在此处挂起并保持现场
@@ -211,6 +188,7 @@ class TaskCoordinator:
                         if work:
                             tab_log(t.page, "Running background work...")
                             await work
+                            tab_log(t.page, "Background work completed")
 
                         # 3. 准备回笼：只要没死，就尝试洗白
                         t.last_active_at = datetime.now()
