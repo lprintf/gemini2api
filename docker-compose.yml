@@ -10,9 +10,10 @@ services:
     # --- 核心配置开始 ---
     ulimits:
       nofile:
-        soft: 65536
-        hard: 65536
-    # shm_size: 64gb
+        soft: 1048576
+        hard: 1048576
+    privileged: true
+    shm_size: 32gb
     volumes:
       - ./server:/app/server:ro
       - ${DATA_DIR:-./data}:/app/data
