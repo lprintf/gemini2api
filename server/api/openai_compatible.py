@@ -288,6 +288,10 @@ async def create_image_edit(
             },
             headers={"Retry-After": "5"},  # 建议5秒后重试
         )
+    except asyncio.CancelledError:
+        import logging
+        logging.warning("Client disconnected before request completed (499).")
+        return JSONResponse(status_code=499, content={"detail": "Client Closed Request"})
     except KeyError as e:
         import traceback
 
