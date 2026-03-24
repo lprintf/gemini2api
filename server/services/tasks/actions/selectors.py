@@ -13,10 +13,16 @@ _SELECTORS = {
         'button[data-test-id="send-button"]',
     ],
     "model_menu": [
-        '[data-test-id="bard-mode-menu-button"]',
+        'input-area-v2 [data-test-id="bard-mode-menu-button"]',
+        'input-container [data-test-id="bard-mode-menu-button"]',
+        'input-area-v2 button.input-area-switch',
+        'input-container button.input-area-switch',
+        'input-area-v2 button[aria-label*="模式选择"]',
+        'input-container button[aria-label*="模式选择"]',
+        'input-area-v2 button[aria-label*="mode picker"]',
+        'input-container button[aria-label*="mode picker"]',
+        '[data-test-id="bard-mode-menu-button"]', # Fallbacks
         'button.input-area-switch',
-        'button[aria-label*="模式选择"]',
-        'button[aria-label*="mode picker"]',
     ],
     "model_fast": [
         '[data-test-id="bard-mode-option-fast"]',
@@ -57,10 +63,21 @@ _SELECTORS = {
         '.mat-mdc-menu-item:text-is("Pro")',
     ],
     "tools_btn": [
-        "button.toolbox-drawer-button",
+        'input-area-v2 button.toolbox-drawer-button',
+        'input-container button.toolbox-drawer-button',
+        'input-area-v2 button[aria-label="工具"]',
+        'input-container button[aria-label="工具"]',
+        'input-area-v2 button[aria-label="Tools"]',
+        'input-container button[aria-label="Tools"]',
+        'input-area-v2 button[aria-label="toolbox"]',
+        'input-container button[aria-label="toolbox"]',
+        'input-area-v2 button.menu-button',
+        'input-container button.menu-button',
+        'button.toolbox-drawer-button', # Fallbacks
         'button[aria-label="工具"]',
         'button[aria-label="Tools"]',
         'button[aria-label="toolbox"]',
+        'button.menu-button',
     ],
     "image_gen_opt": [
         'button.toolbox-drawer-item-list-button:has-text("Image")',

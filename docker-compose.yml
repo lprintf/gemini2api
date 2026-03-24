@@ -17,7 +17,7 @@ services:
     volumes:
       - ./server:/app/server:ro
       - ${DATA_DIR:-./data}:/app/data
-      - ./tests:/app/tests:ro
+      - ./scripts:/app/scripts:ro
     environment:
       - TZ=${TZ:-Asia/Shanghai}
       - DEFAULT_ACCOUNT_PASSWORD=${DEFAULT_ACCOUNT_PASSWORD}

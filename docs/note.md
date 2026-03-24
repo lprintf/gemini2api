@@ -26,8 +26,8 @@ download_generated_images download_mode=hd
 ## 测试
 
 ```
-docker compose exec gemini2api uv run tests/bulk_httpx.py --sample-size=1
-docker compose exec gemini2api uv run tests/test_hd.py 
+docker compose exec gemini2api uv run scripts/bulk_httpx.py --sample-size=1
+docker compose exec gemini2api uv run scripts/test_hd.py 
 docker compose exec gemini2api uv run python -c "import server.app"
 ```
 
