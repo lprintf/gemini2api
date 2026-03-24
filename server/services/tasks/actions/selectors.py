@@ -80,6 +80,12 @@ _SELECTORS = {
         'button.menu-button',
     ],
     "image_gen_opt": [
+        'toolbox-drawer-item:has-text("Image")',
+        'toolbox-drawer-item:has-text("图片")',
+        'mat-list-item:has-text("Image")',
+        'mat-list-item:has-text("图片")',
+        'gem-list-item:has-text("Image")',
+        'gem-list-item:has-text("图片")',
         'button.toolbox-drawer-item-list-button:has-text("Image")',
         'button.toolbox-drawer-item-list-button:has-text("图片")',
         'button.toolbox-drawer-item-list-button:has-text("Images")',
