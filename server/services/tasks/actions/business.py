@@ -309,28 +309,36 @@ async def wait_for_results(page: Page, timeout_s: int = 60, original_prompt: str
                     }}
                 }}
 
-                const containers = document.querySelectorAll('model-response, response-container, .model-response');
+                const containers = Array.from(document.querySelectorAll('model-response, response-container, .model-response'));
                 if (containers.length === 0) return false;
-                const last = containers[containers.length - 1];
                 
-                // 3. 成功路径：检测到图片
-                const imgs = Array.from(last.querySelectorAll('img'));
-                const hasImages = imgs.some(i => i.src.includes('googleusercontent'));
-                if (hasImages) return true;
+                // 扫描最后几个容器，寻找有效的图片或文字 (最多看最后3个)
+                for (let i = containers.length - 1; i >= Math.max(0, containers.length - 3); i--) {
+                    const last = containers[i];
+                    
+                    // 3. 成功路径：检测到图片
+                    const imgs = Array.from(last.querySelectorAll('img'));
+                    const hasImages = imgs.some(i => i.src.includes('googleusercontent'));
+                    if (hasImages) return true;
 
-                // 4. 状态提取
-                const mc = last.querySelector('message-content');
-                const isBusy = (last.getAttribute('aria-busy') === 'true') || (mc && mc.getAttribute('aria-busy') === 'true');
-                const footer = last.querySelector('.response-footer, response-footer');
-                const isComplete = footer && footer.classList.contains('complete');
+                    // 4. 状态提取与文字检测
+                    const mc = last.querySelector('message-content');
+                    const isBusy = (last.getAttribute('aria-busy') === 'true') || (mc && mc.getAttribute('aria-busy') === 'true');
+                    const footer = last.querySelector('.response-footer, response-footer');
+                    const isComplete = footer && footer.classList.contains('complete');
 
-                // 获取当前文本长度
-                let currentLen = 0;
-                if (mc) {{
-                    const clone = mc.cloneNode(true);
-                    clone.querySelectorAll('.cdk-visually-hidden').forEach(el => el.remove());
-                    currentLen = clone.innerText.trim().length;
-                }}
+                    // 获取当前文本长度 (跳过太短的容器)
+                    let currentLen = 0;
+                    if (mc) {
+                        const clone = mc.cloneNode(true);
+                        clone.querySelectorAll('.cdk-visually-hidden').forEach(el => el.remove());
+                        currentLen = clone.innerText.trim().length;
+                    }
+                    
+                    // 如果已经完成且有实质内容，返回成功
+                    if (isComplete && currentLen > 10) return true;
+                    // 如果正在忙碌（且是这几个容器之一），目前还不能判定失败，继续循环或等待
+                }
 
                 // 5. 稳定性检测逻辑
                 if (!window._gemini_wait_state) {{
@@ -379,21 +387,23 @@ async def get_last_response_text(page: Page) -> str:
     try:
         text = await page.evaluate("""
             () => {
-                const containers = document.querySelectorAll('model-response, response-container, .model-response, [data-test-id="model-response"]');
+                const containers = Array.from(document.querySelectorAll('model-response, response-container, .model-response, [data-test-id="model-response"]'));
                 if (containers.length === 0) return "";
-                const last = containers[containers.length - 1];
                 
-                // 移除视觉隐藏的结构化文本 (如 "Gemini 说")
-                const hidden = last.querySelectorAll('.cdk-visually-hidden');
-                hidden.forEach(el => el.remove());
+                // 从后向前扫描找到第一个有文本内容的容器 (最多看最后3个)
+                for (let i = containers.length - 1; i >= Math.max(0, containers.length - 3); i--) {
+                    const last = containers[i];
+                    const clone = last.cloneNode(true);
+                    const hidden = clone.querySelectorAll('.cdk-visually-hidden');
+                    hidden.forEach(el => el.remove());
 
-                // 优先从 message-content 获取，避免混入头像等杂质
-                const mc = last.querySelector('message-content, .message-content, .model-response-text');
-                if (mc) return mc.innerText;
+                    const mc = clone.querySelector('message-content, .message-content, .model-response-text');
+                    if (mc && mc.innerText.trim().length > 0) return mc.innerText.trim();
 
-                // 尝试定位 markdown 面板或直接取 innerText
-                const panel = last.querySelector('.markdown, .markdown-main-panel, .response-content');
-                return panel ? panel.innerText : last.innerText;
+                    const panel = clone.querySelector('.markdown, .markdown-main-panel, .response-content');
+                    if (panel && panel.innerText.trim().length > 0) return panel.innerText.trim();
+                }
+                return "";
             }
         """)
         return text.strip() if text else ""
@@ -406,13 +416,18 @@ async def get_generated_urls(page: Page, max_wait_s: int = 12) -> List[str]:
     while time.time() - start_time < max_wait_s:
         urls = await page.evaluate(f"""
             () => {{
-                const containers = document.querySelectorAll('model-response, response-container, .model-response');
+                const containers = Array.from(document.querySelectorAll('model-response, response-container, .model-response'));
                 if (containers.length === 0) return [];
-                const last = containers[containers.length - 1];
-                const urls = Array.from(last.querySelectorAll('img'))
-                    .map(i => i.src)
-                    .filter(src => src && src.includes('googleusercontent') && !src.includes('{_AVATAR_PATTERN}'));
-                return [...new Set(urls)];
+                
+                // 从后向前扫描找到第一个包含图片的容器 (最多看最后3个)
+                for (let i = containers.length - 1; i >= Math.max(0, containers.length - 3); i--) {{
+                    const last = containers[i];
+                    const urls = Array.from(last.querySelectorAll('img'))
+                        .map(i => i.src)
+                        .filter(src => src && src.includes('googleusercontent') && !src.includes('{_AVATAR_PATTERN}'));
+                    if (urls.length > 0) return [...new Set(urls)];
+                }}
+                return [];
             }}
         """)
         if urls:
@@ -440,12 +455,17 @@ async def download_hd_image(page: Page, img_url: str, remove_wm: bool = True, ma
             # 强化：每次尝试前都重新获取一次句柄，防止 DOM 变动导致之前的 handle 失效
             img_element = await page.evaluate_handle("""
                 (url) => {
-                    const containers = document.querySelectorAll('model-response, response-container, .model-response');
+                    const containers = Array.from(document.querySelectorAll('model-response, response-container, .model-response'));
                     if (containers.length === 0) return null;
-                    const last = containers[containers.length - 1];
-                    // 模糊匹配：优先全匹配，其次匹配不带查询参数的部分
-                    return Array.from(last.querySelectorAll('img')).find(i => i.src === url)
-                        || Array.from(last.querySelectorAll('img')).find(i => i.src.split('=')[0] === url.split('=')[0]);
+                    
+                    // 从后向前扫描寻找匹配图片 URL 的容器 (最多看最后3个)
+                    for (let i = containers.length - 1; i >= Math.max(0, containers.length - 3); i--) {
+                        const last = containers[i];
+                        const img = Array.from(last.querySelectorAll('img')).find(i => i.src === url)
+                            || Array.from(last.querySelectorAll('img')).find(i => i.src.split('=')[0] === url.split('=')[0]);
+                        if (img) return img;
+                    }
+                    return null;
                 }
             """, img_url)
             img_element = img_element.as_element()
@@ -487,37 +507,41 @@ async def download_hd_image(page: Page, img_url: str, remove_wm: bool = True, ma
                         tab_log(page, "Native wait failed, attempting robust JS physical click fallback...")
                         clicked = await page.evaluate(f"""
                             (imgUrl) => {{
-                                const containers = document.querySelectorAll('model-response, response-container, .model-response');
+                                const containers = Array.from(document.querySelectorAll('model-response, response-container, .model-response'));
                                 if (containers.length === 0) return {{ success: false, reason: "no containers" }};
-                                const last = containers[containers.length - 1];
                                 
-                                let imgs = Array.from(last.querySelectorAll('img'));
-                                let targetImg = imgs.find(i => i.src === imgUrl);
-                                if (!targetImg && imgUrl) {{
-                                    const base = imgUrl.split('=')[0].split('?')[0];
-                                    targetImg = imgs.find(i => i.src.includes(base));
+                                // 从后向前扫描寻找匹配图片 URL 的容器 (最多看最后3个)
+                                for (let i = containers.length - 1; i >= Math.max(0, containers.length - 3); i--) {{
+                                    const last = containers[i];
+                                    let imgs = Array.from(last.querySelectorAll('img'));
+                                    let targetImg = imgs.find(i => i.src === imgUrl);
+                                    if (!targetImg && imgUrl) {{
+                                        const base = imgUrl.split('=')[0].split('?')[0];
+                                        targetImg = imgs.find(i => i.src.includes(base));
+                                    }}
+                                    if (!targetImg && imgs.length === 1) targetImg = imgs[0];
+                                    
+                                    if (targetImg) {{
+                                        // 找到了图片，尝试寻找下载按钮
+                                        let parent = targetImg.parentElement;
+                                        let btn = null;
+                                        for(let j=0; j<6; j++) {{
+                                            if(!parent || parent === last) break;
+                                            btn = parent.querySelector('{combined_selector}');
+                                            if(btn) break;
+                                            parent = parent.parentElement;
+                                        }}
+                                        if (!btn) btn = last.querySelector('{combined_selector}');
+                                        
+                                        if(btn) {{
+                                            btn.scrollIntoView();
+                                            btn.click();
+                                            return {{ success: true }};
+                                        }}
+                                    }}
                                 }}
-                                if (!targetImg && imgs.length === 1) targetImg = imgs[0];
-                                if (!targetImg) return {{ success: false, reason: "img not found", foundUrls: imgs.map(i=>i.src) }};
-                                
-                                let parent = targetImg.parentElement;
-                                let btn = null;
-                                for(let i=0; i<6; i++) {{
-                                    if(!parent || parent === last) break;
-                                    btn = parent.querySelector('{combined_selector}');
-                                    if(btn) break;
-                                    parent = parent.parentElement;
-                                }}
-                                
-                                if (!btn) btn = last.querySelector('{combined_selector}');
-                                
-                                if(btn) {{
-                                    btn.scrollIntoView();
-                                    btn.click();
-                                    return {{ success: true }};
-                                }}
-                                return {{ success: false, reason: "btn not found in parents or response container" }};
-                            }}
+                                return {{ success: false, reason: "img or download button not found" }};
+                            }},
                         """, img_url)
                         if not clicked.get("success"):
                             tab_log(page, f"JS Physical click failed: {{clicked.get('reason')}}", "warning")
