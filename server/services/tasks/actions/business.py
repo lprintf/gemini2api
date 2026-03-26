@@ -312,23 +312,28 @@ async def wait_for_results(page: Page, timeout_s: int = 60, original_prompt: str
                 const containers = Array.from(document.querySelectorAll('model-response, response-container, .model-response'));
                 if (containers.length === 0) return false;
                 
+                let currentLen = 0;
+                let hasImages = false;
+                let isComplete = false;
+                let isBusy = false;
+
                 // 扫描最后几个容器，寻找有效的图片或文字 (最多看最后3个)
                 for (let i = containers.length - 1; i >= Math.max(0, containers.length - 3); i--) {{
                     const last = containers[i];
                     
                     // 3. 成功路径：检测到图片
                     const imgs = Array.from(last.querySelectorAll('img'));
-                    const hasImages = imgs.some(i => i.src.includes('googleusercontent'));
+                    hasImages = imgs.some(i => i.src.includes('googleusercontent'));
                     if (hasImages) return true;
 
                     // 4. 状态提取与文字检测
                     const mc = last.querySelector('message-content');
-                    const isBusy = (last.getAttribute('aria-busy') === 'true') || (mc && mc.getAttribute('aria-busy') === 'true');
+                    isBusy = (last.getAttribute('aria-busy') === 'true') || (mc && mc.getAttribute('aria-busy') === 'true');
                     const footer = last.querySelector('.response-footer, response-footer');
-                    const isComplete = footer && footer.classList.contains('complete');
+                    isComplete = footer && footer.classList.contains('complete');
 
                     // 获取当前文本长度 (跳过太短的容器)
-                    let currentLen = 0;
+                    currentLen = 0;
                     if (mc) {{
                         const clone = mc.cloneNode(true);
                         clone.querySelectorAll('.cdk-visually-hidden').forEach(el => el.remove());
@@ -337,7 +342,9 @@ async def wait_for_results(page: Page, timeout_s: int = 60, original_prompt: str
                     
                     // 如果已经完成且有实质内容，返回成功
                     if (isComplete && currentLen > 10) return true;
-                    // 如果正在忙碌（且是这几个容器之一），目前还不能判定失败，继续循环或等待
+                    
+                    // 如果这个容器有内容或者是 busy 状态，我们就以它的状态作为稳定性检测的基准
+                    if (isBusy || currentLen > 0) break;
                 }}
 
                 // 5. 稳定性检测逻辑
