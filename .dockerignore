@@ -28,6 +28,7 @@ output/
 
 # Test
 tests/
+scripts/
 
 # Docker
 Dockerfile

@@ -12,7 +12,7 @@ CONCURRENCY   = int(os.getenv("CONCURRENCY", "3"))          # 并发任务数
 POLL_INTERVAL = float(os.getenv("POLL_INTERVAL", "3"))      # 轮询间隔（秒）
 POLL_TIMEOUT  = int(os.getenv("POLL_TIMEOUT", "180"))       # 单任务最大等待（秒）
 PROMPT = "Change the red background to a beautiful futuristic city landscape"
-# e.g. CONCURRENCY=5 docker compose exec -e CONCURRENCY=5 gemini2api uv run python tests/test_async_edits.py
+# e.g. CONCURRENCY=5 docker compose exec -e CONCURRENCY=5 gemini2api uv run python scripts/test_async_edits.py
 # =========================================
 
 

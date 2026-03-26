@@ -2,10 +2,10 @@
 Database Migration Script: Remove obsolete 'headless' parameters.
 
 To run this in local environment:
-    python3 tests/migrate_db_headless.py
+    python3 scripts/migrate_db_headless.py
 
 To run this in docker container:
-    docker compose exec -T gemini2api python3 tests/migrate_db_headless.py
+    docker compose exec -T gemini2api python3 scripts/migrate_db_headless.py
 """
 
 import sqlite3

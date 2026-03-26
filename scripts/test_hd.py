@@ -1,5 +1,5 @@
 """
-运行命令: docker compose exec gemini2api uv run tests/test_hd.py
+运行命令: docker compose exec gemini2api uv run scripts/test_hd.py
 
 错误日志存放在: /data/gemini2api/data/log/[yyyymmdd] 下
 错误快照存放在: /data/gemini2api/data/debug/[yyyymmdd] 下

@@ -382,12 +382,12 @@ async def reset_task_stats():
 
 @router.delete("/logs/today")
 async def clear_today_logs():
-    """清理今日日志和调试文件 (调用 tests/clean.py 逻辑)"""
+    """清理今日日志和调试文件 (调用 scripts/clean.py 逻辑)"""
     try:
         import subprocess
         # 我们可以直接在后端调用 clean.py 产生的逻辑，或者直接运行脚本
         # 考虑到 clean.py 已经写好，直接调用它最方便
-        script_path = "/app/tests/clean.py"
+        script_path = "/app/scripts/clean.py"
         result = subprocess.run(["python3", script_path], capture_output=True, text=True)
         if result.returncode == 0:
             return {"success": True, "output": result.stdout}

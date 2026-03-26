@@ -172,7 +172,7 @@ uv run uvicorn server.app:app --reload
 ### 测试
 
 ```bash
-docker compose exec gemini2api uv run tests/xxx.py
+docker compose exec gemini2api uv run scripts/xxx.py
 ```
 
 ## 许可证
