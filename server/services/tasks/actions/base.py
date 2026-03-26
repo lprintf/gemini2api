@@ -18,8 +18,12 @@ async def click(page: Page, selectors: List[str]):
                 try:
                     await btn.click(timeout=2000)
                 except:
-                    # 原生物理强制点击，穿透遮罩层
-                    await btn.click(timeout=2000, force=True)
+                    try:
+                        # 原生物理强制点击，穿透遮罩层
+                        await btn.click(timeout=2000, force=True)
+                    except:
+                        # 终极 JS 执行点击，绕过所有事件拦截
+                        await page.evaluate("el => el.click()", btn)
                 return True
         except: continue
     return False

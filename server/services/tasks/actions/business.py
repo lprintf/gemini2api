@@ -175,7 +175,24 @@ async def click_submit(page: Page, selectors: List[str] = _SELECTORS["submit_btn
     except Exception as e:
         tab_log(page, f"click_submit sync wait finished or failed: {e}", "warning")
 
-    return await click(page, selectors)
+    # 尝试原生点击
+    native_clicked = await click(page, selectors)
+    
+    # 为了防止原生点击悬停不生效（被截断或动画阻挡），强制增加一个 JS 点击
+    js_clicked = await page.evaluate("""
+        (selectors) => {
+            for (const sel of selectors) {
+                const btn = document.querySelector(sel);
+                if (btn) {
+                    btn.click();
+                    return true;
+                }
+            }
+            return false;
+        }
+    """, selectors)
+    
+    return native_clicked or js_clicked
 
 async def submit_image_prompt(page: Page, prompt: str, image_paths: List[str] = []) -> bool:
     """复合动作：上传多图 + 填词 + 提交 (内置数量校验与终极同步)"""
