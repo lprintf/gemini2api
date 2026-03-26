@@ -313,7 +313,7 @@ async def wait_for_results(page: Page, timeout_s: int = 60, original_prompt: str
                 if (containers.length === 0) return false;
                 
                 // 扫描最后几个容器，寻找有效的图片或文字 (最多看最后3个)
-                for (let i = containers.length - 1; i >= Math.max(0, containers.length - 3); i--) {
+                for (let i = containers.length - 1; i >= Math.max(0, containers.length - 3); i--) {{
                     const last = containers[i];
                     
                     // 3. 成功路径：检测到图片
@@ -329,16 +329,16 @@ async def wait_for_results(page: Page, timeout_s: int = 60, original_prompt: str
 
                     // 获取当前文本长度 (跳过太短的容器)
                     let currentLen = 0;
-                    if (mc) {
+                    if (mc) {{
                         const clone = mc.cloneNode(true);
                         clone.querySelectorAll('.cdk-visually-hidden').forEach(el => el.remove());
                         currentLen = clone.innerText.trim().length;
-                    }
+                    }}
                     
                     // 如果已经完成且有实质内容，返回成功
                     if (isComplete && currentLen > 10) return true;
                     // 如果正在忙碌（且是这几个容器之一），目前还不能判定失败，继续循环或等待
-                }
+                }}
 
                 // 5. 稳定性检测逻辑
                 if (!window._gemini_wait_state) {{
