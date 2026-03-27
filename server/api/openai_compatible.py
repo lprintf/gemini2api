@@ -432,7 +432,7 @@ async def get_task_status(
 
     # 如果完成，构造 ImageEditResponse
     result = None
-    if task.status == "completed" and task.result_paths:
+    if task.status == "completed" and task.result_paths is not None:
         data = []
         for img_id in task.result_paths:
             data.append(ImageData(url=img_id))

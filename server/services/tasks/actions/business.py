@@ -342,8 +342,10 @@ async def wait_for_results(page: Page, timeout_s: int = 60, original_prompt: str
                     const last = containers[i];
                     
                     // 3. 成功路径：检测到图片
-                    const imgs = Array.from(last.querySelectorAll('img'));
-                    hasImages = imgs.some(i => i.src.includes('googleusercontent'));
+                    const imgs = Array.from(last.querySelectorAll('img')).filter(i => 
+                        !i.classList.contains('user-icon') && !i.classList.contains('preview-image') && !i.getAttribute('data-test-id')?.includes('uploaded')
+                    );
+                    hasImages = imgs.some(i => i.src.includes('googleusercontent') || i.src.startsWith('blob:'));
                     if (hasImages) return true;
 
                     // 4. 状态提取与文字检测
@@ -450,8 +452,9 @@ async def get_generated_urls(page: Page, max_wait_s: int = 12) -> List[str]:
                 for (let i = containers.length - 1; i >= Math.max(0, containers.length - 3); i--) {{
                     const last = containers[i];
                     const urls = Array.from(last.querySelectorAll('img'))
+                        .filter(i => !i.classList.contains('user-icon') && !i.classList.contains('preview-image') && !i.getAttribute('data-test-id')?.includes('uploaded'))
                         .map(i => i.src)
-                        .filter(src => src && src.includes('googleusercontent') && !src.includes('{_AVATAR_PATTERN}'));
+                        .filter(src => src && (src.includes('googleusercontent') || src.startsWith('blob:')) && !src.includes('{_AVATAR_PATTERN}'));
                     if (urls.length > 0) return [...new Set(urls)];
                 }}
                 return [];
@@ -642,15 +645,62 @@ async def download_q_image(page: Page, img_url: str, remove_wm: bool = True, is_
             raise asyncio.CancelledError("Client disconnected during Q download")
             
         t_dl_start = time.time()
-        response = await page.request.get(img_url)
-        dl_time = round(time.time() - t_dl_start, 3)
-        if response.ok:
-            success, img_bytes, h, p_stats = await _process_image(BytesIO(await response.body()), remove_wm)
+        
+        if img_url.startswith("blob:"):
+            # Playwright APIRequestContext fails on blob URLs, must use page context
+            # Fallback to canvas drawing if fetch fails (e.g. blob URL revoked by Gemini)
+            b64_data = await page.evaluate("""async (url) => {
+                try {
+                    const response = await fetch(url);
+                    const blob = await response.blob();
+                    return await new Promise((resolve, reject) => {
+                        const reader = new FileReader();
+                        reader.onloadend = () => resolve(reader.result);
+                        reader.onerror = reject;
+                        reader.readAsDataURL(blob);
+                    });
+                } catch (e) {
+                    const img = Array.from(document.querySelectorAll('img')).find(i => i.src === url);
+                    if (!img) throw new Error("Fetch failed and img not found in DOM: " + e.message);
+                    if (!img.complete) {
+                        await new Promise((resolve, reject) => {
+                            img.onload = resolve;
+                            img.onerror = reject;
+                        });
+                    }
+                    const canvas = document.createElement('canvas');
+                    canvas.width = img.naturalWidth || img.width || 1024;
+                    canvas.height = img.naturalHeight || img.height || 1024;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0);
+                    return canvas.toDataURL('image/png');
+                }
+            }""", img_url)
+            
+            # Remove data URL prefix (e.g. "data:image/jpeg;base64,")
+            if "," in b64_data:
+                b64_data = b64_data.split(",", 1)[1]
+                
+            img_data = base64.b64decode(b64_data)
+            dl_time = round(time.time() - t_dl_start, 3)
+            
+            success, img_bytes, h, p_stats = await _process_image(BytesIO(img_data), remove_wm)
             if success:
                 stats.update(p_stats)
                 stats["dl_time"] = dl_time
                 stats["mode"] = "preview"
             return success, img_bytes, h, stats
+            
+        else:
+            response = await page.request.get(img_url)
+            dl_time = round(time.time() - t_dl_start, 3)
+            if response.ok:
+                success, img_bytes, h, p_stats = await _process_image(BytesIO(await response.body()), remove_wm)
+                if success:
+                    stats.update(p_stats)
+                    stats["dl_time"] = dl_time
+                    stats["mode"] = "preview"
+                return success, img_bytes, h, stats
     except Exception as e:
         msg = f"download_q_image failed: {e}"
         tab_log(page, msg, "error")

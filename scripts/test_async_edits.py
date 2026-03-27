@@ -38,7 +38,7 @@ async def submit_async_edit(client: httpx.AsyncClient, headers: dict, image_path
         "image_paths": f"uploads/{image_path}",
         "prompt": PROMPT,
         "model": "gemini-flash",
-        "download_mode": "preview",
+        "download_mode": "hd",
     }
     resp = await client.post("/v1/images/edits_async", data=data, headers=headers)
     resp.raise_for_status()
@@ -63,7 +63,7 @@ async def poll_task(client: httpx.AsyncClient, headers: dict, task_id: str, idx:
         print(f"  [task#{idx} {task_id}] 第{retry}次 | {elapsed:.1f}s | {status}")
 
         if status == "completed":
-            result = data.get("result", {})
+            result = data.get("result") or {}
             urls = [item.get("url") for item in (result.get("data") or [])]
             print(f"  [task#{idx} {task_id}] ✅ 完成! URLs: {urls}")
             return {"ok": True, "task_id": task_id, "urls": urls}
