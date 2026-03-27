@@ -202,6 +202,9 @@ async def submit_image_prompt(page: Page, prompt: str, image_paths: List[str] = 
             tab_log(page, f"Starting batch upload for {target_count} images...")
             for p in image_paths:
                 await upload_image(page, p)
+            await asyncio.sleep(0.5) # Wait for potential consent popups to render
+            if await handle_consent_popups(page):
+                tab_log(page, "Dismissed consent popup after image upload.")
         
         if prompt:
             if target_count == 0:
@@ -470,6 +473,10 @@ async def get_generated_urls(page: Page, max_wait_s: int = 12) -> List[str]:
 async def download_hd_image(page: Page, img_url: str, remove_wm: bool = True, max_attempts: int = 3, is_disconnected: Optional[Any] = None):
     """下载高清图片 (精准 Hover 下载版，带 Snackbar 错误检测和快速失败)"""
     for attempt in range(max_attempts):
+        if await handle_consent_popups(page):
+            tab_log(page, f"Dismissed consent popup before HD download (attempt {attempt+1}).")
+            await asyncio.sleep(0.5)
+
         is_last = (attempt == max_attempts - 1)
         # Check disconnection at the start of each retry
         if is_disconnected and callable(is_disconnected) and await is_disconnected():
