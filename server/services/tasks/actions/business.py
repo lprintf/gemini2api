@@ -357,7 +357,7 @@ async def wait_for_results(page: Page, timeout_s: int = 60, original_prompt: str
                     if (mc) {{
                         const clone = mc.cloneNode(true);
                         clone.querySelectorAll('.cdk-visually-hidden').forEach(el => el.remove());
-                        currentLen = clone.innerText.trim().length;
+                        currentLen = clone.textContent.trim().length;
                     }}
                     
                     // 如果已经完成且有实质内容，返回成功
@@ -425,10 +425,10 @@ async def get_last_response_text(page: Page) -> str:
                     hidden.forEach(el => el.remove());
 
                     const mc = clone.querySelector('message-content, .message-content, .model-response-text');
-                    if (mc && mc.innerText.trim().length > 0) return mc.innerText.trim();
+                    if (mc && mc.textContent.trim().length > 0) return mc.textContent.trim();
 
                     const panel = clone.querySelector('.markdown, .markdown-main-panel, .response-content');
-                    if (panel && panel.innerText.trim().length > 0) return panel.innerText.trim();
+                    if (panel && panel.textContent.trim().length > 0) return panel.textContent.trim();
                 }
                 return "";
             }
